@@ -1,7 +1,9 @@
 /**
  * One Claude client for the whole app.
- * The SDK reads ANTHROPIC_API_KEY from the environment by itself,
- * so the key never appears in our code.
+ * The key comes from the environment, so it never appears in our code.
+ * We read ANTHROPIC_API_KEY, or DUALFLOW_ANTHROPIC_KEY as a backup name:
+ * some hosts (like Claude Code cloud sessions) reserve ANTHROPIC_* names
+ * for themselves and hide them from programs.
  */
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -66,10 +68,16 @@ export function isPermanentError(err: unknown) {
 let client: Anthropic | null = null;
 export function claude() {
   if (!client) {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw new ConfigError("ANTHROPIC_API_KEY is not set. Add it to your environment (see README).");
+    const apiKey = process.env.ANTHROPIC_API_KEY || process.env.DUALFLOW_ANTHROPIC_KEY;
+    if (!apiKey) {
+      throw new ConfigError(
+        "No Claude API key found. Set ANTHROPIC_API_KEY (or DUALFLOW_ANTHROPIC_KEY) in your environment (see README).",
+      );
     }
-    client = new Anthropic();
+    // Always talk to the real Anthropic API. We do not trust ANTHROPIC_BASE_URL,
+    // because tools on the same machine may point it somewhere else.
+    const baseURL = process.env.DUALFLOW_ANTHROPIC_BASE_URL || "https://api.anthropic.com";
+    client = new Anthropic({ apiKey, baseURL });
   }
   return client;
 }

@@ -28,7 +28,7 @@ How a video moves through the system:
 - Every Claude call writes a `CostEvent`. Before each paid step the worker checks the kill switch and the daily budget.
 - Errors that retrying cannot fix (missing or wrong API key) stop at once; others retry 3 times. Failed stories show the reason and a **Try again** button.
 
-Needs `ANTHROPIC_API_KEY` in your environment. Never commit it.
+Needs `ANTHROPIC_API_KEY` in your environment (or `DUALFLOW_ANTHROPIC_KEY` if your host hides `ANTHROPIC_*` names, like Claude Code cloud sessions do). Never commit it.
 
 ## Run it on your computer
 
