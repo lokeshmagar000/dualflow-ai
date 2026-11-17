@@ -22,7 +22,7 @@ How a video moves through the system:
 
 ## Phase 1A: AI research and scripts
 
-- `packages/ai` talks to Claude (`claude-opus-5-5`).
+- `packages/ai` talks to Claude. **Budget mode** (default, `AI_MODEL=claude-haiku-5-5`) keeps costs to a few cents per video pair; **quality mode** (`AI_MODEL=claude-opus-5-5`) gives the best writing.
 - **research** step: Claude searches the web, then returns checked facts with sources and one shared visual plan (list of scenes).
 - **script** step: runs once per language, in parallel. Each script is written natively in that language from the same facts and scenes (Nepali rules: short sentences, everyday words, numbers written as words for the voice, Unicode NFC).
 - Every Claude call writes a `CostEvent`. Before each paid step the worker checks the kill switch and the daily budget.

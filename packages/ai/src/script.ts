@@ -6,7 +6,7 @@
 import { z } from "zod/v4";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { Language } from "@dualflow/shared";
-import { claude, FALLBACK_BETA, MODEL } from "./client";
+import { claude, currentModel, fallbackOptions } from "./client";
 import { claudeCost, type CostLine } from "./cost";
 import type { Research } from "./research";
 
@@ -46,6 +46,7 @@ export async function writeScript(input: {
   research: Research;
 }): Promise<{ script: Script; costs: CostLine[] }> {
   const { language, research } = input;
+  const model = currentModel();
   const scenesText = research.visualPlan
     .map((s, i) => `${i + 1}. [${s.purpose}] ${s.idea}`)
     .join("\n");
@@ -56,10 +57,9 @@ export async function writeScript(input: {
       : "The whole script must take about 8-12 minutes to speak.";
 
   const response = await claude().beta.messages.parse({
-    model: MODEL,
+    model,
     max_tokens: 32000,
-    betas: [FALLBACK_BETA],
-    fallbacks: "default",
+    ...fallbackOptions(),
     output_config: { effort: "high", format: betaZodOutputFormat(ScriptSchema) },
     system: `You are a scriptwriter for a bilingual (Nepali + English) educational video channel.
 Only use facts from the research. Never invent numbers.
@@ -95,5 +95,5 @@ ${scenesText}`,
   script.hashtags = script.hashtags.map(nfc);
   script.scenes = script.scenes.map((s) => ({ ...s, text: nfc(s.text) }));
 
-  return { script, costs: [claudeCost(response.usage)] };
+  return { script, costs: [claudeCost(model, response.usage)] };
 }

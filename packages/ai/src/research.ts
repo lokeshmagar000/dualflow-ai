@@ -5,7 +5,7 @@
  */
 import { z } from "zod/v4";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { claude, FALLBACK_BETA, MODEL } from "./client";
+import { claude, currentModel, fallbackOptions, maxWebSearches } from "./client";
 import { claudeCost, type CostLine } from "./cost";
 
 export const ResearchSchema = z.object({
@@ -40,17 +40,17 @@ export async function researchTopic(input: {
   format: "SHORT" | "LONG";
 }): Promise<{ research: Research; costs: CostLine[] }> {
   const ai = claude();
+  const model = currentModel();
   const costs: CostLine[] = [];
 
   // Call 1: search the web and write research notes (free text with sources).
   const notesResponse = await ai.beta.messages.create({
-    model: MODEL,
+    model,
     max_tokens: 16000,
-    betas: [FALLBACK_BETA],
-    fallbacks: "default",
+    ...fallbackOptions(),
     output_config: { effort: "medium" },
     system: RESEARCH_SYSTEM,
-    tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 6 }],
+    tools: [{ type: "web_search_20260209", name: "web_search", max_uses: maxWebSearches() }],
     messages: [
       {
         role: "user",
@@ -60,7 +60,7 @@ Write research notes: key facts (each with its source URL), useful numbers, and 
     ],
   });
   if (notesResponse.stop_reason === "refusal") throw new Error("Research request was declined by the model.");
-  costs.push(claudeCost(notesResponse.usage));
+  costs.push(claudeCost(model, notesResponse.usage));
 
   const notes = notesResponse.content
     .filter((b) => b.type === "text")
@@ -69,10 +69,9 @@ Write research notes: key facts (each with its source URL), useful numbers, and 
 
   // Call 2: turn the notes into structured facts and a shared visual plan.
   const planned = await ai.beta.messages.parse({
-    model: MODEL,
+    model,
     max_tokens: 16000,
-    betas: [FALLBACK_BETA],
-    fallbacks: "default",
+    ...fallbackOptions(),
     output_config: { effort: "medium", format: betaZodOutputFormat(ResearchSchema) },
     system: RESEARCH_SYSTEM,
     messages: [
@@ -88,7 +87,7 @@ ${notes}
     ],
   });
   if (planned.stop_reason === "refusal") throw new Error("Planning request was declined by the model.");
-  costs.push(claudeCost(planned.usage));
+  costs.push(claudeCost(model, planned.usage));
   if (!planned.parsed_output) throw new Error("Could not read the research plan from the model.");
 
   return { research: planned.parsed_output, costs };
