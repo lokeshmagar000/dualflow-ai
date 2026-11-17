@@ -146,19 +146,19 @@ model BrandProfile {
 
 // One connected social account, for one language.
 model Channel {
-  id                 String      @id @default(cuid())
-  workspaceId        String
-  platform           Platform
-  language           Language
-  name               String
-  externalId         String? // id of the channel/page on the platform
+  id              String      @id @default(cuid())
+  workspaceId     String
+  platform        Platform
+  language        Language
+  name            String
+  externalId      String? // id of the channel/page on the platform
   // OAuth tokens are stored ENCRYPTED (AES-256-GCM). Never store them in plain text.
-  accessTokenEnc     String?
-  refreshTokenEnc    String?
-  tokenExpiresAt     DateTime?
-  mode               PublishMode @default(APPROVAL)
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  accessTokenEnc  String?
+  refreshTokenEnc String?
+  tokenExpiresAt  DateTime?
+  mode            PublishMode @default(APPROVAL)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   publications    Publication[]
@@ -206,7 +206,12 @@ model Story {
   format      VideoFormat   @default(SHORT)
   // Shared list of scenes (purpose + media) used by BOTH languages.
   visualPlan  Json?
+  // Research summary and facts shared by both languages.
+  research    Json?
   status      ContentStatus @default(DRAFT)
+  lastError   String?
+  // Goes up by one each time the pipeline is retried.
+  run         Int           @default(1)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -219,16 +224,19 @@ model Story {
 
 // One language version of a Story.
 model Variant {
-  id          String        @id @default(cuid())
-  storyId     String
-  language    Language
-  title       String?
-  description String?
-  status      ContentStatus @default(DRAFT)
-  durationSec Float?
-  outputKey   String? // final video file in storage
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id                String        @id @default(cuid())
+  storyId           String
+  language          Language
+  title             String?
+  description       String?
+  status            ContentStatus @default(DRAFT)
+  durationSec       Float?
+  hashtags          String[]
+  thumbnailHeadline String?
+  lastError         String?
+  outputKey         String? // final video file in storage
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   story        Story         @relation(fields: [storyId], references: [id], onDelete: Cascade)
   scenes       Scene[]
@@ -243,7 +251,7 @@ model Variant {
 }
 
 model Scene {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   variantId String
   order     Int
   purpose   String? // hook, point, call to action...
@@ -251,8 +259,8 @@ model Scene {
   startMs   Int?
   endMs     Int?
   assetId   String?
-  variant   Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  asset     Asset?   @relation(fields: [assetId], references: [id])
+  variant   Variant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  asset     Asset?  @relation(fields: [assetId], references: [id])
 
   @@unique([variantId, order])
 }

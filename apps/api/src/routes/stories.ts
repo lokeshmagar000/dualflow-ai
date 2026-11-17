@@ -15,6 +15,42 @@ export async function storyRoutes(app: FastifyInstance) {
     });
   });
 
+  // One story with both languages, their scenes, and the research facts.
+  app.get<{ Params: { id: string } }>("/stories/:id", async (req, reply) => {
+    const ws = await getDefaultWorkspace();
+    const story = await prisma.story.findFirst({
+      where: { id: req.params.id, workspaceId: ws.id },
+      include: {
+        topic: { include: { researchNotes: true } },
+        variants: { include: { scenes: { orderBy: { order: "asc" } } }, orderBy: { language: "asc" } },
+      },
+    });
+    if (!story) return reply.code(404).send({ error: "Story not found" });
+    const cost = await prisma.costEvent.aggregate({ _sum: { usd: true }, where: { storyId: story.id } });
+    return { ...story, costUsd: cost._sum.usd ?? 0 };
+  });
+
+  /** Run the whole pipeline again for a failed story. */
+  app.post<{ Params: { id: string } }>("/stories/:id/retry", async (req, reply) => {
+    const ws = await getDefaultWorkspace();
+    const story = await prisma.story.findFirst({ where: { id: req.params.id, workspaceId: ws.id } });
+    if (!story) return reply.code(404).send({ error: "Story not found" });
+
+    // A new "run" number gives every job a new id, so finished jobs from
+    // the last run don't block the new ones.
+    const updated = await prisma.story.update({
+      where: { id: story.id },
+      data: { status: "GENERATING", lastError: null, run: { increment: 1 } },
+    });
+    await prisma.variant.updateMany({ where: { storyId: story.id }, data: { status: "DRAFT", lastError: null } });
+    await pipelineQueue.add(
+      JOB_NAMES.research,
+      { storyId: story.id, run: updated.run },
+      { jobId: `research-${story.id}-${updated.run}` },
+    );
+    return { ok: true, run: updated.run };
+  });
+
   /**
    * Turn a topic into a Story with TWO variants (Nepali + English),
    * then queue the first pipeline step (research).
@@ -49,8 +85,8 @@ export async function storyRoutes(app: FastifyInstance) {
     // jobId makes this safe: adding the same job twice does nothing.
     await pipelineQueue.add(
       JOB_NAMES.research,
-      { storyId: story.id },
-      { jobId: `research-${story.id}` },
+      { storyId: story.id, run: story.run },
+      { jobId: `research-${story.id}-${story.run}` },
     );
 
     return reply.code(201).send(story);

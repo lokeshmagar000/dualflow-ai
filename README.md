@@ -20,6 +20,16 @@ How a video moves through the system:
 3. The worker runs `research`, then `script → voice → thumbnail → render` for **both languages in parallel**.
 4. When both variants are ready, the Story is ready. (Phase 1 adds the real AI work.)
 
+## Phase 1A: AI research and scripts
+
+- `packages/ai` talks to Claude (`claude-opus-5-5`).
+- **research** step: Claude searches the web, then returns checked facts with sources and one shared visual plan (list of scenes).
+- **script** step: runs once per language, in parallel. Each script is written natively in that language from the same facts and scenes (Nepali rules: short sentences, everyday words, numbers written as words for the voice, Unicode NFC).
+- Every Claude call writes a `CostEvent`. Before each paid step the worker checks the kill switch and the daily budget.
+- Errors that retrying cannot fix (missing or wrong API key) stop at once; others retry 3 times. Failed stories show the reason and a **Try again** button.
+
+Needs `ANTHROPIC_API_KEY` in your environment. Never commit it.
+
 ## Run it on your computer
 
 You need Node.js 22, pnpm and Docker.

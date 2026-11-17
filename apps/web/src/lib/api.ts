@@ -38,9 +38,29 @@ export interface Story {
   id: string;
   format: string;
   status: string;
+  lastError: string | null;
   createdAt: string;
   topic: Topic;
   variants: Variant[];
+}
+export interface Scene {
+  id: string;
+  order: number;
+  purpose: string | null;
+  text: string;
+}
+export interface StoryDetail extends Omit<Story, "topic" | "variants"> {
+  costUsd: number;
+  research: { summary: string } | null;
+  topic: Topic & { researchNotes: { id: string; claim: string; sourceUrl: string | null }[] };
+  variants: (Variant & {
+    title: string | null;
+    description: string | null;
+    hashtags: string[];
+    thumbnailHeadline: string | null;
+    lastError: string | null;
+    scenes: Scene[];
+  })[];
 }
 export interface CostSummary {
   todayUsd: number;

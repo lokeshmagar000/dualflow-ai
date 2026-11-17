@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@dualflow/ai": "workspace:*",
     "@dualflow/db": "workspace:*",
     "@dualflow/shared": "workspace:*",
     "bullmq": "^5.34.6"
