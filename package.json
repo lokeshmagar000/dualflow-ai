@@ -1,0 +1,17 @@
+{
+  "name": "dualflow-ai",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "pnpm --filter @dualflow/db generate",
+    "db:migrate": "pnpm --filter @dualflow/db migrate",
+    "db:seed": "pnpm --filter @dualflow/db seed"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+/* Fonts that draw Nepali (Devanagari) letters correctly. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;600&display=swap");
+
+@theme {
+  --font-sans: "Inter", "Noto Sans Devanagari", ui-sans-serif, system-ui, sans-serif;
+  --color-brand-500: #6d5efc;
+  --color-brand-600: #5a4be6;
+}
+
+body {
+  @apply bg-zinc-50 text-zinc-900 antialiased;
+}
