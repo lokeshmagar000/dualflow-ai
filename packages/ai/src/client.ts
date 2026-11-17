@@ -24,6 +24,18 @@ export function maxWebSearches(): number {
 }
 
 /**
+ * Which web search tool version the current model supports.
+ * The newer "20260209" version (smarter filtering of results) works only on
+ * the bigger models (Opus, Sonnet, Fable). Haiku uses the basic "20250305" version.
+ */
+export function webSearchTool() {
+  const max_uses = maxWebSearches();
+  return currentModel().startsWith("claude-haiku")
+    ? ({ type: "web_search_20250305", name: "web_search", max_uses } as const)
+    : ({ type: "web_search_20260209", name: "web_search", max_uses } as const);
+}
+
+/**
  * Server-side fallback: if the model declines a request, the API retries it
  * on another model inside the same call. Haiku has no server-side fallback,
  * so we only turn it on for the bigger models.

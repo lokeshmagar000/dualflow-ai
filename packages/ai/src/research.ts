@@ -5,7 +5,8 @@
  */
 import { z } from "zod/v4";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { claude, currentModel, fallbackOptions, maxWebSearches } from "./client";
+import type Anthropic from "@anthropic-ai/sdk";
+import { claude, currentModel, fallbackOptions, webSearchTool } from "./client";
 import { claudeCost, type CostLine } from "./cost";
 
 export const ResearchSchema = z.object({
@@ -44,28 +45,46 @@ export async function researchTopic(input: {
   const costs: CostLine[] = [];
 
   // Call 1: search the web and write research notes (free text with sources).
-  const notesResponse = await ai.beta.messages.create({
+  const messages: Anthropic.Beta.BetaMessageParam[] = [
+    {
+      role: "user",
+      content: `Research this video topic: "${input.title}".${input.notes ? `\nCreator notes: ${input.notes}` : ""}
+Write research notes: key facts (each with its source URL), useful numbers, and anything specific to Nepal or Nepali viewers.`,
+    },
+  ];
+  let notesResponse = await ai.beta.messages.create({
     model,
     max_tokens: 16000,
     ...fallbackOptions(),
     output_config: { effort: "medium" },
     system: RESEARCH_SYSTEM,
-    tools: [{ type: "web_search_20260209", name: "web_search", max_uses: maxWebSearches() }],
-    messages: [
-      {
-        role: "user",
-        content: `Research this video topic: "${input.title}".${input.notes ? `\nCreator notes: ${input.notes}` : ""}
-Write research notes: key facts (each with its source URL), useful numbers, and anything specific to Nepal or Nepali viewers.`,
-      },
-    ],
+    tools: [webSearchTool()],
+    messages,
   });
-  if (notesResponse.stop_reason === "refusal") throw new Error("Research request was declined by the model.");
   costs.push(claudeCost(model, notesResponse.usage));
+  const textOf = (r: typeof notesResponse) =>
+    r.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+  const noteParts = [textOf(notesResponse)];
 
-  const notes = notesResponse.content
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
+  // "pause_turn" means the server paused a long search loop. We send the
+  // answer so far back and the server continues where it stopped (max 3 times).
+  for (let i = 0; i < 3 && notesResponse.stop_reason === "pause_turn"; i++) {
+    notesResponse = await ai.beta.messages.create({
+      model,
+      max_tokens: 16000,
+      ...fallbackOptions(),
+      output_config: { effort: "medium" },
+      system: RESEARCH_SYSTEM,
+      tools: [webSearchTool()],
+      messages: [...messages, { role: "assistant", content: notesResponse.content }],
+    });
+    costs.push(claudeCost(model, notesResponse.usage));
+    noteParts.push(textOf(notesResponse));
+  }
+  if (notesResponse.stop_reason === "refusal") throw new Error("Research request was declined by the model.");
+
+  const notes = noteParts.join("\n").trim();
+  if (!notes) throw new Error("Research found nothing. Try a clearer topic.");
 
   // Call 2: turn the notes into structured facts and a shared visual plan.
   const planned = await ai.beta.messages.parse({
