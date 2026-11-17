@@ -1,0 +1,435 @@
+// DualFlow AI database schema.
+// The centre of the design is Story -> Variant:
+//   one Story = one topic made into a video,
+//   two Variants = the Nepali and English versions of that video.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums (fixed lists of allowed values) ----------
+
+enum Language {
+  ne
+  en
+}
+
+enum Platform {
+  YOUTUBE
+  FACEBOOK
+  INSTAGRAM
+  TIKTOK
+}
+
+enum PublishMode {
+  AUTO
+  APPROVAL
+  MANUAL
+}
+
+enum VideoFormat {
+  SHORT
+  LONG
+}
+
+enum TopicSource {
+  TREND
+  CHAT
+  DIRECTOR
+  MANUAL
+}
+
+enum TopicStatus {
+  NEW
+  ACCEPTED
+  REJECTED
+  USED
+}
+
+// Where a story or variant is in the pipeline.
+enum ContentStatus {
+  DRAFT
+  GENERATING
+  READY
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum AssetType {
+  VIDEO
+  IMAGE
+  AUDIO
+  MUSIC
+  SUBTITLE
+  THUMBNAIL
+}
+
+enum BudgetPeriod {
+  DAILY
+  MONTHLY
+}
+
+enum Role {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+// ---------- Accounts ----------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships Membership[]
+  chatThreads ChatThread[]
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members         Membership[]
+  brandProfile    BrandProfile?
+  channels        Channel[]
+  topics          Topic[]
+  stories         Story[]
+  assets          Asset[]
+  automationRules AutomationRule[]
+  costEvents      CostEvent[]
+  budgets         Budget[]
+  auditLogs       AuditLog[]
+}
+
+model Membership {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        Role      @default(OWNER)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+}
+
+// Tone, niche, banned topics, fonts and colours used by the AI and templates.
+model BrandProfile {
+  id          String    @id @default(cuid())
+  workspaceId String    @unique
+  niche       String?
+  tone        String?
+  styleRules  Json?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  updatedAt   DateTime  @updatedAt
+}
+
+// One connected social account, for one language.
+model Channel {
+  id                 String      @id @default(cuid())
+  workspaceId        String
+  platform           Platform
+  language           Language
+  name               String
+  externalId         String? // id of the channel/page on the platform
+  // OAuth tokens are stored ENCRYPTED (AES-256-GCM). Never store them in plain text.
+  accessTokenEnc     String?
+  refreshTokenEnc    String?
+  tokenExpiresAt     DateTime?
+  mode               PublishMode @default(APPROVAL)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  publications    Publication[]
+  automationRules AutomationRule[]
+
+  @@index([workspaceId, language])
+}
+
+// ---------- Ideas and research ----------
+
+model Topic {
+  id          String      @id @default(cuid())
+  workspaceId String
+  title       String
+  notes       String?
+  source      TopicSource @default(MANUAL)
+  score       Float?
+  status      TopicStatus @default(NEW)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  researchNotes ResearchNote[]
+  stories       Story[]
+
+  @@index([workspaceId, status])
+}
+
+model ResearchNote {
+  id        String   @id @default(cuid())
+  topicId   String
+  claim     String
+  sourceUrl String?
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+}
+
+// ---------- Content ----------
+
+model Story {
+  id          String        @id @default(cuid())
+  workspaceId String
+  topicId     String
+  format      VideoFormat   @default(SHORT)
+  // Shared list of scenes (purpose + media) used by BOTH languages.
+  visualPlan  Json?
+  status      ContentStatus @default(DRAFT)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  topic     Topic     @relation(fields: [topicId], references: [id])
+  variants  Variant[]
+
+  @@index([workspaceId, status])
+}
+
+// One language version of a Story.
+model Variant {
+  id          String        @id @default(cuid())
+  storyId     String
+  language    Language
+  title       String?
+  description String?
+  status      ContentStatus @default(DRAFT)
+  durationSec Float?
+  outputKey   String? // final video file in storage
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  story        Story         @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  scenes       Scene[]
+  voiceovers   Voiceover[]
+  subtitles    Subtitle[]
+  thumbnails   Thumbnail[]
+  renderJobs   RenderJob[]
+  publications Publication[]
+  approvals    Approval[]
+
+  @@unique([storyId, language])
+}
+
+model Scene {
+  id        String   @id @default(cuid())
+  variantId String
+  order     Int
+  purpose   String? // hook, point, call to action...
+  text      String
+  startMs   Int?
+  endMs     Int?
+  assetId   String?
+  variant   Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  asset     Asset?   @relation(fields: [assetId], references: [id])
+
+  @@unique([variantId, order])
+}
+
+// Media library: every file we own or license.
+model Asset {
+  id          String    @id @default(cuid())
+  workspaceId String
+  type        AssetType
+  storageKey  String
+  mimeType    String?
+  license     String? // e.g. "Pexels license", "AI generated"
+  sourceUrl   String?
+  tags        String[]
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scenes    Scene[]
+
+  @@index([workspaceId, type])
+}
+
+model Voiceover {
+  id          String   @id @default(cuid())
+  variantId   String
+  provider    String // "azure", "elevenlabs"...
+  voice       String // e.g. "ne-NP-HemkalaNeural"
+  storageKey  String
+  // Exact time of every spoken word, used for perfect subtitles.
+  wordTimings Json?
+  createdAt   DateTime @default(now())
+  variant     Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+}
+
+model Subtitle {
+  id         String   @id @default(cuid())
+  variantId  String
+  storageKey String // .srt file, UTF-8
+  createdAt  DateTime @default(now())
+  variant    Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+}
+
+model Thumbnail {
+  id         String   @id @default(cuid())
+  variantId  String
+  storageKey String
+  headline   String?
+  createdAt  DateTime @default(now())
+  variant    Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+}
+
+model RenderJob {
+  id        String    @id @default(cuid())
+  variantId String
+  status    JobStatus @default(QUEUED)
+  attempts  Int       @default(0)
+  error     String?
+  outputKey String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  variant   Variant   @relation(fields: [variantId], references: [id], onDelete: Cascade)
+}
+
+// ---------- Publishing ----------
+
+model Publication {
+  id             String        @id @default(cuid())
+  variantId      String
+  channelId      String
+  scheduledAt    DateTime?
+  publishedAt    DateTime?
+  status         ContentStatus @default(SCHEDULED)
+  platformPostId String?
+  error          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  variant   Variant             @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  channel   Channel             @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  snapshots AnalyticsSnapshot[]
+
+  // A variant is posted to a channel at most once: this makes retries safe.
+  @@unique([variantId, channelId])
+  @@index([status, scheduledAt])
+}
+
+model Approval {
+  id        String   @id @default(cuid())
+  variantId String
+  userId    String?
+  approved  Boolean
+  comment   String?
+  createdAt DateTime @default(now())
+  variant   Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+}
+
+// ---------- AI chat assistant ----------
+
+model ChatThread {
+  id        String        @id @default(cuid())
+  userId    String
+  title     String?
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id        String     @id @default(cuid())
+  threadId  String
+  role      String // "user" | "assistant"
+  content   String
+  createdAt DateTime   @default(now())
+  thread    ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+}
+
+// ---------- Automation, analytics, costs, security ----------
+
+model AutomationRule {
+  id          String      @id @default(cuid())
+  workspaceId String
+  channelId   String?
+  cron        String // e.g. "0 9 * * *" = every day at 09:00
+  format      VideoFormat @default(SHORT)
+  dailyLimit  Int         @default(1)
+  enabled     Boolean     @default(false)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel     Channel?    @relation(fields: [channelId], references: [id], onDelete: SetNull)
+}
+
+model AnalyticsSnapshot {
+  id            String      @id @default(cuid())
+  publicationId String
+  metric        String // views, watchTimeSec, likes...
+  value         Float
+  capturedAt    DateTime    @default(now())
+  publication   Publication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+
+  @@index([publicationId, metric, capturedAt])
+}
+
+// Every paid API call writes one row, so spend is always known.
+model CostEvent {
+  id          String    @id @default(cuid())
+  workspaceId String
+  provider    String // "anthropic", "azure-tts", "remotion-lambda"...
+  units       Float // tokens, characters, seconds...
+  unitType    String
+  usd         Float
+  storyId     String?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+}
+
+model Budget {
+  id          String       @id @default(cuid())
+  workspaceId String
+  period      BudgetPeriod
+  capUsd      Float
+  // When true, automation stops for everything (the kill switch).
+  paused      Boolean      @default(false)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, period])
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  workspaceId String
+  actor       String
+  action      String
+  target      String?
+  ip          String?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+}

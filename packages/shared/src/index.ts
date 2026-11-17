@@ -1,0 +1,55 @@
+/**
+ * Shared types and validation used by web, api and worker.
+ * Keeping them in one place means every app agrees on the same shapes.
+ */
+import { z } from "zod";
+
+/** The two languages every Story is produced in. */
+export const LANGUAGES = ["ne", "en"] as const;
+export type Language = (typeof LANGUAGES)[number];
+
+export const LANGUAGE_LABELS: Record<Language, string> = {
+  ne: "नेपाली",
+  en: "English",
+};
+
+export const VIDEO_FORMATS = ["short", "long"] as const;
+export type VideoFormat = (typeof VIDEO_FORMATS)[number];
+
+/** Publishing modes, chosen per channel. */
+export const PUBLISH_MODES = ["auto", "approval", "manual"] as const;
+export type PublishMode = (typeof PUBLISH_MODES)[number];
+
+/** Names of the background jobs. Each pipeline step is its own job. */
+export const QUEUE_NAME = "pipeline";
+export const JOB_NAMES = {
+  research: "research",
+  script: "script",
+  voice: "voice",
+  thumbnail: "thumbnail",
+  render: "render",
+  publish: "publish",
+} as const;
+export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
+
+/** Data carried by a pipeline job. Small on purpose: workers load the rest from the DB. */
+export interface PipelineJobData {
+  storyId: string;
+  /** Present for steps that run once per language (script, voice, render...). */
+  variantId?: string;
+}
+
+/* ---------- Request validation (zod) ---------- */
+
+export const createTopicSchema = z.object({
+  title: z.string().trim().min(3).max(200),
+  notes: z.string().trim().max(2000).optional(),
+  source: z.enum(["chat", "trend", "director", "manual"]).default("manual"),
+});
+export type CreateTopicInput = z.infer<typeof createTopicSchema>;
+
+export const createStorySchema = z.object({
+  topicId: z.string().min(1),
+  format: z.enum(VIDEO_FORMATS).default("short"),
+});
+export type CreateStoryInput = z.infer<typeof createStorySchema>;
