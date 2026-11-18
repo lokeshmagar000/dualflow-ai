@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "@dualflow/db";
 import { createStorySchema, JOB_NAMES, LANGUAGES } from "@dualflow/shared";
+import { buildCues, type WordTiming } from "@dualflow/voice";
+import { contentTypeFor, fileExists, readFile } from "@dualflow/storage";
 import { pipelineQueue } from "../queue";
 import { getDefaultWorkspace } from "../workspace";
 
@@ -22,12 +24,66 @@ export async function storyRoutes(app: FastifyInstance) {
       where: { id: req.params.id, workspaceId: ws.id },
       include: {
         topic: { include: { researchNotes: true } },
-        variants: { include: { scenes: { orderBy: { order: "asc" } } }, orderBy: { language: "asc" } },
+        variants: {
+          include: {
+            scenes: { orderBy: { order: "asc" } },
+            voiceovers: { orderBy: { createdAt: "desc" }, take: 1 },
+          },
+          orderBy: { language: "asc" },
+        },
       },
     });
     if (!story) return reply.code(404).send({ error: "Story not found" });
     const cost = await prisma.costEvent.aggregate({ _sum: { usd: true }, where: { storyId: story.id } });
-    return { ...story, costUsd: cost._sum.usd ?? 0 };
+
+    // Instead of sending every word time, send ready-made subtitle lines (cues)
+    // so the dashboard can show live subtitles under the audio player.
+    const variants = story.variants.map(({ voiceovers, ...v }) => {
+      const vo = voiceovers[0];
+      return {
+        ...v,
+        voice: vo
+          ? {
+              provider: vo.provider,
+              voice: vo.voice,
+              cues: buildCues((vo.wordTimings ?? []) as unknown as WordTiming[]),
+            }
+          : null,
+      };
+    });
+    return { ...story, variants, costUsd: cost._sum.usd ?? 0 };
+  });
+
+  /**
+   * Send one file of a variant: its voice (audio), or its subtitles (srt / vtt).
+   * We look the file up in the database, so a visitor can only get files
+   * that really belong to a story in this workspace.
+   */
+  app.get<{ Params: { id: string; file: string } }>("/variants/:id/files/:file", async (req, reply) => {
+    const ws = await getDefaultWorkspace();
+    const variant = await prisma.variant.findFirst({
+      where: { id: req.params.id, story: { workspaceId: ws.id } },
+      include: {
+        voiceovers: { orderBy: { createdAt: "desc" }, take: 1 },
+        subtitles: { orderBy: { createdAt: "desc" }, take: 1 },
+      },
+    });
+    if (!variant) return reply.code(404).send({ error: "Variant not found" });
+
+    const srtKey = variant.subtitles[0]?.storageKey;
+    const keys: Record<string, string | undefined> = {
+      audio: variant.voiceovers[0]?.storageKey,
+      srt: srtKey,
+      vtt: srtKey?.replace(/\.srt$/, ".vtt"), // the .vtt file sits next to the .srt
+    };
+    const key = keys[req.params.file];
+    if (!key || !(await fileExists(key))) return reply.code(404).send({ error: "File not found" });
+
+    const name = `${variant.language}-${req.params.file === "audio" ? "voice.wav" : `subtitles.${req.params.file}`}`;
+    return reply
+      .header("content-type", contentTypeFor(key))
+      .header("content-disposition", `inline; filename="${name}"`)
+      .send(await readFile(key));
   });
 
   /** Run the whole pipeline again for a failed story. */

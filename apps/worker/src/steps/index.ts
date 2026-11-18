@@ -4,12 +4,16 @@
  * Order:  research (once per story)
  *      -> script, voice, thumbnail, render (once per language, in parallel)
  *
- * Phase 1A (this file): research and script are real (Claude).
- * voice, thumbnail and render are still placeholders (Phase 1B and 1C).
+ * Phase 1A: research and script are real (Claude, or practice data when AI_MODE=mock).
+ * Phase 1B: voice is real (Azure, or the practice voice when VOICE_PROVIDER=mock)
+ *           and makes the subtitles too.
+ * thumbnail and render are still placeholders (Phase 1C).
  */
 import { prisma, type Prisma } from "@dualflow/db";
 import { researchTopic, writeScript, type Research } from "@dualflow/ai";
 import { JOB_NAMES, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
+import { getVoiceProvider, makeVoiceover } from "@dualflow/voice";
+import { saveFile } from "@dualflow/storage";
 import { pipelineQueue } from "../connection";
 import { assertBudget, recordCosts } from "../budget";
 
@@ -115,8 +119,73 @@ const script: Step = async (data) => {
   await then(data, JOB_NAMES.voice);
 };
 
+/**
+ * Voice: read every scene aloud, glue the audio together, and make subtitles
+ * from the exact time of every word.
+ * Saves: voice.wav, subtitles.srt, subtitles.vtt (in storage),
+ *        a Voiceover row (with word times), a Subtitle row,
+ *        and the start/end time of every scene.
+ */
 const voice: Step = async (data) => {
-  // TODO Phase 1B: Azure neural TTS (ne-NP-HemkalaNeural for Nepali) + word timings + subtitles.
+  const variant = await prisma.variant.findUniqueOrThrow({
+    where: { id: data.variantId },
+    include: { story: true, scenes: { orderBy: { order: "asc" } } },
+  });
+  const { story } = variant;
+  if (variant.scenes.length === 0) throw new Error("The script has no scenes to read.");
+
+  const provider = getVoiceProvider();
+  if (provider.name !== "mock") await assertBudget(story.workspaceId); // only real voices cost money
+
+  const language = variant.language as Language;
+  const vo = await makeVoiceover(provider, language, variant.scenes);
+
+  // File names include the run number, so a retry never overwrites files
+  // that an older run (or the dashboard) is still using.
+  const folder = `stories/${story.id}/${language}/run-${data.run ?? 1}`;
+  const audioKey = `${folder}/voice.wav`;
+  const srtKey = `${folder}/subtitles.srt`;
+  await Promise.all([
+    saveFile(audioKey, vo.wav),
+    saveFile(srtKey, vo.srt),
+    saveFile(`${folder}/subtitles.vtt`, vo.vtt),
+  ]);
+
+  // The practice voice is free, so we only record real voices.
+  if (provider.name !== "mock") {
+    await recordCosts(story.workspaceId, story.id, [
+      {
+        provider: `${provider.name}-tts`,
+        units: vo.characters,
+        unitType: "characters",
+        usd: provider.costUsd(vo.characters),
+      },
+    ]);
+  }
+
+  // Replace old rows (safe to run twice), then save the new ones together.
+  await prisma.$transaction([
+    prisma.voiceover.deleteMany({ where: { variantId: variant.id } }),
+    prisma.subtitle.deleteMany({ where: { variantId: variant.id } }),
+    prisma.voiceover.create({
+      data: {
+        variantId: variant.id,
+        provider: provider.name,
+        voice: provider.voiceFor(language),
+        storageKey: audioKey,
+        wordTimings: vo.words as unknown as Prisma.InputJsonValue,
+      },
+    }),
+    prisma.subtitle.create({ data: { variantId: variant.id, storageKey: srtKey } }),
+    ...vo.scenes.map((t) =>
+      prisma.scene.update({
+        where: { variantId_order: { variantId: variant.id, order: t.order } },
+        data: { startMs: t.startMs, endMs: t.endMs },
+      }),
+    ),
+    prisma.variant.update({ where: { id: variant.id }, data: { durationSec: vo.durationMs / 1000 } }),
+  ]);
+
   await then(data, JOB_NAMES.thumbnail);
 };
 

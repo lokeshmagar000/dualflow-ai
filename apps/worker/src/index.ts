@@ -5,6 +5,7 @@
 import { UnrecoverableError, Worker } from "bullmq";
 import { prisma } from "@dualflow/db";
 import { isPermanentError } from "@dualflow/ai";
+import { VoiceConfigError } from "@dualflow/voice";
 import { QUEUE_NAME, type JobName, type PipelineJobData } from "@dualflow/shared";
 import { connection } from "./connection";
 import { steps } from "./steps";
@@ -19,7 +20,7 @@ const worker = new Worker<PipelineJobData, void, JobName>(
       await step(job.data);
     } catch (err) {
       // Errors that retrying cannot fix (bad key, bad request): stop now.
-      if (isPermanentError(err)) throw new UnrecoverableError((err as Error).message);
+      if (isPermanentError(err) || err instanceof VoiceConfigError) throw new UnrecoverableError((err as Error).message);
       throw err; // other errors (timeouts, rate limits) are retried
     }
   },

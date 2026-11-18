@@ -30,6 +30,25 @@ How a video moves through the system:
 
 Needs `ANTHROPIC_API_KEY` in your environment (or `DUALFLOW_ANTHROPIC_API_KEY` if your host hides `ANTHROPIC_*` names, like Claude Code cloud sessions do). Never commit it.
 
+## Practice mode (no API key needed)
+
+Set `AI_MODE=mock` in `.env` (it is already on in `.env.example`). Research and scripts then use
+clearly marked practice text, cost $0, and need no key. Everything after them (voice,
+subtitles, dashboard) works exactly as with real AI, so you can test the whole app for free.
+Remove `AI_MODE=mock` when your Claude key works.
+
+## Phase 1B: voiceover and subtitles
+
+- `packages/voice` turns each scene into speech, glues the scenes together with a short pause,
+  and builds subtitles (`.srt` for YouTube/Facebook, `.vtt` for browsers) from the exact time of every word.
+- `VOICE_PROVIDER=mock` (default): a free practice voice that beeps at each word.
+- `VOICE_PROVIDER=azure`: real Azure neural voices (`ne-NP-HemkalaNeural` for Nepali). The free **F0** tier
+  gives 500,000 characters a month (about 250 Nepali + English short pairs). Needs `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION`.
+- Subtitle lines break at the end of a sentence (`.` `!` `?` and the Nepali `।`) and stay short enough to read on a phone.
+- `packages/storage` saves files in the `storage/` folder on your own computer (free). It can be switched to Cloudflare R2 later.
+- The story page has an audio player with **live subtitles**, scene times, and download links.
+- Run the tests with `pnpm test`.
+
 ## Run it on your computer
 
 You need Node.js 22, pnpm and Docker.

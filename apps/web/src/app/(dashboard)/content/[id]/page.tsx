@@ -2,7 +2,15 @@ import Link from "next/link";
 import { LANGUAGE_LABELS } from "@dualflow/shared";
 import { api, type StoryDetail } from "@/lib/api";
 import { ApiError, Card, PageHeader, StatusBadge } from "@/components/ui";
+import { VoicePlayer } from "@/components/VoicePlayer";
 import { retryStory } from "../actions";
+
+/** 7350 ms -> "0:07" */
+function clock(ms: number | null) {
+  if (ms == null) return "";
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
 
 // One story: the Nepali and English scripts side by side, plus the research behind them.
 export default async function StoryPage({ params }: { params: Promise<{ id: string }> }) {
@@ -44,10 +52,24 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
                 {v.thumbnailHeadline && (
                   <p className="mt-1 text-xs text-zinc-500">Thumbnail text: <span lang={v.language}>{v.thumbnailHeadline}</span></p>
                 )}
+                {v.voice ? (
+                  <div className="mt-4">
+                    <VoicePlayer variantId={v.id} lang={v.language} cues={v.voice.cues} />
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {v.voice.provider === "mock" ? "Practice voice (beeps, no key needed)" : `Voice: ${v.voice.voice}`}
+                      {v.durationSec != null && ` · ${Math.round(v.durationSec)} seconds`}
+                    </p>
+                  </div>
+                ) : (
+                  v.status === "GENERATING" && <p className="mt-4 text-sm text-zinc-500">The voice is being recorded...</p>
+                )}
                 <ol className="mt-4 space-y-3">
                   {v.scenes.map((s) => (
                     <li key={s.id} className="rounded-lg bg-zinc-50 p-3">
-                      <p className="mb-1 text-xs font-medium uppercase text-zinc-400">{s.order}. {s.purpose?.replace(/_/g, " ")}</p>
+                      <p className="mb-1 text-xs font-medium uppercase text-zinc-400">
+                        {s.order}. {s.purpose?.replace(/_/g, " ")}
+                        {s.startMs != null && <span className="ml-2 normal-case">{clock(s.startMs)} – {clock(s.endMs)}</span>}
+                      </p>
                       <p lang={v.language} className="leading-relaxed">{s.text}</p>
                     </li>
                   ))}

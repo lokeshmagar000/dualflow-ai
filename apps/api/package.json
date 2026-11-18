@@ -11,11 +11,17 @@
   "dependencies": {
     "@dualflow/db": "workspace:*",
     "@dualflow/shared": "workspace:*",
+    "@dualflow/storage": "workspace:*",
+    "@dualflow/voice": "workspace:*",
     "@fastify/helmet": "^13.0.1",
     "@fastify/rate-limit": "^10.2.1",
     "bullmq": "^5.34.6",
     "fastify": "^5.2.0",
     "zod": "^3.25.76"
   },
-  "devDependencies": { "@types/node": "^22.10.2", "tsx": "^4.19.2", "typescript": "^5.7.2" }
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
 }

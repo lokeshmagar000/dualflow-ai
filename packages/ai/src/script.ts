@@ -9,6 +9,7 @@ import type { Language } from "@dualflow/shared";
 import { claude, currentModel, fallbackOptions } from "./client";
 import { claudeCost, type CostLine } from "./cost";
 import type { Research } from "./research";
+import { isMockAI, mockScript } from "./mock";
 
 export const ScriptSchema = z.object({
   title: z.string().describe("Video title in the target language, max 90 characters"),
@@ -45,6 +46,9 @@ export async function writeScript(input: {
   format: "SHORT" | "LONG";
   research: Research;
 }): Promise<{ script: Script; costs: CostLine[] }> {
+  // Practice mode: no API call, no cost.
+  if (isMockAI()) return { script: mockScript(input), costs: [] };
+
   const { language, research } = input;
   const model = currentModel();
   const scenesText = research.visualPlan

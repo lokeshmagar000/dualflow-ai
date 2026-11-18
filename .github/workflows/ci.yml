@@ -1,4 +1,4 @@
-# Runs on every pull request: install, type-check and build.
+# Runs on every pull request: install, type-check, test and build.
 name: CI
 on:
   pull_request:
@@ -15,4 +15,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
       - run: pnpm typecheck
+      - run: pnpm test
       - run: pnpm --filter @dualflow/web build

@@ -8,6 +8,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type Anthropic from "@anthropic-ai/sdk";
 import { claude, currentModel, fallbackOptions, webSearchTool } from "./client";
 import { claudeCost, type CostLine } from "./cost";
+import { isMockAI, mockResearch } from "./mock";
 
 export const ResearchSchema = z.object({
   summary: z.string().describe("3-5 sentence summary of what the video should explain"),
@@ -40,6 +41,9 @@ export async function researchTopic(input: {
   notes?: string | null;
   format: "SHORT" | "LONG";
 }): Promise<{ research: Research; costs: CostLine[] }> {
+  // Practice mode: no API call, no cost.
+  if (isMockAI()) return { research: mockResearch(input), costs: [] };
+
   const ai = claude();
   const model = currentModel();
   const costs: CostLine[] = [];
