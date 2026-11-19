@@ -22,7 +22,7 @@ import {
   type WordTiming,
 } from "@dualflow/voice";
 import { readFile, saveFile } from "@dualflow/storage";
-import { findMedia, makeJobFolder, renderThumbnail, renderVideo, type FoundMedia } from "@dualflow/video";
+import { findMedia, makeJobFolder, prepareIntro, renderThumbnail, renderVideo, type FoundMedia } from "@dualflow/video";
 import { copyFile, mkdir, readFile as readLocal, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { enqueue } from "@dualflow/queue";
@@ -291,6 +291,11 @@ const render: Step = async (data) => {
           media: toMedia(media[i]),
         })),
         cues: buildCues(words),
+        // Word Pop subtitles need the time of every word.
+        words,
+        subtitleStyle: process.env.SUBTITLE_STYLE === "classic" ? "classic" : "word-pop",
+        // Short animated intro with the channel name and a sound (INTRO_* settings).
+        intro: await prepareIntro(language, job),
       },
       videoFile,
       (p) => console.log(`[render] ${language} ${Math.round(p * 100)}%`),

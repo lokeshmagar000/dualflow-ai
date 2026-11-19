@@ -18,11 +18,13 @@ export const FONT = '"Noto Sans Devanagari", sans-serif';
 
 /** Wait until the font has loaded, so no frame is drawn with the wrong letters. */
 export function useFonts() {
-  const [handle] = useState(() => delayRender("Loading Noto Sans Devanagari"));
+  const [handle] = useState(() => delayRender("Loading fonts"));
   useEffect(() => {
     Promise.all([
       document.fonts.load(`800 64px "Noto Sans Devanagari"`, "नमस्ते Hello"),
       document.fonts.load(`500 64px "Noto Sans Devanagari"`, "नमस्ते Hello"),
+      document.fonts.load(`800 64px "Poppins"`, "Hello"),
+      document.fonts.load(`800 64px "Mukta"`, "नमस्ते क्षेत्र"),
     ])
       .catch(() => undefined) // still draw, with the fallback font
       .then(() => continueRender(handle));

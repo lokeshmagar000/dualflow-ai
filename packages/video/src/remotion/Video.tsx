@@ -1,31 +1,56 @@
 /**
- * The full video: background for each scene, the voice, the title at the start,
- * Nepali/English subtitles, and a progress bar.
+ * The full video: a short animated intro (channel name + sound), then the story:
+ * background for each scene, the voice, the title, Word Pop subtitles and a progress bar.
  */
+import { useMemo } from "react";
 import { AbsoluteFill, Audio, Sequence, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { FPS, type VideoProps } from "../types";
+import { FPS, introFrames, storyFrames, storyStartFrame, type VideoProps } from "../types";
 import { Background, Brand, FONT, Shade, useFonts } from "./common";
+import { Intro } from "./Intro";
+import { WordPop, buildPages, wordsFromCues } from "./WordPop";
 
 const FADE = 8; // frames of cross-fade between scenes
 const ms = (t: number) => Math.round((t / 1000) * FPS);
 
 export function Video(props: VideoProps) {
   useFonts();
-  const { durationInFrames, width } = useVideoConfig();
+  const intro = introFrames(props);
+  const start = storyStartFrame(props);
+  return (
+    <AbsoluteFill style={{ backgroundColor: "black" }}>
+      {/* Inside a Sequence, frame 0 is where the Sequence starts, so all story timings stay the same. */}
+      <Sequence from={start} durationInFrames={storyFrames(props)} name="Story">
+        <Story props={props} frames={storyFrames(props)} />
+      </Sequence>
+      {props.intro && intro > 0 ? (
+        <Sequence durationInFrames={intro} name="Intro">
+          <Intro intro={props.intro} language={props.language} accent={props.accent} frames={intro} />
+        </Sequence>
+      ) : null}
+    </AbsoluteFill>
+  );
+}
+
+function Story({ props, frames }: { props: VideoProps; frames: number }) {
+  const { width } = useVideoConfig();
   const scale = width / 1080; // sizes below are designed for 1080 px wide
   const tall = props.format === "SHORT";
+  const pages = useMemo(
+    () => buildPages(props.words?.length ? props.words : wordsFromCues(props.cues)),
+    [props.words, props.cues],
+  );
 
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
       {props.scenes.map((scene, i) => {
         // The first scene starts at 0; the last one lasts until the end.
         const from = i === 0 ? 0 : ms(scene.startMs);
-        const to = i === props.scenes.length - 1 ? durationInFrames : ms(props.scenes[i + 1]!.startMs) + FADE;
-        const frames = Math.max(1, to - from);
+        const to = i === props.scenes.length - 1 ? frames : ms(props.scenes[i + 1]!.startMs) + FADE;
+        const length = Math.max(1, to - from);
         return (
-          <Sequence key={i} from={from} durationInFrames={frames}>
+          <Sequence key={i} from={from} durationInFrames={length}>
             <SceneFade fadeIn={i > 0}>
-              <Background media={scene.media} index={i} frames={frames} />
+              <Background media={scene.media} index={i} frames={length} />
             </SceneFade>
           </Sequence>
         );
@@ -34,8 +59,12 @@ export function Video(props: VideoProps) {
       {props.audioFile ? <Audio src={props.audioFile} /> : null}
       <Brand name={props.brand} scale={scale} />
       <Title text={props.title} accent={props.accent} scale={scale} tall={tall} />
-      <Subtitles props={props} scale={tall ? scale : scale * 0.9} tall={tall} />
-      <Progress accent={props.accent} />
+      {props.subtitleStyle === "classic" ? (
+        <Subtitles props={props} scale={tall ? scale : scale * 0.9} tall={tall} />
+      ) : (
+        <WordPop pages={pages} language={props.language} tall={tall} />
+      )}
+      <Progress accent={props.accent} frames={frames} />
     </AbsoluteFill>
   );
 }
@@ -87,7 +116,7 @@ function Title({ text, accent, scale, tall }: { text: string; accent: string; sc
   );
 }
 
-/** The subtitle line for the current moment, with a small "pop" when it changes. */
+/** "Classic" subtitles: the whole line for the current moment, with a small "pop" when it changes. */
 function Subtitles({ props, scale, tall }: { props: VideoProps; scale: number; tall: boolean }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -131,9 +160,8 @@ function Subtitles({ props, scale, tall }: { props: VideoProps; scale: number; t
   );
 }
 
-function Progress({ accent }: { accent: string }) {
+function Progress({ accent, frames }: { accent: string; frames: number }) {
   const frame = useCurrentFrame();
-  const { durationInFrames } = useVideoConfig();
   return (
     <div
       style={{
@@ -141,7 +169,7 @@ function Progress({ accent }: { accent: string }) {
         left: 0,
         bottom: 0,
         height: 10,
-        width: `${(frame / Math.max(1, durationInFrames - 1)) * 100}%`,
+        width: `${(frame / Math.max(1, frames - 1)) * 100}%`,
         background: accent,
       }}
     />

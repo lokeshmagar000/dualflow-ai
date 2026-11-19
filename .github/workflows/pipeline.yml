@@ -63,6 +63,14 @@ jobs:
       PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       CHANNEL_NAME: ${{ vars.CHANNEL_NAME || 'DualFlow' }}
+      # Look of the video: Word Pop subtitles and a 2-second intro with sound (README "Video look").
+      SUBTITLE_STYLE: ${{ vars.SUBTITLE_STYLE || 'word-pop' }}
+      INTRO_SECONDS: ${{ vars.INTRO_SECONDS || '2' }}
+      INTRO_SOUND: ${{ vars.INTRO_SOUND || 'on' }}
+      INTRO_TEXT_NE: ${{ vars.INTRO_TEXT_NE }}
+      INTRO_TEXT_EN: ${{ vars.INTRO_TEXT_EN }}
+      INTRO_TAGLINE_NE: ${{ vars.INTRO_TAGLINE_NE }}
+      INTRO_TAGLINE_EN: ${{ vars.INTRO_TAGLINE_EN }}
       RENDER_CONCURRENCY: 2
       EDGE_VOICE_NE: ${{ vars.EDGE_VOICE_NE }}
       AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
