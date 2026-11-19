@@ -107,6 +107,25 @@ To hear the free voices first, run **Actions → Voice sample → Run workflow**
 **Edge TTS on your own computer** needs Python 3 and FFmpeg:
 `pip install -r packages/voice/python/requirements.txt`.
 
+## Video look: Word Pop subtitles and the intro
+
+Every video starts with a **2-second animated intro** (channel name, a coloured bar, an optional
+tagline) with a short "whoosh + hit + chime" sound. Our code makes the sound itself, so there is no
+licence to worry about, even on monetised channels. Then the story plays with **Word Pop** subtitles:
+up to 3 big words at a time, the spoken word turns yellow and pops (Poppins for English, Mukta for Nepali).
+
+Change it with GitHub **Variables** (Settings → Secrets and variables → Actions → Variables):
+
+| Variable | What it does | Default |
+| --- | --- | --- |
+| `INTRO_TEXT_NE` / `INTRO_TEXT_EN` | Big intro text in Nepali / English videos | `CHANNEL_NAME` |
+| `INTRO_TAGLINE_NE` / `INTRO_TAGLINE_EN` | Small line under it | none |
+| `INTRO_SECONDS` | Intro length; `0` turns the intro off | `2` |
+| `INTRO_SOUND` | `on`, `off` | `on` |
+| `SUBTITLE_STYLE` | `word-pop`, or `classic` (one full line) | `word-pop` |
+
+Try it on your computer: `pnpm --filter @dualflow/video smoke` (makes `test-video-ne.mp4` and `test-video-en.mp4`).
+
 ## Mac app (make videos with one button)
 
 `desktop/` is a small Mac app: type an idea, press **Make video now**, watch the run,

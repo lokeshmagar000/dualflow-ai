@@ -6,7 +6,10 @@
 import { Composition, Still } from "remotion";
 import "@fontsource/noto-sans-devanagari/500.css";
 import "@fontsource/noto-sans-devanagari/800.css";
-import { FPS, sizeFor, thumbnailSizeFor, type ThumbnailProps, type VideoProps } from "../types";
+// Word Pop subtitles and the intro: Poppins for English, Mukta for Nepali (free Google Fonts).
+import "@fontsource/poppins/800.css";
+import "@fontsource/mukta/800.css";
+import { FPS, sizeFor, storyFrames, storyStartFrame, thumbnailSizeFor, type ThumbnailProps, type VideoProps } from "../types";
 import { Video } from "./Video";
 import { Thumbnail } from "./Thumbnail";
 
@@ -19,6 +22,7 @@ const sample: VideoProps = {
   durationMs: 9000,
   brand: "DualFlow",
   accent: "#FFC83D",
+  intro: { text: "DualFlow नेपाली", tagline: "हरेक दिन नयाँ कुरा", durationMs: 2000, soundFile: null },
   scenes: [
     { startMs: 0, endMs: 3000, text: "नमस्ते साथीहरू!" },
     { startMs: 3000, endMs: 6000, text: "सगरमाथा संसारकै सबैभन्दा अग्लो हिमाल हो।" },
@@ -40,12 +44,12 @@ export function Root() {
         fps={FPS}
         width={1080}
         height={1920}
-        durationInFrames={Math.ceil((sample.durationMs / 1000) * FPS)}
+        durationInFrames={storyStartFrame(sample) + storyFrames(sample)}
         defaultProps={sample}
         calculateMetadata={({ props }) => ({
           ...sizeFor(props.format),
-          // Half a second of quiet at the end, so the video does not cut off sharply.
-          durationInFrames: Math.max(1, Math.ceil(((props.durationMs + 500) / 1000) * FPS)),
+          // The intro, then the voice and half a second of quiet (so the video does not cut off sharply).
+          durationInFrames: storyStartFrame(props) + storyFrames(props),
         })}
       />
       <Still

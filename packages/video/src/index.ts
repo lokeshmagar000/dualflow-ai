@@ -4,4 +4,5 @@
  */
 export { renderVideo, renderThumbnail, makeJobFolder, closeRenderer } from "./render";
 export { findMedia, stockProvider, type FoundMedia } from "./stock";
+export { prepareIntro, introSettings, introSoundWav } from "./intro";
 export * from "./types";
