@@ -17,6 +17,8 @@ import { AIQuotaError, nextQuotaReset } from "./provider";
 
 const API = "https://generativelanguage.googleapis.com/v1beta/models";
 export const DEFAULT_GEMINI_MODEL = "gemini-flash-latest";
+/** Used when the main model is busy (HTTP 503). Flash-Lite is lighter and usually free of queues. */
+export const DEFAULT_GEMINI_FALLBACK = "gemini-flash-lite-latest";
 
 export function geminiModel(): string {
   return process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
@@ -67,7 +69,6 @@ export async function askGemini(opts: {
       "AI_PROVIDER=gemini needs GEMINI_API_KEY (free from Google AI Studio). Or set AI_PROVIDER=mock to practise.",
     );
   }
-  const model = geminiModel();
   const body = {
     systemInstruction: { parts: [{ text: opts.system }] },
     contents: [{ role: "user", parts: [{ text: opts.prompt }] }],
@@ -78,12 +79,21 @@ export async function askGemini(opts: {
   };
 
   // The key goes in a header (not the URL), so it never shows up in logs.
-  const res = await fetch(`${API}/${encodeURIComponent(model)}:generateContent`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": key },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(120_000),
-  });
+  const call = (m: string) =>
+    fetch(`${API}/${encodeURIComponent(m)}:generateContent`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
+    });
+  let model = geminiModel();
+  let res = await call(model);
+  // Google's free models are sometimes "busy" (503). Try the lighter model once.
+  const fallback = process.env.GEMINI_FALLBACK_MODEL ?? DEFAULT_GEMINI_FALLBACK;
+  if (res.status === 503 && fallback && fallback !== model) {
+    model = fallback;
+    res = await call(model);
+  }
 
   if (!res.ok) {
     const details = (await res.text()).slice(0, 500);

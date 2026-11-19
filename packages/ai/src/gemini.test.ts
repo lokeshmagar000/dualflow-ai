@@ -88,6 +88,17 @@ test("a used-up daily limit becomes AIQuotaError (wait for tomorrow, not a failu
   await assert.rejects(writeScript({ language: "en", title: "Everest", format: "SHORT", research }), AIQuotaError);
 });
 
+test("a busy model (503) falls back to Flash-Lite", async () => {
+  useGemini();
+  const calls = fakeFetch([
+    { status: 503, body: { error: { message: "high demand" } } },
+    { body: answer(JSON.stringify({ title: "t", description: "d", hashtags: [], thumbnailHeadline: "h", scenes: [{ order: 1, text: "x" }] })) },
+  ]);
+  const out = await writeScript({ language: "en", title: "Everest", format: "SHORT", research });
+  assert.match(calls[1]!.url, /gemini-flash-lite-latest/);
+  assert.match(out.costs[0]!.provider, /flash-lite/);
+});
+
 test("bad JSON from Gemini is an error that will be retried", async () => {
   useGemini();
   fakeFetch([{ body: answer("not json") }]);
