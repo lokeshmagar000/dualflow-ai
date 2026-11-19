@@ -9,6 +9,7 @@ import { getDefaultWorkspace } from "../workspace";
 /** Free limits shown on the Costs page (change them if Google, Azure or Cloudflare change theirs). */
 const FREE = {
   geminiPerDay: () => Number(process.env.GEMINI_DAILY_REQUESTS ?? 20),
+  geminiVoicePerDay: () => Number(process.env.GEMINI_TTS_DAILY_REQUESTS ?? 14),
   azureCharsPerMonth: 500_000,
   r2Bytes: 10 * 1024 ** 3, // 10 GB
 };
@@ -24,10 +25,11 @@ export async function pipelineRoutes(app: FastifyInstance) {
         .aggregate({ _sum: { units: true }, where: { workspaceId: ws.id, provider, createdAt: { gte: since } } })
         .then((r) => r._sum.units ?? 0);
 
-    const [queue, next, gemini, azure, edge, files] = await Promise.all([
+    const [queue, next, gemini, geminiVoice, azure, edge, files] = await Promise.all([
       queueCounts(),
       nextRunAfter(),
-      sumUnits({ startsWith: "gemini" }, currentQuotaDayStart()),
+      sumUnits({ startsWith: "gemini:" }, currentQuotaDayStart()), // text requests
+      sumUnits("gemini-tts", currentQuotaDayStart()), // voice requests
       sumUnits("azure-tts", startOfMonth),
       sumUnits("edge-tts", startOfMonth),
       listFiles("stories/").catch(() => []), // storage not set up yet: show 0
@@ -38,6 +40,7 @@ export async function pipelineRoutes(app: FastifyInstance) {
       runNowAvailable: githubRunConfigured(),
       quotas: [
         { name: "Gemini requests today", used: gemini, limit: FREE.geminiPerDay() },
+        { name: "Gemini voice requests today", used: geminiVoice, limit: FREE.geminiVoicePerDay() },
         { name: "Azure voice characters this month", used: azure, limit: FREE.azureCharsPerMonth },
         { name: "Edge voice characters this month (no limit)", used: edge, limit: null },
         {

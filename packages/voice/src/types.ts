@@ -27,4 +27,9 @@ export interface VoiceProvider {
   speak(text: string, language: Language): Promise<SpeechResult>;
   /** Price in US dollars for this many characters (0 on a free tier). */
   costUsd(characters: number): number;
+  /**
+   * Optional: read many scenes in as few requests as possible (Gemini uses this
+   * to save its small free daily limit). Gives one result per scene, in order.
+   */
+  speakMany?(texts: string[], language: Language): Promise<{ pieces: SpeechResult[]; requests: number }>;
 }

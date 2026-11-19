@@ -5,17 +5,25 @@
  *      -> script, voice, thumbnail, render (once per language, in parallel)
  *
  * Phase 1A: research and script are real (Gemini free, Claude, or practice data: AI_PROVIDER).
- * Phase 1B: voice is real (Azure, Edge or the practice voice: VOICE_PROVIDER)
+ * Phase 1B: voice is real (Gemini, Azure, Edge or the practice voice: VOICE_PROVIDER)
  *           and makes the subtitles too.
  * thumbnail and render are still placeholders (Phase 1C).
  */
 import { prisma, type Prisma } from "@dualflow/db";
 import { researchTopic, writeScript, type Research } from "@dualflow/ai";
 import { JOB_NAMES, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
-import { getVoiceProvider, makeVoiceover } from "@dualflow/voice";
+import { AIQuotaError, nextQuotaReset } from "@dualflow/ai";
+import { getVoiceProvider, makeVoiceover, VoiceQuotaError, type Voiceover } from "@dualflow/voice";
 import { saveFile } from "@dualflow/storage";
 import { enqueue } from "@dualflow/queue";
-import { assertAzureFreeQuota, assertBudget, assertGeminiQuota, recordCosts } from "../budget";
+import {
+  assertAzureFreeQuota,
+  assertBudget,
+  assertGeminiQuota,
+  assertGeminiVoiceQuota,
+  recordCosts,
+  voiceFallback,
+} from "../budget";
 
 type Step = (data: PipelineJobData) => Promise<void>;
 
@@ -132,15 +140,26 @@ const voice: Step = async (data) => {
   const { story } = variant;
   if (variant.scenes.length === 0) throw new Error("The script has no scenes to read.");
 
-  const provider = getVoiceProvider();
-  if (provider.name !== "mock") await assertBudget(story.workspaceId); // kill switch + budget
-  if (provider.name === "azure") {
-    const characters = variant.scenes.reduce((n, s) => n + s.text.length, 0);
-    await assertAzureFreeQuota(story.workspaceId, characters);
-  }
-
   const language = variant.language as Language;
-  const vo = await makeVoiceover(provider, language, variant.scenes);
+  const characters = variant.scenes.reduce((n, s) => n + s.text.length, 0);
+  let provider = getVoiceProvider();
+  if (provider.name !== "mock") await assertBudget(story.workspaceId); // kill switch + budget
+  if (provider.name === "azure") await assertAzureFreeQuota(story.workspaceId, characters);
+
+  let vo: Voiceover;
+  try {
+    // Gemini: check the free daily voice limit first (it is small, about 15 a day).
+    if (provider.name === "gemini") await assertGeminiVoiceQuota(story.workspaceId, variant.scenes);
+    vo = await makeVoiceover(provider, language, variant.scenes);
+  } catch (err) {
+    // Gemini's free voices are used up for today: use the backup voice so the video is not late.
+    const fallback = voiceFallback();
+    if (!(err instanceof VoiceQuotaError || err instanceof AIQuotaError) || provider.name !== "gemini") throw err;
+    if (!fallback) throw err instanceof AIQuotaError ? err : new AIQuotaError(err.message, nextQuotaReset());
+    console.log(`Gemini voice limit reached, using the backup voice (${fallback.name}) for this video.`);
+    provider = fallback;
+    vo = await makeVoiceover(provider, language, variant.scenes);
+  }
 
   // File names include the run number, so a retry never overwrites files
   // that an older run (or the dashboard) is still using.
@@ -154,14 +173,17 @@ const voice: Step = async (data) => {
   ]);
 
   // Record real voices (Edge is free, but we still count its characters).
+  // Gemini counts requests, because its free limit is "requests per day".
   if (provider.name !== "mock") {
     await recordCosts(story.workspaceId, story.id, [
-      {
-        provider: `${provider.name}-tts`,
-        units: vo.characters,
-        unitType: "characters",
-        usd: provider.costUsd(vo.characters),
-      },
+      provider.name === "gemini"
+        ? { provider: "gemini-tts", units: vo.requests, unitType: "requests", usd: 0 }
+        : {
+            provider: `${provider.name}-tts`,
+            units: vo.characters,
+            unitType: "characters",
+            usd: provider.costUsd(vo.characters),
+          },
     ]);
   }
 

@@ -6,10 +6,12 @@
  *  2. the daily money budget (for paid providers),
  *  3. the FREE limits, so the free plan never goes over and never gets blocked:
  *     - Gemini requests per day   (GEMINI_DAILY_REQUESTS, default 20)
+ *     - Gemini voice requests     (GEMINI_TTS_DAILY_REQUESTS, default 14)
  *     - Azure free characters     (stop at 90% of 500,000 a month)
  * Every call also writes a CostEvent row, so spend and free use are always known.
  */
 import { prisma } from "@dualflow/db";
+import { edgeVoice, mockVoice, type VoiceProvider } from "@dualflow/voice";
 import { AIQuotaError, aiProvider, currentQuotaDayStart, nextQuotaReset, type CostLine } from "@dualflow/ai";
 import { StopError } from "./errors";
 
@@ -46,7 +48,8 @@ export async function assertGeminiQuota(workspaceId: string, needed: number) {
   if (aiProvider() !== "gemini") return;
   const used = await prisma.costEvent.aggregate({
     _sum: { units: true },
-    where: { workspaceId, provider: { startsWith: "gemini" }, createdAt: { gte: currentQuotaDayStart() } },
+    // Text requests are saved as "gemini:<model>" (voice requests are "gemini-tts", counted separately).
+    where: { workspaceId, provider: { startsWith: "gemini:" }, createdAt: { gte: currentQuotaDayStart() } },
   });
   if ((used._sum.units ?? 0) + needed > geminiDailyLimit()) {
     throw new AIQuotaError(
@@ -79,4 +82,39 @@ export async function recordCosts(workspaceId: string, storyId: string, lines: C
   await prisma.costEvent.createMany({
     data: lines.map((l) => ({ workspaceId, storyId, ...l })),
   });
+}
+
+/** How many Gemini voice requests one video needs (scenes are sent together, up to ~1500 letters each). */
+function geminiVoiceRequests(scenes: { text: string }[]): number {
+  const max = Number(process.env.GEMINI_TTS_MAX_CHARS ?? 1500);
+  let requests = 0;
+  let size = Infinity;
+  for (const s of scenes) {
+    if (size + s.text.length > max) {
+      requests++;
+      size = 0;
+    }
+    size += s.text.length;
+  }
+  return requests;
+}
+
+/** Free Gemini voice limit: stop before Google blocks us. */
+export async function assertGeminiVoiceQuota(workspaceId: string, scenes: { text: string }[]) {
+  const limit = Number(process.env.GEMINI_TTS_DAILY_REQUESTS ?? 14);
+  const used = await prisma.costEvent.aggregate({
+    _sum: { units: true },
+    where: { workspaceId, provider: "gemini-tts", createdAt: { gte: currentQuotaDayStart() } },
+  });
+  if ((used._sum.units ?? 0) + geminiVoiceRequests(scenes) > limit) {
+    throw new AIQuotaError(`Free Gemini voice limit for today (${limit} requests) is used up.`, nextQuotaReset());
+  }
+}
+
+/** The backup voice when Gemini's free voices run out (VOICE_FALLBACK, default "edge"; "none" = wait). */
+export function voiceFallback(): VoiceProvider | null {
+  const choice = (process.env.VOICE_FALLBACK ?? "edge").toLowerCase();
+  if (choice === "edge") return edgeVoice();
+  if (choice === "mock") return mockVoice;
+  return null;
 }

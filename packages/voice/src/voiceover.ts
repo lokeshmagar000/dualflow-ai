@@ -7,7 +7,7 @@
  * the right picture at the right time.
  */
 import type { Language } from "@dualflow/shared";
-import type { VoiceProvider, WordTiming } from "./types";
+import type { SpeechResult, VoiceProvider, WordTiming } from "./types";
 import { pcmDurationMs, pcmToWav, silence } from "./wav";
 import { buildCues, toSrt, toVtt, type Cue } from "./subtitles";
 
@@ -30,6 +30,8 @@ export interface Voiceover {
   vtt: string;
   /** Characters sent to the voice provider (that is what Azure charges for). */
   characters: number;
+  /** Requests sent to the voice provider (Gemini's free limit counts these). */
+  requests: number;
 }
 
 export async function makeVoiceover(
@@ -43,12 +45,22 @@ export async function makeVoiceover(
   let offsetMs = 0; // where the next scene starts in the final audio
   let characters = 0;
 
-  for (const scene of scenes) {
+  // Some providers read all scenes in one go (fewer requests); others one by one.
+  let requests = 0;
+  let results: SpeechResult[] | undefined;
+  if (provider.speakMany) {
+    const many = await provider.speakMany(scenes.map((s) => s.text), language);
+    results = many.pieces;
+    requests = many.requests;
+  }
+
+  for (const [index, scene] of scenes.entries()) {
     if (pieces.length > 0) {
       pieces.push(silence(SCENE_GAP_MS));
       offsetMs += SCENE_GAP_MS;
     }
-    const result = await provider.speak(scene.text, language);
+    const result = results ? results[index]! : await provider.speak(scene.text, language);
+    if (!results) requests++;
     characters += scene.text.length;
     // Move this scene's word times forward to their place in the full audio.
     for (const w of result.words) {
@@ -72,5 +84,6 @@ export async function makeVoiceover(
     srt: toSrt(cues),
     vtt: toVtt(cues),
     characters,
+    requests,
   };
 }
