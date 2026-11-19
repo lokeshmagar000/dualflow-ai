@@ -7,14 +7,24 @@
  * Phase 1A: research and script are real (Gemini free, Claude, or practice data: AI_PROVIDER).
  * Phase 1B: voice is real (Gemini, Azure, Edge or the practice voice: VOICE_PROVIDER)
  *           and makes the subtitles too.
- * thumbnail and render are still placeholders (Phase 1C).
+ * Phase 1C: render makes the real .mp4 and thumbnail (Remotion + free Pexels clips).
  */
 import { prisma, type Prisma } from "@dualflow/db";
 import { researchTopic, writeScript, type Research } from "@dualflow/ai";
 import { JOB_NAMES, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
 import { AIQuotaError, nextQuotaReset } from "@dualflow/ai";
-import { getVoiceProvider, makeVoiceover, VoiceQuotaError, type Voiceover } from "@dualflow/voice";
-import { saveFile } from "@dualflow/storage";
+import {
+  buildCues,
+  getVoiceProvider,
+  makeVoiceover,
+  VoiceQuotaError,
+  type Voiceover,
+  type WordTiming,
+} from "@dualflow/voice";
+import { readFile, saveFile } from "@dualflow/storage";
+import { findMedia, makeJobFolder, renderThumbnail, renderVideo, type FoundMedia } from "@dualflow/video";
+import { copyFile, mkdir, readFile as readLocal, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { enqueue } from "@dualflow/queue";
 import {
   assertAzureFreeQuota,
@@ -214,13 +224,141 @@ const voice: Step = async (data) => {
 };
 
 const thumbnail: Step = async (data) => {
-  // TODO Phase 1C: AI background + headline rendered with Remotion.
+  // The thumbnail is made together with the video in the render step
+  // (it uses the same pictures), so this step only passes the job on.
   await then(data, JOB_NAMES.render);
 };
 
+/**
+ * Render: make the real .mp4 and the thumbnail.
+ *  1. Download the voice from storage into a job folder.
+ *  2. Find a free Pexels clip for every scene (if PEXELS_API_KEY is set).
+ *  3. Remotion draws the video: pictures + voice + title + subtitles.
+ *  4. Upload video.mp4 and thumbnail.jpg to storage; save the rows.
+ */
 const render: Step = async (data) => {
-  // TODO Phase 1C: Remotion render with Devanagari subtitles.
-  await prisma.variant.update({ where: { id: data.variantId }, data: { status: "READY" } });
+  const variant = await prisma.variant.findUniqueOrThrow({
+    where: { id: data.variantId },
+    include: {
+      story: { include: { topic: true } },
+      scenes: { orderBy: { order: "asc" } },
+      voiceovers: { orderBy: { createdAt: "desc" }, take: 1 },
+    },
+  });
+  const { story } = variant;
+  const voiceover = variant.voiceovers[0];
+  if (!voiceover) throw new Error("There is no voiceover to put in the video.");
+  if (!variant.durationSec) throw new Error("The voiceover length is unknown.");
+  const language = variant.language as Language;
+  const format = story.format;
+  const renderJob = await prisma.renderJob.create({
+    data: { variantId: variant.id, status: "RUNNING", attempts: 1 },
+  });
+
+  const job = await makeJobFolder();
+  try {
+    await writeFile(path.join(job.dir, "voice.wav"), await readFile(voiceover.storageKey));
+
+    // One picture per scene, using the search words from the research step.
+    const plan = (story.visualPlan as unknown as Research["visualPlan"] | null) ?? [];
+    const used = new Set<number>();
+    const media: (FoundMedia | null)[] = [];
+    for (const [i, scene] of variant.scenes.entries()) {
+      media.push(await findMedia(plan[i]?.visualQuery ?? story.topic.title, format, job.dir, `scene-${scene.order}`, used));
+    }
+
+    const words = (voiceover.wordTimings as unknown as WordTiming[] | null) ?? [];
+    const durationMs = Math.round(variant.durationSec * 1000);
+    const brand = process.env.CHANNEL_NAME || "DualFlow";
+    const accent = process.env.VIDEO_ACCENT || "#FFC83D";
+    const toMedia = (m: FoundMedia | null | undefined) => (m ? { src: job.url(m.file), kind: m.kind } : null);
+
+    const videoFile = path.join(job.dir, "video.mp4");
+    const started = Date.now();
+    await renderVideo(
+      {
+        format,
+        language,
+        title: variant.thumbnailHeadline || variant.title || story.topic.title,
+        audioFile: job.url("voice.wav"),
+        durationMs,
+        brand,
+        accent,
+        scenes: variant.scenes.map((s, i) => ({
+          startMs: s.startMs ?? 0,
+          endMs: s.endMs ?? durationMs,
+          text: s.text,
+          media: toMedia(media[i]),
+        })),
+        cues: buildCues(words),
+      },
+      videoFile,
+      (p) => console.log(`[render] ${language} ${Math.round(p * 100)}%`),
+    );
+    console.log(`[render] ${language} video made in ${Math.round((Date.now() - started) / 1000)} s`);
+
+    const thumbFile = path.join(job.dir, "thumbnail.jpg");
+    await renderThumbnail(
+      {
+        format,
+        language,
+        headline: variant.thumbnailHeadline || variant.title || story.topic.title,
+        media: toMedia(media.find((m) => m) ?? null),
+        brand,
+        accent,
+      },
+      thumbFile,
+    );
+
+    // Upload. The run number in the folder keeps a retry from overwriting older files.
+    const folder = `stories/${story.id}/${language}/run-${data.run ?? 1}`;
+    const videoKey = `${folder}/video.mp4`;
+    const thumbKey = `${folder}/thumbnail.jpg`;
+    await saveFile(videoKey, await readLocal(videoFile));
+    await saveFile(thumbKey, await readLocal(thumbFile));
+    // Optional: also keep a copy here (GitHub shows them as a download, so you can watch them).
+    if (process.env.VIDEO_COPY_DIR) {
+      await mkdir(process.env.VIDEO_COPY_DIR, { recursive: true });
+      const name = `${story.topic.title}-${language}`.replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 80);
+      await copyFile(videoFile, path.join(process.env.VIDEO_COPY_DIR, `${name}.mp4`));
+      await copyFile(thumbFile, path.join(process.env.VIDEO_COPY_DIR, `${name}.jpg`));
+    }
+
+    // Remember where each clip came from (Pexels credits).
+    const assets = await Promise.all(
+      media.map((m) =>
+        m
+          ? prisma.asset.create({
+              data: {
+                workspaceId: story.workspaceId,
+                type: m.kind === "video" ? "VIDEO" : "IMAGE",
+                storageKey: `pexels:${m.pexelsId}`,
+                license: "Pexels license",
+                sourceUrl: m.sourceUrl,
+              },
+            })
+          : null,
+      ),
+    );
+
+    await prisma.$transaction([
+      ...variant.scenes.map((s, i) =>
+        prisma.scene.update({ where: { id: s.id }, data: { assetId: assets[i]?.id ?? null } }),
+      ),
+      prisma.thumbnail.deleteMany({ where: { variantId: variant.id } }),
+      prisma.thumbnail.create({ data: { variantId: variant.id, storageKey: thumbKey, headline: variant.thumbnailHeadline } }),
+      prisma.renderJob.update({ where: { id: renderJob.id }, data: { status: "DONE", outputKey: videoKey } }),
+      prisma.variant.update({ where: { id: variant.id }, data: { status: "READY", outputKey: videoKey, lastError: null } }),
+    ]);
+  } catch (err) {
+    await prisma.renderJob.update({
+      where: { id: renderJob.id },
+      data: { status: "FAILED", error: String((err as Error).message).slice(0, 500) },
+    });
+    throw err;
+  } finally {
+    await job.remove();
+  }
   await markStoryReadyIfDone(data.storyId);
 };
 

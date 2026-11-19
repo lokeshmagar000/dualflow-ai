@@ -48,6 +48,10 @@ jobs:
       GEMINI_VOICE_NE: ${{ vars.GEMINI_VOICE_NE }}
       GEMINI_VOICE_EN: ${{ vars.GEMINI_VOICE_EN }}
       GEMINI_TTS_DAILY_REQUESTS: ${{ vars.GEMINI_TTS_DAILY_REQUESTS || '14' }}
+      # Video maker: free Pexels clips for the backgrounds (without a key: colour backgrounds).
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      CHANNEL_NAME: ${{ vars.CHANNEL_NAME || 'DualFlow' }}
+      RENDER_CONCURRENCY: 2
       EDGE_VOICE_NE: ${{ vars.EDGE_VOICE_NE }}
       AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
       AZURE_SPEECH_REGION: ${{ vars.AZURE_SPEECH_REGION }}
@@ -86,6 +90,16 @@ jobs:
         run: pnpm --filter @dualflow/worker demo-story
       - name: Make the videos
         run: pnpm --filter @dualflow/worker once
+        env:
+          VIDEO_COPY_DIR: ${{ github.workspace }}/videos
+      # Download the finished videos from the bottom of the run page ("videos").
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: videos
+          path: videos/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Delete old files (keeps storage under 10 GB)
         if: always()
         run: pnpm --filter @dualflow/worker cleanup
