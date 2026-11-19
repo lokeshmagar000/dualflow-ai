@@ -9,7 +9,8 @@
     "once": "WORKER_MODE=once tsx src/index.ts",
     "cleanup": "tsx src/cleanup.ts",
     "typecheck": "tsc --noEmit",
-    "check-keys": "tsx src/check-keys.ts"
+    "check-keys": "tsx src/check-keys.ts",
+    "demo-story": "tsx src/demo-story.ts"
   },
   "dependencies": {
     "@dualflow/ai": "workspace:*",

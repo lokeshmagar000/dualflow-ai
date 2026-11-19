@@ -11,6 +11,11 @@ on:
   schedule:
     - cron: "17 */3 * * *" # minute 17 of every 3rd hour (UTC). Odd minutes avoid GitHub's busy times.
   workflow_dispatch:
+    inputs:
+      demo_story:
+        description: "Add a practice story first (Mount Everest, Nepali + English)"
+        type: boolean
+        default: false
 
 # Only one run at a time; a new request waits for the current run to finish.
 concurrency:
@@ -63,6 +68,9 @@ jobs:
           if [ -z "$DATABASE_URL" ]; then echo "::error::Add the DATABASE_URL secret (see README, Free plan setup)"; exit 1; fi
       - name: Update the database tables
         run: pnpm db:generate && pnpm --filter @dualflow/db run deploy
+      - name: Add a practice story
+        if: inputs.demo_story
+        run: pnpm --filter @dualflow/worker demo-story
       - name: Make the videos
         run: pnpm --filter @dualflow/worker once
       - name: Delete old files (keeps storage under 10 GB)
