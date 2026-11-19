@@ -107,6 +107,12 @@ To hear the free voices first, run **Actions → Voice sample → Run workflow**
 **Edge TTS on your own computer** needs Python 3 and FFmpeg:
 `pip install -r packages/voice/python/requirements.txt`.
 
+## Mac app (make videos with one button)
+
+`desktop/` is a small Mac app: type an idea, press **Make video now**, watch the run,
+and download the finished Nepali + English videos. It only talks to GitHub with a token
+that can run Actions in this repo. Download, first-open and token steps: [desktop/README.md](desktop/README.md).
+
 ## Security notes
 
 - The dashboard uses a signed, HTTP-only session cookie.

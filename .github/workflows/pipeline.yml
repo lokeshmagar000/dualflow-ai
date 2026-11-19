@@ -7,11 +7,17 @@
 # Your keys are stored in GitHub: Settings -> Secrets and variables -> Actions.
 # They are never written in the code. See README "Free plan setup".
 name: Pipeline
+# The name shown in the run list (the Mac app shows it too).
+run-name: ${{ inputs.topic && format('Idea - {0}', inputs.topic) || format('Pipeline ({0})', github.event_name) }}
 on:
   schedule:
     - cron: "17 */3 * * *" # minute 17 of every 3rd hour (UTC). Odd minutes avoid GitHub's busy times.
   workflow_dispatch:
     inputs:
+      topic:
+        description: "Your own idea (optional). Makes one story about it in Nepali + English."
+        type: string
+        default: ""
       demo_story:
         description: "Add a practice story first (Mount Everest, Nepali + English)"
         type: boolean
@@ -91,9 +97,12 @@ jobs:
           if [ -z "$DATABASE_URL" ]; then echo "::error::Add the DATABASE_URL secret (see README, Free plan setup)"; exit 1; fi
       - name: Update the database tables
         run: pnpm db:generate && pnpm --filter @dualflow/db run deploy
-      - name: Add a practice story
-        if: inputs.demo_story || github.event_name == 'push'
+      # Your own idea (from the Mac app or "Run workflow"), or the practice story.
+      - name: Add your idea or a practice story
+        if: inputs.topic || inputs.demo_story || github.event_name == 'push'
         run: pnpm --filter @dualflow/worker demo-story
+        env:
+          DEMO_TOPIC: ${{ inputs.topic }}
       - name: Remake the newest video
         if: inputs.remake_latest
         run: pnpm --filter @dualflow/worker remake-video
