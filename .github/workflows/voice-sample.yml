@@ -1,0 +1,41 @@
+# Makes short free voice samples (Nepali + English) with Edge TTS,
+# so you can listen before making real videos.
+# Run it from the GitHub "Actions" tab -> "Voice sample" -> "Run workflow".
+# The MP3 files appear under "Artifacts" at the bottom of the run page.
+name: Voice sample
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/voice-sample.yml
+      - packages/voice/python/**
+permissions:
+  contents: read
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r packages/voice/python/requirements.txt
+      - name: Make the samples
+        run: |
+          mkdir -p samples
+          say() { # $1 = voice, $2 = file name, $3 = text
+            printf '%s' "{\"text\": \"$3\", \"voice\": \"$1\"}" \
+              | python packages/voice/python/edge_speak.py "samples/$2.mp3" > "samples/$2.words.json"
+            echo "$2: $(wc -c < "samples/$2.mp3") bytes"
+          }
+          NE="नमस्ते! म डुअलफ्लो एआई हुँ। आज हामी सगरमाथाको बारेमा तीन रोचक कुरा सिक्नेछौं। भिडियो मन पर्यो भने लाइक र फलो गर्नुहोस्।"
+          EN="Hello! I am DualFlow AI. Today we will learn three interesting facts about Mount Everest. If you liked this video, please like and follow."
+          say ne-NP-HemkalaNeural ne-hemkala-female "$NE"
+          say ne-NP-SagarNeural ne-sagar-male "$NE"
+          say en-US-JennyNeural en-jenny-female "$EN"
+          cat samples/ne-hemkala-female.words.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voice-samples
+          path: samples/
+          retention-days: 30
