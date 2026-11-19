@@ -56,7 +56,20 @@ export function toGeminiSchema(schema: z.ZodType): Record<string, unknown> {
   return json;
 }
 
-/** Ask Gemini once. With `search: true` Gemini searches Google first (for research). */
+/** Seconds Google asks us to wait (from a 429 answer's RetryInfo), or null. */
+function retryDelaySeconds(errorBody: string): number | null {
+  const m = errorBody.match(/"retryDelay":\s*"(\d+(?:\.\d+)?)s"/);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Ask Gemini. With `search: true` Gemini searches Google first (for research).
+ *
+ * Free models are sometimes busy (503) or out of free quota for one model or
+ * for Google Search (429). Before giving up we try, in order:
+ *   main model (with search) -> Flash-Lite (with search)
+ *   -> main model (no search) -> Flash-Lite (no search)
+ */
 export async function askGemini(opts: {
   system: string;
   prompt: string;
@@ -69,61 +82,62 @@ export async function askGemini(opts: {
       "AI_PROVIDER=gemini needs GEMINI_API_KEY (free from Google AI Studio). Or set AI_PROVIDER=mock to practise.",
     );
   }
-  const body = {
-    systemInstruction: { parts: [{ text: opts.system }] },
-    contents: [{ role: "user", parts: [{ text: opts.prompt }] }],
-    ...(opts.search ? { tools: [{ google_search: {} }] } : {}),
-    ...(opts.jsonSchema
-      ? { generationConfig: { responseMimeType: "application/json", responseJsonSchema: opts.jsonSchema } }
-      : {}),
-  };
+  const main = geminiModel();
+  const fallback = process.env.GEMINI_FALLBACK_MODEL ?? DEFAULT_GEMINI_FALLBACK;
+  const models = fallback && fallback !== main ? [main, fallback] : [main];
+  const tries: { model: string; search: boolean }[] = models.map((model) => ({ model, search: Boolean(opts.search) }));
+  if (opts.search) tries.push(...models.map((model) => ({ model, search: false })));
 
-  // The key goes in a header (not the URL), so it never shows up in logs.
-  const call = (m: string) =>
-    fetch(`${API}/${encodeURIComponent(m)}:generateContent`, {
+  let lastStatus = 0;
+  let lastDetails = "";
+  for (const { model, search } of tries) {
+    const body = {
+      systemInstruction: { parts: [{ text: opts.system }] },
+      contents: [{ role: "user", parts: [{ text: opts.prompt }] }],
+      ...(search ? { tools: [{ google_search: {} }] } : {}),
+      ...(opts.jsonSchema
+        ? { generationConfig: { responseMimeType: "application/json", responseJsonSchema: opts.jsonSchema } }
+        : {}),
+    };
+    // The key goes in a header (not the URL), so it never shows up in logs.
+    const res = await fetch(`${API}/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(120_000),
     });
-  let model = geminiModel();
-  let res = await call(model);
-  // Google's free models are sometimes "busy" (503). Try the lighter model once.
-  const fallback = process.env.GEMINI_FALLBACK_MODEL ?? DEFAULT_GEMINI_FALLBACK;
-  if (res.status === 503 && fallback && fallback !== model) {
-    model = fallback;
-    res = await call(model);
-  }
 
-  if (!res.ok) {
-    const details = (await res.text()).slice(0, 500);
-    if (res.status === 429) {
-      // "Per day" means the free DAILY limit is used up: wait for tomorrow.
-      if (/per ?day|PerDay|daily/i.test(details)) {
-        throw new AIQuotaError(`Gemini free daily limit reached. Will continue after it resets.`, nextQuotaReset());
-      }
-      throw new Error(`Gemini is busy (too many requests per minute). Will retry. ${details}`);
+    if (res.ok) {
+      const data = (await res.json()) as GeminiResponse;
+      if (data.promptFeedback?.blockReason) throw new Error(`Gemini blocked the request: ${data.promptFeedback.blockReason}`);
+      const candidate = data.candidates?.[0];
+      const text = (candidate?.content?.parts ?? []).map((p) => p.text ?? "").join("").trim();
+      if (!text) throw new Error(`Gemini returned no text (finish reason: ${candidate?.finishReason ?? "unknown"}).`);
+      const sources = (candidate?.groundingMetadata?.groundingChunks ?? [])
+        .map((c) => ({ url: c.web?.uri ?? "", title: c.web?.title ?? "" }))
+        .filter((s) => s.url);
+      if (opts.search && !search) console.warn("Gemini: Google Search was not available, research used no web search.");
+      return { text, sources, cost: { provider: `gemini:${model}`, units: 1, unitType: "requests", usd: 0 } };
     }
+
+    lastStatus = res.status;
+    lastDetails = await res.text();
+    if (res.status === 503 || res.status === 429) continue; // busy or out of quota: try the next option
     // Wrong key, wrong model name or a bad request: retrying will not fix it.
-    if ([400, 401, 403, 404].includes(res.status)) throw new ConfigError(`Gemini error ${res.status}: ${details}`);
-    throw new Error(`Gemini error ${res.status}: ${details}`); // 500s: retry later
+    if ([400, 401, 403, 404].includes(res.status)) throw new ConfigError(`Gemini error ${res.status}: ${lastDetails.slice(0, 500)}`);
+    throw new Error(`Gemini error ${res.status}: ${lastDetails.slice(0, 300)}`); // 500s: retry later
   }
 
-  const data = (await res.json()) as GeminiResponse;
-  if (data.promptFeedback?.blockReason) throw new Error(`Gemini blocked the request: ${data.promptFeedback.blockReason}`);
-  const candidate = data.candidates?.[0];
-  const text = (candidate?.content?.parts ?? []).map((p) => p.text ?? "").join("").trim();
-  if (!text) throw new Error(`Gemini returned no text (finish reason: ${candidate?.finishReason ?? "unknown"}).`);
-
-  const sources = (candidate?.groundingMetadata?.groundingChunks ?? [])
-    .map((c) => ({ url: c.web?.uri ?? "", title: c.web?.title ?? "" }))
-    .filter((s) => s.url);
-
-  return {
-    text,
-    sources,
-    cost: { provider: `gemini:${model}`, units: 1, unitType: "requests", usd: 0 },
-  };
+  if (lastStatus === 429) {
+    const wait = retryDelaySeconds(lastDetails);
+    // A short wait means "too many per minute": the queue retries soon.
+    if (wait !== null && wait <= 120 && !/PerDay/i.test(lastDetails)) {
+      throw new Error(`Gemini free limit per minute reached. Will retry in about ${Math.ceil(wait)} s.`);
+    }
+    // Otherwise the free DAILY limit is used up: wait for tomorrow.
+    throw new AIQuotaError("Gemini free daily limit reached. Will continue after it resets.", nextQuotaReset());
+  }
+  throw new Error(`Gemini is busy right now (HTTP ${lastStatus}). Will retry.`);
 }
 
 /** Ask Gemini for JSON that matches a zod schema, and check the answer. */

@@ -99,6 +99,25 @@ test("a busy model (503) falls back to Flash-Lite", async () => {
   assert.match(out.costs[0]!.provider, /flash-lite/);
 });
 
+test("research without free Google Search quota falls back to no search", async () => {
+  useGemini();
+  const quota = { status: 429, body: { error: { code: 429, message: "You exceeded your current quota" } } };
+  const calls = fakeFetch([quota, quota, { body: answer("Notes without search") }, { body: answer(JSON.stringify(research)) }]);
+  const out = await researchTopic({ title: "Everest", format: "SHORT" });
+  assert.equal(out.research.visualPlan.length, 2);
+  assert.deepEqual(calls[0]!.body.tools, [{ google_search: {} }]);
+  assert.deepEqual(calls[1]!.body.tools, [{ google_search: {} }]);
+  assert.equal(calls[2]!.body.tools, undefined); // third try: no search
+});
+
+test("a short per-minute limit is retried soon, not postponed to tomorrow", async () => {
+  useGemini();
+  fakeFetch([{ status: 429, body: '{"error":{"details":[{"retryDelay":"20s"}]}}' }]);
+  await assert.rejects(writeScript({ language: "en", title: "Everest", format: "SHORT", research }), (e: Error) =>
+    !(e instanceof AIQuotaError) && /per minute/.test(e.message),
+  );
+});
+
 test("bad JSON from Gemini is an error that will be retried", async () => {
   useGemini();
   fakeFetch([{ body: answer("not json") }]);
