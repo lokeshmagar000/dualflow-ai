@@ -34,6 +34,7 @@ import {
   recordCosts,
   voiceFallback,
 } from "../budget";
+import { planStory } from "../publishing";
 
 type Step = (data: PipelineJobData) => Promise<void>;
 
@@ -362,16 +363,22 @@ const render: Step = async (data) => {
   await markStoryReadyIfDone(data.storyId);
 };
 
-const publish: Step = async () => {
-  // TODO Phase 2: YouTube / Facebook / Instagram / TikTok adapters.
-  // Mark the story PUBLISHED only after EVERY upload succeeded: the cleanup
-  // after each run then deletes its files automatically (DELETE_AFTER_PUBLISH).
+/**
+ * Publish: both videos are ready, so put them in the upload queue
+ * (auto mode) or the approval list (approval mode). Manual mode does nothing here.
+ * The actual uploads happen in the upload run after the videos are made
+ * (`pnpm --filter @dualflow/worker upload`), at each channel's next free time slot.
+ */
+const publish: Step = async ({ storyId }) => {
+  await planStory(storyId);
 };
 
 /** When BOTH languages are ready, the story is ready. */
 async function markStoryReadyIfDone(storyId: string) {
   const notReady = await prisma.variant.count({ where: { storyId, status: { not: "READY" } } });
-  if (notReady === 0) await prisma.story.update({ where: { id: storyId }, data: { status: "READY" } });
+  if (notReady > 0) return;
+  const story = await prisma.story.update({ where: { id: storyId }, data: { status: "READY" } });
+  await enqueue(JOB_NAMES.publish, { storyId, run: story.run });
 }
 
 export const steps: Record<JobName, Step> = { research, script, voice, thumbnail, render, publish };

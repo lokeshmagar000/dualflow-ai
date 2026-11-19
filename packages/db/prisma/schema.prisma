@@ -334,6 +334,10 @@ model Publication {
   publishedAt    DateTime?
   status         ContentStatus @default(SCHEDULED)
   platformPostId String?
+  // Link to the post on the platform (when the platform gives one).
+  postUrl        String?
+  // How many times the upload was tried (retries stop at PUBLISH_MAX_ATTEMPTS).
+  attempts       Int           @default(0)
   error          String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt

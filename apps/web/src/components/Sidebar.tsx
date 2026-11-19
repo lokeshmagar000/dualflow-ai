@@ -8,7 +8,7 @@ const NAV = [
   { href: "/content", label: "Content" },
   { href: "/editor", label: "Editor" },
   { href: "/library", label: "Media library" },
-  { href: "/calendar", label: "Calendar" },
+  { href: "/calendar", label: "Upload queue" },
   { href: "/channels", label: "Channels" },
   { href: "/analytics", label: "Analytics" },
   { href: "/costs", label: "Costs & Automation" },
