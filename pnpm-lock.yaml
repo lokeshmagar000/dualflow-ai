@@ -118,6 +118,9 @@ importers:
       '@dualflow/voice':
         specifier: workspace:*
         version: link:../../packages/voice
+      aws4fetch:
+        specifier: ^1.0.20
+        version: 1.0.20
     devDependencies:
       '@types/node':
         specifier: ^22.10.2

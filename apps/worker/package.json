@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "once": "WORKER_MODE=once tsx src/index.ts",
     "cleanup": "tsx src/cleanup.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check-keys": "tsx src/check-keys.ts"
   },
   "dependencies": {
     "@dualflow/ai": "workspace:*",
@@ -16,7 +17,8 @@
     "@dualflow/queue": "workspace:*",
     "@dualflow/shared": "workspace:*",
     "@dualflow/storage": "workspace:*",
-    "@dualflow/voice": "workspace:*"
+    "@dualflow/voice": "workspace:*",
+    "aws4fetch": "^1.0.20"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
