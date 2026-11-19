@@ -16,6 +16,10 @@ on:
         description: "Add a practice story first (Mount Everest, Nepali + English)"
         type: boolean
         default: false
+  # Test runs: changing this file on a claude/ branch makes one practice story.
+  push:
+    branches: ["claude/**"]
+    paths: [.github/workflows/pipeline.yml]
 
 # Only one run at a time; a new request waits for the current run to finish.
 concurrency:
@@ -69,7 +73,7 @@ jobs:
       - name: Update the database tables
         run: pnpm db:generate && pnpm --filter @dualflow/db run deploy
       - name: Add a practice story
-        if: inputs.demo_story
+        if: inputs.demo_story || github.event_name == 'push'
         run: pnpm --filter @dualflow/worker demo-story
       - name: Make the videos
         run: pnpm --filter @dualflow/worker once
