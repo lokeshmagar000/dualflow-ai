@@ -1,0 +1,34 @@
+{
+  "name": "dualflow-desktop",
+  "productName": "DualFlow",
+  "version": "0.1.0",
+  "description": "DualFlow AI Mac app: make videos with one button, see runs, download finished videos.",
+  "main": "main.js",
+  "private": true,
+  "author": "DualFlow AI",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check main.js && node --check preload.js && node --check github.js && node --check renderer/app.js",
+    "dist": "electron-builder --mac dmg --arm64 --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.4.1",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "ai.dualflow.desktop",
+    "productName": "DualFlow",
+    "files": ["main.js", "preload.js", "github.js", "renderer/**"],
+    "directories": { "output": "dist", "buildResources": "build" },
+    "afterPack": "build/after-pack.js",
+    "mac": {
+      "category": "public.app-category.video",
+      "identity": null,
+      "target": ["dmg"]
+    },
+    "dmg": {
+      "artifactName": "DualFlow-${version}-${arch}.dmg"
+    }
+  }
+}

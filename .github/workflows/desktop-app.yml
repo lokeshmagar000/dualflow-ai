@@ -1,0 +1,54 @@
+# Builds the DualFlow Mac app (.dmg) on a free GitHub Mac machine.
+#
+# It runs only when something in desktop/ changes, or when you press
+# "Run workflow" in the Actions tab. (Private repos: Mac minutes count 10x
+# against the 2,000 free minutes, so we do not build it on every change.)
+#
+# Download: open the run, scroll down to "Artifacts", click "DualFlow-mac".
+# On the main branch it also updates the "Mac app" release (Releases page).
+name: Mac app
+on:
+  workflow_dispatch:
+  push:
+    paths: ["desktop/**", ".github/workflows/desktop-app.yml"]
+
+concurrency:
+  group: desktop-app-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # only used to update the "Mac app" release on main
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      # Two files: arm64 = Macs with Apple chips (M1, M2, M3, M4...), x64 = older Intel Macs.
+      - name: Build the .dmg files
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false" # no paid Apple certificate; we ad-hoc sign instead
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DualFlow-mac
+          path: desktop/dist/*.dmg
+          retention-days: 14
+      - name: Update the "Mac app" release (main branch only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view mac-app >/dev/null 2>&1 || gh release create mac-app --title "DualFlow Mac app" --notes "Download the .dmg for your Mac: arm64 = Apple chip (M1/M2/M3/M4), x64 = Intel. See desktop/README.md for the first-open steps." --target "$GITHUB_SHA"
+          gh release upload mac-app dist/*.dmg --clobber

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <!-- Content-Security-Policy: the window may only run its own files, and show local videos. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' file: data:; media-src file:; connect-src 'none'" />
+  <title>DualFlow</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">D</span><div><b>DualFlow</b><small>Nepali + English videos</small></div></div>
+    <nav>
+      <button class="nav active" data-page="make">🎬 Make a video</button>
+      <button class="nav" data-page="runs">⏱ Runs</button>
+      <button class="nav" data-page="videos">📁 My videos</button>
+      <button class="nav" data-page="limits">💸 Free limits</button>
+      <button class="nav" data-page="settings">⚙️ Settings</button>
+    </nav>
+    <button id="openDashboard" class="ghost small">Open web dashboard ↗</button>
+  </aside>
+
+  <main>
+    <div id="toast" class="toast" hidden></div>
+
+    <!-- 1. MAKE A VIDEO -->
+    <section class="page" id="page-make">
+      <h1>Make a video</h1>
+      <p class="muted">One press makes the story in <b>both</b> Nepali and English. It runs for free on GitHub; your Mac can sleep.</p>
+
+      <div id="needToken" class="card warn" hidden>
+        <b>First step:</b> add your GitHub token in <a href="#" data-goto="settings">Settings</a>. It takes 2 minutes.
+      </div>
+
+      <div class="card">
+        <label for="idea">Your idea <span class="muted">(leave empty and the AI picks a trending topic)</span></label>
+        <textarea id="idea" rows="3" maxlength="200" placeholder="e.g. Why Pokhara's Phewa Lake changes colour"></textarea>
+        <div class="row">
+          <label class="check"><input type="checkbox" id="remake" /> Remake the newest video (no AI needed)</label>
+          <label class="check"><input type="checkbox" id="practice" /> Practice story (Mount Everest)</label>
+        </div>
+        <button id="startBtn" class="primary big">▶ Make video now</button>
+        <p class="muted small">Takes about 10 to 15 minutes. Free plan: about 3 new stories a day.</p>
+      </div>
+
+      <h2>Now</h2>
+      <div id="nowBox" class="card"><span class="muted">Loading…</span></div>
+    </section>
+
+    <!-- 2. RUNS -->
+    <section class="page" id="page-runs" hidden>
+      <div class="head"><h1>Runs</h1><button id="refreshRuns" class="ghost">↻ Refresh</button></div>
+      <p class="muted">Every time the video maker ran (by itself every 3 hours, or when you pressed the button).</p>
+      <div id="runList" class="list"></div>
+    </section>
+
+    <!-- 3. MY VIDEOS -->
+    <section class="page" id="page-videos" hidden>
+      <div class="head"><h1>My videos</h1><button id="revealFolder" class="ghost">Show folder</button></div>
+      <p class="muted">Videos you downloaded to this Mac (<code id="videoDir"></code>). Get new ones from the Runs page.</p>
+      <div id="videoGrid" class="grid"></div>
+      <div id="player" class="player" hidden>
+        <video id="playerVideo" controls></video>
+        <div class="row"><b id="playerName"></b><button id="closePlayer" class="ghost small">Close</button></div>
+      </div>
+    </section>
+
+    <!-- 4. FREE LIMITS -->
+    <section class="page" id="page-limits" hidden>
+      <h1>Free limits</h1>
+      <p class="muted">Everything runs on free plans. This page shows how much you used.</p>
+      <div class="grid stats">
+        <div class="card stat"><small>GitHub Actions minutes this month</small><b id="minUsed">–</b><div class="bar"><i id="minBar"></i></div><small id="minNote" class="muted"></small></div>
+        <div class="card stat"><small>Runs today</small><b id="runsToday">–</b><small class="muted">Gemini free: about 20 script and 14 voice requests a day</small></div>
+        <div class="card stat"><small>Videos on this Mac</small><b id="videoCount">–</b><small class="muted">GitHub keeps each run's videos for 7 days</small></div>
+      </div>
+      <div class="card">
+        <h3>The free plans you use</h3>
+        <table>
+          <tr><td>GitHub Actions (private repo)</td><td>2,000 minutes / month</td><td>Each video run ≈ 15 min. Mac app builds count 10×.</td></tr>
+          <tr><td>Gemini (AI + voice)</td><td>Daily request limit</td><td>The real limit: about 3 new stories a day.</td></tr>
+          <tr><td>Cloudflare R2 (files)</td><td>10 GB storage</td><td>Old files are deleted after publishing.</td></tr>
+          <tr><td>Neon (database)</td><td>0.5 GB</td><td>Plenty for now.</td></tr>
+        </table>
+        <p class="muted small">For exact money and AI counts, open the Costs page of the web dashboard.</p>
+      </div>
+    </section>
+
+    <!-- 5. SETTINGS -->
+    <section class="page" id="page-settings" hidden>
+      <h1>Settings</h1>
+      <div class="card">
+        <h3>GitHub token</h3>
+        <p class="muted">Locked with your Mac's Keychain. It is never shown again and never leaves this Mac except to talk to GitHub.</p>
+        <p id="tokenState"></p>
+        <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false" />
+        <div class="row">
+          <button id="saveToken" class="primary">Save token</button>
+          <button id="testToken" class="ghost">Test connection</button>
+          <button id="deleteToken" class="ghost danger">Remove token</button>
+        </div>
+        <details>
+          <summary>How do I make a token?</summary>
+          <ol>
+            <li>Open <a href="#" data-url="https://github.com/settings/personal-access-tokens/new">github.com → Settings → Fine-grained tokens → Generate new token</a>.</li>
+            <li>Name: <b>DualFlow Mac app</b>. Expiration: 90 days (or what you like).</li>
+            <li>Repository access: <b>Only select repositories</b> → <b>dualflow-ai</b>.</li>
+            <li>Permissions → Repository permissions → <b>Actions: Read and write</b>. Nothing else.</li>
+            <li>Press <b>Generate token</b>, copy it, paste it above, press <b>Save token</b>.</li>
+          </ol>
+        </details>
+      </div>
+      <div class="card">
+        <h3>Project</h3>
+        <label>Repo</label><input id="repo" />
+        <label>Branch</label><input id="branch" />
+        <label>Web dashboard address <span class="muted">(optional, e.g. https://dualflow-web.onrender.com)</span></label><input id="dashboardUrl" />
+        <button id="saveSettings" class="primary">Save</button>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
