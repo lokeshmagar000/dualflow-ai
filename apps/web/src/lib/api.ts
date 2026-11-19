@@ -85,3 +85,8 @@ export interface CostSummary {
   paused: boolean;
   budgets: { period: string; capUsd: number }[];
 }
+export interface PipelineStatus {
+  queue: { readyNow: number; later: number; running: number; nextJobAt: string | null };
+  runNowAvailable: boolean;
+  quotas: { name: string; used: number; limit: number | null }[];
+}

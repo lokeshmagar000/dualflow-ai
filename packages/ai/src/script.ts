@@ -10,6 +10,8 @@ import { claude, currentModel, fallbackOptions } from "./client";
 import { claudeCost, type CostLine } from "./cost";
 import type { Research } from "./research";
 import { isMockAI, mockScript } from "./mock";
+import { aiProvider } from "./provider";
+import { askGeminiJson } from "./gemini";
 
 export const ScriptSchema = z.object({
   title: z.string().describe("Video title in the target language, max 90 characters"),
@@ -40,17 +42,11 @@ const STYLE: Record<Language, string> = {
 - Write numbers as they should be spoken ("three hundred", "twenty twenty-five").`,
 };
 
-export async function writeScript(input: {
-  language: Language;
-  title: string;
-  format: "SHORT" | "LONG";
-  research: Research;
-}): Promise<{ script: Script; costs: CostLine[] }> {
-  // Practice mode: no API call, no cost.
-  if (isMockAI()) return { script: mockScript(input), costs: [] };
+type ScriptInput = { language: Language; title: string; format: "SHORT" | "LONG"; research: Research };
 
+/** The same prompt is used by Claude and by Gemini. */
+function scriptPrompt(input: ScriptInput): { system: string; prompt: string } {
   const { language, research } = input;
-  const model = currentModel();
   const scenesText = research.visualPlan
     .map((s, i) => `${i + 1}. [${s.purpose}] ${s.idea}`)
     .join("\n");
@@ -60,18 +56,11 @@ export async function writeScript(input: {
       ? "The whole script must take about 45-60 seconds to speak."
       : "The whole script must take about 8-12 minutes to speak.";
 
-  const response = await claude().beta.messages.parse({
-    model,
-    max_tokens: 32000,
-    ...fallbackOptions(),
-    output_config: { effort: "high", format: betaZodOutputFormat(ScriptSchema) },
+  return {
     system: `You are a scriptwriter for a bilingual (Nepali + English) educational video channel.
 Only use facts from the research. Never invent numbers.
 ${STYLE[language]}`,
-    messages: [
-      {
-        role: "user",
-        content: `Write the ${language === "ne" ? "NEPALI" : "ENGLISH"} narration for this video.
+    prompt: `Write the ${language === "ne" ? "NEPALI" : "ENGLISH"} narration for this video.
 Topic: ${input.title}
 ${length}
 Start with a strong hook in the first scene. End with a short call to action (like, follow, comment).
@@ -84,20 +73,44 @@ ${factsText}
 
 Scenes (write exactly one narration entry for each, same order, numbered 1 to ${research.visualPlan.length}):
 ${scenesText}`,
-      },
-    ],
-  });
-  if (response.stop_reason === "refusal") throw new Error(`Script request (${language}) was declined by the model.`);
-  if (!response.parsed_output) throw new Error(`Could not read the ${language} script from the model.`);
+  };
+}
 
-  // Normalise Unicode (NFC) so the same word is always stored the same way.
-  const script = response.parsed_output;
+/** Normalise Unicode (NFC) so the same word is always stored the same way. */
+function normalise(script: Script): Script {
   const nfc = (s: string) => s.normalize("NFC");
-  script.title = nfc(script.title);
-  script.description = nfc(script.description);
-  script.thumbnailHeadline = nfc(script.thumbnailHeadline);
-  script.hashtags = script.hashtags.map(nfc);
-  script.scenes = script.scenes.map((s) => ({ ...s, text: nfc(s.text) }));
+  return {
+    ...script,
+    title: nfc(script.title),
+    description: nfc(script.description),
+    thumbnailHeadline: nfc(script.thumbnailHeadline),
+    hashtags: script.hashtags.map(nfc),
+    scenes: script.scenes.map((s) => ({ ...s, text: nfc(s.text) })),
+  };
+}
 
-  return { script, costs: [claudeCost(model, response.usage)] };
+export async function writeScript(input: ScriptInput): Promise<{ script: Script; costs: CostLine[] }> {
+  // Practice mode: no API call, no cost.
+  if (isMockAI()) return { script: mockScript(input), costs: [] };
+  const { system, prompt } = scriptPrompt(input);
+
+  // Free plan: Gemini.
+  if (aiProvider() === "gemini") {
+    const { value, cost } = await askGeminiJson(ScriptSchema, { system, prompt });
+    return { script: normalise(value), costs: [cost] };
+  }
+
+  const model = currentModel();
+  const response = await claude().beta.messages.parse({
+    model,
+    max_tokens: 32000,
+    ...fallbackOptions(),
+    output_config: { effort: "high", format: betaZodOutputFormat(ScriptSchema) },
+    system,
+    messages: [{ role: "user", content: prompt }],
+  });
+  if (response.stop_reason === "refusal") throw new Error(`Script request (${input.language}) was declined by the model.`);
+  if (!response.parsed_output) throw new Error(`Could not read the ${input.language} script from the model.`);
+
+  return { script: normalise(response.parsed_output), costs: [claudeCost(model, response.usage)] };
 }

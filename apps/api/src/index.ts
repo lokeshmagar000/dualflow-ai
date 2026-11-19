@@ -9,6 +9,7 @@ import rateLimit from "@fastify/rate-limit";
 import { topicRoutes } from "./routes/topics";
 import { storyRoutes } from "./routes/stories";
 import { costRoutes } from "./routes/costs";
+import { pipelineRoutes } from "./routes/pipeline";
 
 const app = Fastify({ logger: true });
 
@@ -34,6 +35,7 @@ app.addHook("onRequest", async (req, reply) => {
 await app.register(topicRoutes);
 await app.register(storyRoutes);
 await app.register(costRoutes);
+await app.register(pipelineRoutes);
 
 const port = Number(process.env.PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });

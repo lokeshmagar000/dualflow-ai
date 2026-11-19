@@ -1,5 +1,5 @@
 /**
- * PRACTICE MODE (AI_MODE=mock)
+ * PRACTICE MODE (AI_PROVIDER=mock, or the older AI_MODE=mock)
  *
  * Fake research and scripts that cost nothing and need no API key.
  * They let you test the whole pipeline (voice, subtitles, dashboard) while
@@ -9,10 +9,11 @@
 import type { Language } from "@dualflow/shared";
 import type { Research } from "./research";
 import type { Script } from "./script";
+import { aiProvider } from "./provider";
 
-/** True when the app should use fake AI answers instead of calling Claude. */
+/** True when the app should use fake AI answers instead of calling a real AI. */
 export function isMockAI(): boolean {
-  return (process.env.AI_MODE ?? "").toLowerCase() === "mock";
+  return aiProvider() === "mock";
 }
 
 export function mockResearch(input: { title: string; format: "SHORT" | "LONG" }): Research {

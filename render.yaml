@@ -1,0 +1,56 @@
+# FREE PLAN hosting on Render (render.com -> New -> Blueprint -> pick this repo).
+# Two free web services: the API and the dashboard. Free services sleep after
+# 15 minutes without visits; the first visit after that takes about a minute.
+# Values marked "sync: false" are asked for once in Render's screen. Never put keys in this file.
+services:
+  - type: web
+    name: dualflow-api
+    runtime: node
+    plan: free
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm db:generate && pnpm --filter @dualflow/db run deploy
+    startCommand: pnpm --filter @dualflow/api start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        sync: false
+      - key: INTERNAL_API_KEY
+        generateValue: true
+      - key: STORAGE
+        value: r2
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        value: dualflow
+      # "Run now" button (optional): a fine-grained GitHub token with Actions read/write on this repo only.
+      - key: GITHUB_REPO
+        sync: false
+      - key: GITHUB_DISPATCH_TOKEN
+        sync: false
+      - key: GEMINI_DAILY_REQUESTS
+        value: "20"
+
+  - type: web
+    name: dualflow-web
+    runtime: node
+    plan: free
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm db:generate && pnpm --filter @dualflow/web build
+    startCommand: pnpm --filter @dualflow/web start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: API_URL
+        sync: false # the dualflow-api address, e.g. https://dualflow-api.onrender.com
+      - key: INTERNAL_API_KEY
+        fromService: { type: web, name: dualflow-api, envVarKey: INTERNAL_API_KEY }
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true

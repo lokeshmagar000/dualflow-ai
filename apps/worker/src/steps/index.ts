@@ -4,8 +4,8 @@
  * Order:  research (once per story)
  *      -> script, voice, thumbnail, render (once per language, in parallel)
  *
- * Phase 1A: research and script are real (Claude, or practice data when AI_MODE=mock).
- * Phase 1B: voice is real (Azure, or the practice voice when VOICE_PROVIDER=mock)
+ * Phase 1A: research and script are real (Gemini free, Claude, or practice data: AI_PROVIDER).
+ * Phase 1B: voice is real (Azure, Edge or the practice voice: VOICE_PROVIDER)
  *           and makes the subtitles too.
  * thumbnail and render are still placeholders (Phase 1C).
  */
@@ -14,33 +14,30 @@ import { researchTopic, writeScript, type Research } from "@dualflow/ai";
 import { JOB_NAMES, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
 import { getVoiceProvider, makeVoiceover } from "@dualflow/voice";
 import { saveFile } from "@dualflow/storage";
-import { pipelineQueue } from "../connection";
-import { assertBudget, recordCosts } from "../budget";
+import { enqueue } from "@dualflow/queue";
+import { assertAzureFreeQuota, assertBudget, assertGeminiQuota, recordCosts } from "../budget";
 
 type Step = (data: PipelineJobData) => Promise<void>;
 
 /** Queue a step for every variant (Nepali and English) at the same time. */
 async function fanOut(storyId: string, run: number, next: JobName) {
   const variants = await prisma.variant.findMany({ where: { storyId } });
-  await Promise.all(
-    variants.map((v) =>
-      pipelineQueue.add(next, { storyId, variantId: v.id, run }, { jobId: `${next}-${v.id}-${run}` }),
-    ),
-  );
+  await Promise.all(variants.map((v) => enqueue(next, { storyId, variantId: v.id, run })));
 }
 
 /**
  * Queue the next step for one variant.
- * The job id includes the run number: adding the same id twice does nothing,
+ * The job key includes the run number: adding the same key twice does nothing,
  * which stops duplicate work if a step is retried.
  */
 async function then(data: PipelineJobData, next: JobName) {
-  await pipelineQueue.add(next, data, { jobId: `${next}-${data.variantId}-${data.run ?? 1}` });
+  await enqueue(next, data);
 }
 
 const research: Step = async ({ storyId, run = 1 }) => {
   const story = await prisma.story.findUniqueOrThrow({ where: { id: storyId }, include: { topic: true } });
   await assertBudget(story.workspaceId);
+  await assertGeminiQuota(story.workspaceId, 2); // research = 2 requests
 
   const { research, costs } = await researchTopic({
     title: story.topic.title,
@@ -79,6 +76,7 @@ const script: Step = async (data) => {
   });
   const { story } = variant;
   await assertBudget(story.workspaceId);
+  await assertGeminiQuota(story.workspaceId, 1); // one script = 1 request
   await prisma.variant.update({ where: { id: variant.id }, data: { status: "GENERATING", lastError: null } });
 
   // Rebuild the Research object saved by the research step.
@@ -135,7 +133,11 @@ const voice: Step = async (data) => {
   if (variant.scenes.length === 0) throw new Error("The script has no scenes to read.");
 
   const provider = getVoiceProvider();
-  if (provider.name !== "mock") await assertBudget(story.workspaceId); // only real voices cost money
+  if (provider.name !== "mock") await assertBudget(story.workspaceId); // kill switch + budget
+  if (provider.name === "azure") {
+    const characters = variant.scenes.reduce((n, s) => n + s.text.length, 0);
+    await assertAzureFreeQuota(story.workspaceId, characters);
+  }
 
   const language = variant.language as Language;
   const vo = await makeVoiceover(provider, language, variant.scenes);
@@ -151,7 +153,7 @@ const voice: Step = async (data) => {
     saveFile(`${folder}/subtitles.vtt`, vo.vtt),
   ]);
 
-  // The practice voice is free, so we only record real voices.
+  // Record real voices (Edge is free, but we still count its characters).
   if (provider.name !== "mock") {
     await recordCosts(story.workspaceId, story.id, [
       {

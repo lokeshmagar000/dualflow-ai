@@ -3,7 +3,8 @@ import { prisma } from "@dualflow/db";
 import { createStorySchema, JOB_NAMES, LANGUAGES } from "@dualflow/shared";
 import { buildCues, type WordTiming } from "@dualflow/voice";
 import { contentTypeFor, fileExists, readFile } from "@dualflow/storage";
-import { pipelineQueue } from "../queue";
+import { enqueue } from "../queue";
+import { triggerQuietly } from "../github";
 import { getDefaultWorkspace } from "../workspace";
 
 export async function storyRoutes(app: FastifyInstance) {
@@ -99,11 +100,8 @@ export async function storyRoutes(app: FastifyInstance) {
       data: { status: "GENERATING", lastError: null, run: { increment: 1 } },
     });
     await prisma.variant.updateMany({ where: { storyId: story.id }, data: { status: "DRAFT", lastError: null } });
-    await pipelineQueue.add(
-      JOB_NAMES.research,
-      { storyId: story.id, run: updated.run },
-      { jobId: `research-${story.id}-${updated.run}` },
-    );
+    await enqueue(JOB_NAMES.research, { storyId: story.id, run: updated.run });
+    await triggerQuietly(req.log); // free plan: start a GitHub Actions run now
     return { ok: true, run: updated.run };
   });
 
@@ -138,12 +136,9 @@ export async function storyRoutes(app: FastifyInstance) {
     });
     await prisma.topic.update({ where: { id: topic.id }, data: { status: "USED" } });
 
-    // jobId makes this safe: adding the same job twice does nothing.
-    await pipelineQueue.add(
-      JOB_NAMES.research,
-      { storyId: story.id, run: story.run },
-      { jobId: `research-${story.id}-${story.run}` },
-    );
+    // The job key makes this safe: adding the same job twice does nothing.
+    await enqueue(JOB_NAMES.research, { storyId: story.id, run: story.run });
+    await triggerQuietly(req.log); // free plan: start a GitHub Actions run now
 
     return reply.code(201).send(story);
   });

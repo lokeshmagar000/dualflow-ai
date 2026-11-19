@@ -441,3 +441,30 @@ model AuditLog {
 
   @@index([workspaceId, createdAt])
 }
+
+// ---------- Job queue (free plan: lives in Postgres, no Redis) ----------
+
+// One row = one pipeline step waiting to run (or done / failed).
+// The worker takes the oldest QUEUED row whose runAfter time has passed.
+model PipelineJob {
+  id          String    @id @default(cuid())
+  // Unique name like "voice-<variantId>-<run>". Adding the same key twice
+  // does nothing, so a retried step never queues duplicate work.
+  key         String    @unique
+  step        String // research, script, voice, thumbnail, render, publish
+  storyId     String
+  variantId   String?
+  run         Int       @default(1)
+  status      JobStatus @default(QUEUED)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  // Do not start before this time (used for retries and "wait for tomorrow's quota").
+  runAfter    DateTime  @default(now())
+  // While RUNNING: if the worker crashes, the job is free again after this time.
+  lockedUntil DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAfter])
+}
