@@ -1,0 +1,31 @@
+{
+  "name": "subtitle-styles-preview",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Makes preview pictures and short clips of 5 subtitle styles, in English and Nepali.",
+  "scripts": {
+    "render": "tsx src/render.ts",
+    "studio": "remotion studio src/index.ts"
+  },
+  "dependencies": {
+    "@fontsource/baloo-2": "5.3.0",
+    "@fontsource/hind": "5.3.0",
+    "@fontsource/kalam": "5.3.0",
+    "@fontsource/mukta": "5.3.0",
+    "@fontsource/noto-sans-devanagari": "5.3.0",
+    "@fontsource/poppins": "5.3.0",
+    "@remotion/bundler": "4.0.540",
+    "@remotion/cli": "4.0.540",
+    "@remotion/renderer": "4.0.540",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "4.0.540"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

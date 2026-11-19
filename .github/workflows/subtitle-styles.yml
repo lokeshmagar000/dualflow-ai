@@ -1,0 +1,50 @@
+# Makes preview pictures and clips of 5 subtitle styles (English + Nepali)
+# over a real free Pixabay video clip. Uses no AI and no paid service.
+# The results are saved in tools/subtitle-styles/previews/ on the same branch,
+# and also as a download ("artifact") on the run page.
+name: Subtitle style previews
+on:
+  workflow_dispatch:
+    inputs:
+      background:
+        description: "What background clip to search on Pixabay"
+        type: string
+        default: "kathmandu"
+  push:
+    branches: ["claude/**"]
+    paths: ["tools/subtitle-styles/src/**", ".github/workflows/subtitle-styles.yml"]
+
+permissions:
+  contents: write # to save the pictures back to the branch
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: tools/subtitle-styles
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: FedericoCarboni/setup-ffmpeg@v3
+      - run: npm ci --no-audit --no-fund
+      - name: Render previews
+        env:
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          BG_QUERY: ${{ inputs.background || 'kathmandu' }}
+          OUT: previews
+        run: npm run render
+      - uses: actions/upload-artifact@v4
+        with:
+          name: subtitle-style-previews
+          path: tools/subtitle-styles/previews
+      - name: Save previews to the branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898732+github-actions[bot]@users.noreply.github.com"
+          git add previews
+          git commit -m "Subtitle style previews (rendered in Actions) [skip ci]" || exit 0
+          git push
