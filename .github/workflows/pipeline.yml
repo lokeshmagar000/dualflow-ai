@@ -1,0 +1,114 @@
+# FREE PLAN: this is the "worker". It makes the videos, then the machine stops.
+#
+# It starts:
+#   - every 3 hours by itself (schedule), and
+#   - when you press "Run now" in the dashboard (or "Run workflow" in the Actions tab).
+#
+# Your keys are stored in GitHub: Settings -> Secrets and variables -> Actions.
+# They are never written in the code. See README "Free plan setup".
+name: Pipeline
+on:
+  schedule:
+    - cron: "17 */3 * * *" # minute 17 of every 3rd hour (UTC). Odd minutes avoid GitHub's busy times.
+  workflow_dispatch:
+    inputs:
+      demo_story:
+        description: "Add a practice story first (Mount Everest, Nepali + English)"
+        type: boolean
+        default: false
+      remake_latest:
+        description: "Remake the newest video (same script and voice, no Gemini needed)"
+        type: boolean
+        default: false
+  # Test runs: changing this file on a claude/ branch makes one practice story.
+  push:
+    branches: ["claude/**"]
+    paths: [.github/workflows/pipeline.yml]
+
+# Only one run at a time; a new request waits for the current run to finish.
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # AI (free: gemini). Switch to claude later by changing the AI_PROVIDER variable.
+      AI_PROVIDER: ${{ vars.AI_PROVIDER || 'gemini' }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+      GEMINI_DAILY_REQUESTS: ${{ vars.GEMINI_DAILY_REQUESTS || '20' }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # Voice (free: azure F0 or edge)
+      # Gemini voices (same free key as the AI). When today's free voices run out, Edge is the backup.
+      VOICE_PROVIDER: ${{ vars.VOICE_PROVIDER || 'gemini' }}
+      VOICE_FALLBACK: ${{ vars.VOICE_FALLBACK || 'edge' }}
+      GEMINI_VOICE_NE: ${{ vars.GEMINI_VOICE_NE }}
+      GEMINI_VOICE_EN: ${{ vars.GEMINI_VOICE_EN }}
+      GEMINI_TTS_DAILY_REQUESTS: ${{ vars.GEMINI_TTS_DAILY_REQUESTS || '14' }}
+      # Video maker: free stock clips for the backgrounds (Pixabay first, then Pexels;
+      # without a key: colour backgrounds).
+      PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      CHANNEL_NAME: ${{ vars.CHANNEL_NAME || 'DualFlow' }}
+      RENDER_CONCURRENCY: 2
+      EDGE_VOICE_NE: ${{ vars.EDGE_VOICE_NE }}
+      AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
+      AZURE_SPEECH_REGION: ${{ vars.AZURE_SPEECH_REGION }}
+      AZURE_VOICE_NE: ${{ vars.AZURE_VOICE_NE }}
+      # Files (free: Cloudflare R2)
+      STORAGE: r2
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET || vars.R2_BUCKET || 'dualflow' }}
+      WORKER_CONCURRENCY: "2"
+      WORKER_MAX_MINUTES: "40"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      # FFmpeg turns the voice MP3 into raw audio. A ready-made copy downloads in seconds
+      # (installing it with apt took about 8 minutes).
+      - uses: FedericoCarboni/setup-ffmpeg@v3
+        id: ffmpeg
+      - name: Install
+        run: |
+          pnpm install --frozen-lockfile
+          pip install -r packages/voice/python/requirements.txt
+          ffmpeg -version >/dev/null && ffmpeg -version | head -n 1
+      - name: Check settings
+        run: |
+          if [ -z "$DATABASE_URL" ]; then echo "::error::Add the DATABASE_URL secret (see README, Free plan setup)"; exit 1; fi
+      - name: Update the database tables
+        run: pnpm db:generate && pnpm --filter @dualflow/db run deploy
+      - name: Add a practice story
+        if: inputs.demo_story || github.event_name == 'push'
+        run: pnpm --filter @dualflow/worker demo-story
+      - name: Remake the newest video
+        if: inputs.remake_latest
+        run: pnpm --filter @dualflow/worker remake-video
+      - name: Make the videos
+        run: pnpm --filter @dualflow/worker once
+        env:
+          VIDEO_COPY_DIR: ${{ github.workspace }}/videos
+      # Download the finished videos from the bottom of the run page ("videos").
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: videos
+          path: videos/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Delete old files (keeps storage under 10 GB)
+        if: always()
+        run: pnpm --filter @dualflow/worker cleanup

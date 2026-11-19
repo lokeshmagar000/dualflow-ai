@@ -37,6 +37,8 @@ export interface PipelineJobData {
   storyId: string;
   /** Present for steps that run once per language (script, voice, render...). */
   variantId?: string;
+  /** Which run of the pipeline this is (goes up by one on every retry). */
+  run?: number;
 }
 
 /* ---------- Request validation (zod) ---------- */

@@ -1,0 +1,49 @@
+/**
+ * "Run now": start the GitHub Actions pipeline run right away,
+ * instead of waiting for the next scheduled run (every 3 hours).
+ *
+ * Settings (on Render, never in code):
+ *   GITHUB_REPO            e.g. "lokeshmagar000/dualflow-ai"
+ *   GITHUB_DISPATCH_TOKEN  a fine-grained GitHub token for ONLY this repo,
+ *                          with "Actions: Read and write" permission
+ *   GITHUB_REF             branch to run (default "main")
+ * Without them, "Run now" is off and the scheduled runs (or your local worker) do the work.
+ */
+const WORKFLOW = "pipeline.yml";
+
+export function githubRunConfigured(): boolean {
+  return Boolean(process.env.GITHUB_REPO && process.env.GITHUB_DISPATCH_TOKEN);
+}
+
+export async function triggerPipelineRun(): Promise<{ started: boolean; message: string }> {
+  if (!githubRunConfigured()) {
+    return { started: false, message: "Run now is not set up (GITHUB_REPO and GITHUB_DISPATCH_TOKEN). The next scheduled run will do it." };
+  }
+  const repo = process.env.GITHUB_REPO!;
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return { started: false, message: "GITHUB_REPO must look like owner/name." };
+  const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/dispatches`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${process.env.GITHUB_DISPATCH_TOKEN}`,
+      accept: "application/vnd.github+json",
+      "x-github-api-version": "2022-11-28",
+      "content-type": "application/json",
+      "user-agent": "dualflow-ai",
+    },
+    body: JSON.stringify({ ref: process.env.GITHUB_REF || "main" }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (res.status === 204) return { started: true, message: "Started. Videos will be ready in about 10-15 minutes." };
+  return { started: false, message: `GitHub said ${res.status}: ${(await res.text()).slice(0, 200)}` };
+}
+
+/** Start a run if possible, but never let a GitHub problem break the request. */
+export async function triggerQuietly(log: { warn: (msg: string) => void }) {
+  if (!githubRunConfigured() || (process.env.AUTO_RUN_ON_NEW_STORY ?? "true") === "false") return;
+  try {
+    const r = await triggerPipelineRun();
+    if (!r.started) log.warn(r.message);
+  } catch (err) {
+    log.warn(`Could not start the GitHub run: ${(err as Error).message}`);
+  }
+}

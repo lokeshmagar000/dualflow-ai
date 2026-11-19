@@ -1,0 +1,51 @@
+# Compares free Nepali voices side by side, so you can pick the one you like.
+#   1. Gemini TTS  (same free Google AI Studio key as the app)
+#   2. Edge TTS    (what we use now)
+# (Meta's open-source MMS voice was left out: its license does not allow money-making videos.)
+# Run it: Actions tab -> "Voice compare" -> "Run workflow".
+# Download the "nepali-voice-compare" file at the bottom of the run page.
+name: Voice compare
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  NE: "नमस्ते साथीहरू! आज हामी सगरमाथाको बारेमा तीनवटा अचम्मका कुरा जान्नेछौं। सगरमाथा संसारकै सबैभन्दा अग्लो हिमाल हो, जसको उचाइ आठ हजार आठ सय उनन्चास मिटर छ। भिडियो मन पर्यो भने लाइक र फलो गर्न नबिर्सनुहोला।"
+jobs:
+  gemini-and-edge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r packages/voice/python/requirements.txt
+      - name: Gemini voices
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          mkdir -p samples
+          STYLE="Read this in natural, warm Nepali, like a friendly YouTube storyteller from Kathmandu"
+          for v in Kore Aoede Charon Puck; do
+            json=$(python -c 'import json,os,sys; print(json.dumps({"text": os.environ["NE"], "voice": sys.argv[1], "style": sys.argv[2]}))' "$v" "$STYLE")
+            if out=$(echo "$json" | python packages/voice/python/gemini_speak.py "samples/gemini-$v.wav" 2>&1); then
+              echo "PASS gemini $v $out" | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              echo "FAIL gemini $v: $(echo "$out" | tail -c 600)" | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+            sleep 25 # free tier allows about 3 requests a minute
+          done
+      - name: Edge voices (for comparison)
+        run: |
+          for v in ne-NP-HemkalaNeural ne-NP-SagarNeural; do
+            python -c 'import json,os,sys; print(json.dumps({"text": os.environ["NE"], "voice": sys.argv[1]}))' "$v" \
+              | python packages/voice/python/edge_speak.py "samples/edge-$v.mp3" > /dev/null \
+              && echo "PASS edge $v" | tee -a "$GITHUB_STEP_SUMMARY" \
+              || echo "FAIL edge $v" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nepali-voice-compare
+          path: samples/
+          retention-days: 30
+

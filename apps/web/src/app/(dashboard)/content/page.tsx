@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LANGUAGE_LABELS } from "@dualflow/shared";
 import { api, type Story } from "@/lib/api";
 import { ApiError, Card, PageHeader, StatusBadge } from "@/components/ui";
@@ -19,11 +20,12 @@ export default async function ContentPage() {
         {stories.map((s) => (
           <Card key={s.id}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="font-semibold">{s.topic.title}</p>
+              <Link href={`/content/${s.id}`} className="font-semibold hover:text-brand-600">{s.topic.title} →</Link>
               <span className="flex items-center gap-2 text-xs text-zinc-500">
                 {s.format.toLowerCase()} <StatusBadge status={s.status} />
               </span>
             </div>
+            {s.lastError && <p className="mb-3 text-sm text-red-600">{s.lastError}</p>}
             <div className="grid gap-3 sm:grid-cols-2">
               {s.variants.map((v) => (
                 <div key={v.id} className="rounded-xl border border-zinc-200 p-3">

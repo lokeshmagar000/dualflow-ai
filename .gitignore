@@ -6,3 +6,8 @@ dist
 .env.local
 *.log
 coverage
+
+# Files made by the pipeline (audio, subtitles, videos)
+/storage/
+dump.rdb
+*.tsbuildinfo

@@ -1,61 +1,371 @@
 /**
- * The pipeline steps. In Phase 0 they are placeholders that only move the
- * status forward, so we can test the whole flow end to end.
- * Phase 1 fills them with real AI calls (Claude, Azure TTS, Remotion).
+ * The pipeline steps.
  *
  * Order:  research (once per story)
  *      -> script, voice, thumbnail, render (once per language, in parallel)
+ *
+ * Phase 1A: research and script are real (Gemini free, Claude, or practice data: AI_PROVIDER).
+ * Phase 1B: voice is real (Gemini, Azure, Edge or the practice voice: VOICE_PROVIDER)
+ *           and makes the subtitles too.
+ * Phase 1C: render makes the real .mp4 and thumbnail (Remotion + free Pexels clips).
  */
-import { prisma } from "@dualflow/db";
-import { JOB_NAMES, type JobName, type PipelineJobData } from "@dualflow/shared";
-import { pipelineQueue } from "../connection";
+import { prisma, type Prisma } from "@dualflow/db";
+import { researchTopic, writeScript, type Research } from "@dualflow/ai";
+import { JOB_NAMES, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
+import { AIQuotaError, nextQuotaReset } from "@dualflow/ai";
+import {
+  buildCues,
+  getVoiceProvider,
+  makeVoiceover,
+  VoiceQuotaError,
+  type Voiceover,
+  type WordTiming,
+} from "@dualflow/voice";
+import { readFile, saveFile } from "@dualflow/storage";
+import { findMedia, makeJobFolder, renderThumbnail, renderVideo, type FoundMedia } from "@dualflow/video";
+import { copyFile, mkdir, readFile as readLocal, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { enqueue } from "@dualflow/queue";
+import {
+  assertAzureFreeQuota,
+  assertBudget,
+  assertGeminiQuota,
+  assertGeminiVoiceQuota,
+  recordCosts,
+  voiceFallback,
+} from "../budget";
 
 type Step = (data: PipelineJobData) => Promise<void>;
 
 /** Queue a step for every variant (Nepali and English) at the same time. */
-async function fanOut(storyId: string, next: JobName) {
+async function fanOut(storyId: string, run: number, next: JobName) {
   const variants = await prisma.variant.findMany({ where: { storyId } });
-  await Promise.all(
-    variants.map((v) =>
-      pipelineQueue.add(next, { storyId, variantId: v.id }, { jobId: `${next}-${v.id}` }),
-    ),
-  );
+  await Promise.all(variants.map((v) => enqueue(next, { storyId, variantId: v.id, run })));
 }
 
-/** Queue the next step for one variant. */
+/**
+ * Queue the next step for one variant.
+ * The job key includes the run number: adding the same key twice does nothing,
+ * which stops duplicate work if a step is retried.
+ */
 async function then(data: PipelineJobData, next: JobName) {
-  await pipelineQueue.add(next, data, { jobId: `${next}-${data.variantId}` });
+  await enqueue(next, data);
 }
 
-const research: Step = async ({ storyId }) => {
-  // TODO Phase 1: Claude + web search -> ResearchNote rows.
-  await fanOut(storyId, JOB_NAMES.script);
+const research: Step = async ({ storyId, run = 1 }) => {
+  const story = await prisma.story.findUniqueOrThrow({ where: { id: storyId }, include: { topic: true } });
+  await assertBudget(story.workspaceId);
+  await assertGeminiQuota(story.workspaceId, 2); // research = 2 requests
+
+  const { research, costs } = await researchTopic({
+    title: story.topic.title,
+    notes: story.topic.notes,
+    format: story.format,
+  });
+  await recordCosts(story.workspaceId, story.id, costs);
+
+  // Save the facts on the topic. Replacing old ones first makes a retry safe.
+  await prisma.$transaction([
+    prisma.researchNote.deleteMany({ where: { topicId: story.topicId } }),
+    prisma.researchNote.createMany({
+      data: research.facts.map((f) => ({
+        topicId: story.topicId,
+        claim: f.claim,
+        sourceUrl: f.sourceUrl || null,
+        verified: Boolean(f.sourceUrl),
+      })),
+    }),
+    prisma.story.update({
+      where: { id: story.id },
+      data: {
+        visualPlan: research.visualPlan as unknown as Prisma.InputJsonValue,
+        research: { summary: research.summary, facts: research.facts } as unknown as Prisma.InputJsonValue,
+      },
+    }),
+  ]);
+
+  await fanOut(storyId, run, JOB_NAMES.script);
 };
 
 const script: Step = async (data) => {
-  // TODO Phase 1: Claude writes the script natively in this variant's language.
-  await prisma.variant.update({ where: { id: data.variantId }, data: { status: "GENERATING" } });
+  const variant = await prisma.variant.findUniqueOrThrow({
+    where: { id: data.variantId },
+    include: { story: { include: { topic: true } } },
+  });
+  const { story } = variant;
+  await assertBudget(story.workspaceId);
+  await assertGeminiQuota(story.workspaceId, 1); // one script = 1 request
+  await prisma.variant.update({ where: { id: variant.id }, data: { status: "GENERATING", lastError: null } });
+
+  // Rebuild the Research object saved by the research step.
+  const saved = story.research as unknown as Pick<Research, "summary" | "facts"> | null;
+  const visualPlan = story.visualPlan as unknown as Research["visualPlan"] | null;
+  if (!saved || !visualPlan) throw new Error("Research is missing for this story.");
+
+  const { script, costs } = await writeScript({
+    language: variant.language as Language,
+    title: story.topic.title,
+    format: story.format,
+    research: { ...saved, visualPlan },
+  });
+  await recordCosts(story.workspaceId, story.id, costs);
+
+  // Replace the scenes (safe to run twice) and save title, description, hashtags.
+  await prisma.$transaction([
+    prisma.scene.deleteMany({ where: { variantId: variant.id } }),
+    prisma.scene.createMany({
+      data: script.scenes.map((s, i) => ({
+        variantId: variant.id,
+        order: i + 1,
+        purpose: visualPlan[i]?.purpose ?? null,
+        text: s.text,
+      })),
+    }),
+    prisma.variant.update({
+      where: { id: variant.id },
+      data: {
+        title: script.title,
+        description: script.description,
+        hashtags: script.hashtags,
+        thumbnailHeadline: script.thumbnailHeadline,
+      },
+    }),
+  ]);
+
   await then(data, JOB_NAMES.voice);
 };
 
+/**
+ * Voice: read every scene aloud, glue the audio together, and make subtitles
+ * from the exact time of every word.
+ * Saves: voice.wav, subtitles.srt, subtitles.vtt (in storage),
+ *        a Voiceover row (with word times), a Subtitle row,
+ *        and the start/end time of every scene.
+ */
 const voice: Step = async (data) => {
-  // TODO Phase 1: Azure neural TTS (ne-NP-HemkalaNeural for Nepali) + word timings.
+  const variant = await prisma.variant.findUniqueOrThrow({
+    where: { id: data.variantId },
+    include: { story: true, scenes: { orderBy: { order: "asc" } } },
+  });
+  const { story } = variant;
+  if (variant.scenes.length === 0) throw new Error("The script has no scenes to read.");
+
+  const language = variant.language as Language;
+  const characters = variant.scenes.reduce((n, s) => n + s.text.length, 0);
+  let provider = getVoiceProvider(story.id); // story id: Gemini picks a voice per story
+  if (provider.name !== "mock") await assertBudget(story.workspaceId); // kill switch + budget
+  if (provider.name === "azure") await assertAzureFreeQuota(story.workspaceId, characters);
+
+  let vo: Voiceover;
+  try {
+    // Gemini: check the free daily voice limit first (it is small, about 15 a day).
+    if (provider.name === "gemini") await assertGeminiVoiceQuota(story.workspaceId, variant.scenes);
+    vo = await makeVoiceover(provider, language, variant.scenes);
+  } catch (err) {
+    // Gemini's free voices are used up for today: use the backup voice so the video is not late.
+    const fallback = voiceFallback();
+    if (!(err instanceof VoiceQuotaError || err instanceof AIQuotaError) || provider.name !== "gemini") throw err;
+    if (!fallback) throw err instanceof AIQuotaError ? err : new AIQuotaError(err.message, nextQuotaReset());
+    console.log(`Gemini voice limit reached, using the backup voice (${fallback.name}) for this video.`);
+    provider = fallback;
+    vo = await makeVoiceover(provider, language, variant.scenes);
+  }
+
+  // File names include the run number, so a retry never overwrites files
+  // that an older run (or the dashboard) is still using.
+  const folder = `stories/${story.id}/${language}/run-${data.run ?? 1}`;
+  const audioKey = `${folder}/voice.wav`;
+  const srtKey = `${folder}/subtitles.srt`;
+  await Promise.all([
+    saveFile(audioKey, vo.wav),
+    saveFile(srtKey, vo.srt),
+    saveFile(`${folder}/subtitles.vtt`, vo.vtt),
+  ]);
+
+  // Record real voices (Edge is free, but we still count its characters).
+  // Gemini counts requests, because its free limit is "requests per day".
+  if (provider.name !== "mock") {
+    await recordCosts(story.workspaceId, story.id, [
+      provider.name === "gemini"
+        ? { provider: "gemini-tts", units: vo.requests, unitType: "requests", usd: 0 }
+        : {
+            provider: `${provider.name}-tts`,
+            units: vo.characters,
+            unitType: "characters",
+            usd: provider.costUsd(vo.characters),
+          },
+    ]);
+  }
+
+  // Replace old rows (safe to run twice), then save the new ones together.
+  await prisma.$transaction([
+    prisma.voiceover.deleteMany({ where: { variantId: variant.id } }),
+    prisma.subtitle.deleteMany({ where: { variantId: variant.id } }),
+    prisma.voiceover.create({
+      data: {
+        variantId: variant.id,
+        provider: provider.name,
+        voice: provider.voiceFor(language),
+        storageKey: audioKey,
+        wordTimings: vo.words as unknown as Prisma.InputJsonValue,
+      },
+    }),
+    prisma.subtitle.create({ data: { variantId: variant.id, storageKey: srtKey } }),
+    ...vo.scenes.map((t) =>
+      prisma.scene.update({
+        where: { variantId_order: { variantId: variant.id, order: t.order } },
+        data: { startMs: t.startMs, endMs: t.endMs },
+      }),
+    ),
+    prisma.variant.update({ where: { id: variant.id }, data: { durationSec: vo.durationMs / 1000 } }),
+  ]);
+
   await then(data, JOB_NAMES.thumbnail);
 };
 
 const thumbnail: Step = async (data) => {
-  // TODO Phase 1: AI background + headline rendered with Remotion.
+  // The thumbnail is made together with the video in the render step
+  // (it uses the same pictures), so this step only passes the job on.
   await then(data, JOB_NAMES.render);
 };
 
+/**
+ * Render: make the real .mp4 and the thumbnail.
+ *  1. Download the voice from storage into a job folder.
+ *  2. Find a free stock clip for every scene (Pixabay or Pexels, if a key is set).
+ *  3. Remotion draws the video: pictures + voice + title + subtitles.
+ *  4. Upload video.mp4 and thumbnail.jpg to storage; save the rows.
+ */
 const render: Step = async (data) => {
-  // TODO Phase 1: Remotion render with Devanagari subtitles.
-  await prisma.variant.update({ where: { id: data.variantId }, data: { status: "READY" } });
+  const variant = await prisma.variant.findUniqueOrThrow({
+    where: { id: data.variantId },
+    include: {
+      story: { include: { topic: true } },
+      scenes: { orderBy: { order: "asc" } },
+      voiceovers: { orderBy: { createdAt: "desc" }, take: 1 },
+    },
+  });
+  const { story } = variant;
+  const voiceover = variant.voiceovers[0];
+  if (!voiceover) throw new Error("There is no voiceover to put in the video.");
+  if (!variant.durationSec) throw new Error("The voiceover length is unknown.");
+  const language = variant.language as Language;
+  const format = story.format;
+  const renderJob = await prisma.renderJob.create({
+    data: { variantId: variant.id, status: "RUNNING", attempts: 1 },
+  });
+
+  const job = await makeJobFolder();
+  try {
+    await writeFile(path.join(job.dir, "voice.wav"), await readFile(voiceover.storageKey));
+
+    // One picture per scene, using the search words from the research step.
+    const plan = (story.visualPlan as unknown as Research["visualPlan"] | null) ?? [];
+    const used = new Set<number>();
+    const media: (FoundMedia | null)[] = [];
+    for (const [i, scene] of variant.scenes.entries()) {
+      media.push(await findMedia(plan[i]?.visualQuery ?? story.topic.title, format, job.dir, `scene-${scene.order}`, used));
+    }
+
+    const words = (voiceover.wordTimings as unknown as WordTiming[] | null) ?? [];
+    const durationMs = Math.round(variant.durationSec * 1000);
+    const brand = process.env.CHANNEL_NAME || "DualFlow";
+    const accent = process.env.VIDEO_ACCENT || "#FFC83D";
+    const toMedia = (m: FoundMedia | null | undefined) => (m ? { src: job.url(m.file), kind: m.kind } : null);
+
+    const videoFile = path.join(job.dir, "video.mp4");
+    const started = Date.now();
+    await renderVideo(
+      {
+        format,
+        language,
+        title: variant.thumbnailHeadline || variant.title || story.topic.title,
+        audioFile: job.url("voice.wav"),
+        durationMs,
+        brand,
+        accent,
+        scenes: variant.scenes.map((s, i) => ({
+          startMs: s.startMs ?? 0,
+          endMs: s.endMs ?? durationMs,
+          text: s.text,
+          media: toMedia(media[i]),
+        })),
+        cues: buildCues(words),
+      },
+      videoFile,
+      (p) => console.log(`[render] ${language} ${Math.round(p * 100)}%`),
+    );
+    console.log(`[render] ${language} video made in ${Math.round((Date.now() - started) / 1000)} s`);
+
+    const thumbFile = path.join(job.dir, "thumbnail.jpg");
+    await renderThumbnail(
+      {
+        format,
+        language,
+        headline: variant.thumbnailHeadline || variant.title || story.topic.title,
+        media: toMedia(media.find((m) => m) ?? null),
+        brand,
+        accent,
+      },
+      thumbFile,
+    );
+
+    // Upload. The run number in the folder keeps a retry from overwriting older files.
+    const folder = `stories/${story.id}/${language}/run-${data.run ?? 1}`;
+    const videoKey = `${folder}/video.mp4`;
+    const thumbKey = `${folder}/thumbnail.jpg`;
+    await saveFile(videoKey, await readLocal(videoFile));
+    await saveFile(thumbKey, await readLocal(thumbFile));
+    // Optional: also keep a copy here (GitHub shows them as a download, so you can watch them).
+    if (process.env.VIDEO_COPY_DIR) {
+      await mkdir(process.env.VIDEO_COPY_DIR, { recursive: true });
+      const name = `${story.topic.title}-${language}`.replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 80);
+      await copyFile(videoFile, path.join(process.env.VIDEO_COPY_DIR, `${name}.mp4`));
+      await copyFile(thumbFile, path.join(process.env.VIDEO_COPY_DIR, `${name}.jpg`));
+    }
+
+    // Remember where each clip came from (credits).
+    const assets = await Promise.all(
+      media.map((m) =>
+        m
+          ? prisma.asset.create({
+              data: {
+                workspaceId: story.workspaceId,
+                type: m.kind === "video" ? "VIDEO" : "IMAGE",
+                storageKey: `${m.provider}:${m.id}`,
+                license: m.provider === "pixabay" ? "Pixabay Content License" : "Pexels license",
+                sourceUrl: m.sourceUrl,
+              },
+            })
+          : null,
+      ),
+    );
+
+    await prisma.$transaction([
+      ...variant.scenes.map((s, i) =>
+        prisma.scene.update({ where: { id: s.id }, data: { assetId: assets[i]?.id ?? null } }),
+      ),
+      prisma.thumbnail.deleteMany({ where: { variantId: variant.id } }),
+      prisma.thumbnail.create({ data: { variantId: variant.id, storageKey: thumbKey, headline: variant.thumbnailHeadline } }),
+      prisma.renderJob.update({ where: { id: renderJob.id }, data: { status: "DONE", outputKey: videoKey } }),
+      prisma.variant.update({ where: { id: variant.id }, data: { status: "READY", outputKey: videoKey, lastError: null } }),
+    ]);
+  } catch (err) {
+    await prisma.renderJob.update({
+      where: { id: renderJob.id },
+      data: { status: "FAILED", error: String((err as Error).message).slice(0, 500) },
+    });
+    throw err;
+  } finally {
+    await job.remove();
+  }
   await markStoryReadyIfDone(data.storyId);
 };
 
 const publish: Step = async () => {
   // TODO Phase 2: YouTube / Facebook / Instagram / TikTok adapters.
+  // Mark the story PUBLISHED only after EVERY upload succeeded: the cleanup
+  // after each run then deletes its files automatically (DELETE_AFTER_PUBLISH).
 };
 
 /** When BOTH languages are ready, the story is ready. */
