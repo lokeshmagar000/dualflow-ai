@@ -48,7 +48,9 @@ jobs:
       GEMINI_VOICE_NE: ${{ vars.GEMINI_VOICE_NE }}
       GEMINI_VOICE_EN: ${{ vars.GEMINI_VOICE_EN }}
       GEMINI_TTS_DAILY_REQUESTS: ${{ vars.GEMINI_TTS_DAILY_REQUESTS || '14' }}
-      # Video maker: free Pexels clips for the backgrounds (without a key: colour backgrounds).
+      # Video maker: free stock clips for the backgrounds (Pixabay first, then Pexels;
+      # without a key: colour backgrounds).
+      PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       CHANNEL_NAME: ${{ vars.CHANNEL_NAME || 'DualFlow' }}
       RENDER_CONCURRENCY: 2

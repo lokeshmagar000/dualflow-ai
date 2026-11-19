@@ -11,7 +11,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "preview": "remotion studio src/remotion/index.ts",
-    "smoke": "tsx src/render.smoke.ts"
+    "smoke": "tsx src/render.smoke.ts",
+    "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@dualflow/shared": "workspace:*",

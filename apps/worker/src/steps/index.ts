@@ -232,7 +232,7 @@ const thumbnail: Step = async (data) => {
 /**
  * Render: make the real .mp4 and the thumbnail.
  *  1. Download the voice from storage into a job folder.
- *  2. Find a free Pexels clip for every scene (if PEXELS_API_KEY is set).
+ *  2. Find a free stock clip for every scene (Pixabay or Pexels, if a key is set).
  *  3. Remotion draws the video: pictures + voice + title + subtitles.
  *  4. Upload video.mp4 and thumbnail.jpg to storage; save the rows.
  */
@@ -324,7 +324,7 @@ const render: Step = async (data) => {
       await copyFile(thumbFile, path.join(process.env.VIDEO_COPY_DIR, `${name}.jpg`));
     }
 
-    // Remember where each clip came from (Pexels credits).
+    // Remember where each clip came from (credits).
     const assets = await Promise.all(
       media.map((m) =>
         m
@@ -332,8 +332,8 @@ const render: Step = async (data) => {
               data: {
                 workspaceId: story.workspaceId,
                 type: m.kind === "video" ? "VIDEO" : "IMAGE",
-                storageKey: `pexels:${m.pexelsId}`,
-                license: "Pexels license",
+                storageKey: `${m.provider}:${m.id}`,
+                license: m.provider === "pixabay" ? "Pixabay Content License" : "Pexels license",
                 sourceUrl: m.sourceUrl,
               },
             })
