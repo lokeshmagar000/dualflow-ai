@@ -38,6 +38,7 @@ else {
           method: "POST",
           headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
           body: JSON.stringify({ contents: [{ parts: [{ text: "Reply with the one Nepali word for hello." }] }] }),
+          signal: AbortSignal.timeout(30_000),
         });
         const body = (await res.json().catch(() => ({}))) as any;
         if (res.ok) {
