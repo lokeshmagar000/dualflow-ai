@@ -3,9 +3,12 @@
  * GitHub Actions runs it after each pipeline run (`pnpm --filter @dualflow/worker cleanup`).
  *
  *  1. Deletes files from OLD runs of a story (a retry makes new files in run-2, run-3...).
- *  2. Deletes all files of stories that were PUBLISHED or FAILED more than
- *     RETENTION_DAYS ago (default 30). The story text stays in the database.
- *  3. Deletes finished job rows older than 30 days, so the database stays small (Neon free: 1 GB).
+ *  2. Deletes all files of a story as soon as its video is uploaded everywhere
+ *     (status PUBLISHED and every upload succeeded). Turn off with DELETE_AFTER_PUBLISH=false
+ *     to keep them for RETENTION_DAYS instead. The story text stays in the database.
+ *  3. Deletes all files of stories that FAILED (or were PUBLISHED) more than
+ *     RETENTION_DAYS ago (default 30).
+ *  4. Deletes finished job rows older than 30 days, so the database stays small (Neon free: 1 GB).
  */
 import { prisma } from "@dualflow/db";
 import { deleteFile, listFiles } from "@dualflow/storage";
@@ -18,8 +21,22 @@ async function main() {
   let deleted = 0;
   let freedBytes = 0;
 
-  const stories = await prisma.story.findMany({ select: { id: true, run: true, status: true, updatedAt: true } });
+  const deleteAfterPublish = (process.env.DELETE_AFTER_PUBLISH ?? "true").toLowerCase() !== "false";
+  const stories = await prisma.story.findMany({
+    select: {
+      id: true,
+      run: true,
+      status: true,
+      updatedAt: true,
+      variants: { select: { publications: { select: { status: true } } } },
+    },
+  });
   const byId = new Map(stories.map((s) => [s.id, s]));
+  /** Uploaded everywhere: PUBLISHED, has uploads, and none of them failed or is still waiting. */
+  const uploadedEverywhere = (s: (typeof stories)[number]) => {
+    const pubs = s.variants.flatMap((v) => v.publications);
+    return s.status === "PUBLISHED" && pubs.length > 0 && pubs.every((p) => p.status === "PUBLISHED");
+  };
 
   for (const file of await listFiles("stories/")) {
     // Keys look like: stories/<storyId>/<language>/run-<number>/<file>
@@ -29,7 +46,8 @@ async function main() {
     const oldRun = story && Number.isFinite(run) && run < story.run;
     const expired = story && ["PUBLISHED", "FAILED"].includes(story.status) && story.updatedAt < oldDate;
     const orphan = !story; // the story was deleted
-    if (oldRun || expired || orphan) {
+    const uploaded = story && deleteAfterPublish && uploadedEverywhere(story);
+    if (oldRun || expired || orphan || uploaded) {
       await deleteFile(file.key);
       deleted++;
       freedBytes += file.size;

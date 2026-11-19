@@ -226,6 +226,8 @@ const render: Step = async (data) => {
 
 const publish: Step = async () => {
   // TODO Phase 2: YouTube / Facebook / Instagram / TikTok adapters.
+  // Mark the story PUBLISHED only after EVERY upload succeeded: the cleanup
+  // after each run then deletes its files automatically (DELETE_AFTER_PUBLISH).
 };
 
 /** When BOTH languages are ready, the story is ready. */
