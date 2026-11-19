@@ -24,23 +24,39 @@ else {
   }
 }
 
-// 2) Gemini (one tiny request)
+// 2) Gemini (one tiny request). A "busy" answer (503/429) still means the key was
+//    accepted, so we wait and try again, then try the lighter Flash-Lite model.
 if (!env.GEMINI_API_KEY) report("Gemini (GEMINI_API_KEY)", "MISSING");
 else {
-  const model = env.GEMINI_MODEL || "gemini-flash-latest";
-  try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-      body: JSON.stringify({ contents: [{ parts: [{ text: "Reply with the one Nepali word for hello." }] }] }),
-    });
-    const body = (await res.json().catch(() => ({}))) as any;
-    if (res.ok) {
-      const text = body.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join("").trim();
-      report("Gemini (GEMINI_API_KEY)", "PASS", `model ${model} answered: ${clean(text ?? "")}`);
-    } else report("Gemini (GEMINI_API_KEY)", "FAIL", `HTTP ${res.status}: ${clean(body.error?.message ?? "")}`);
-  } catch (e) {
-    report("Gemini (GEMINI_API_KEY)", "FAIL", clean((e as Error).message));
+  const models = [env.GEMINI_MODEL || "gemini-flash-latest", "gemini-flash-lite-latest"];
+  let done = false;
+  let last = "";
+  outer: for (const model of models) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+          body: JSON.stringify({ contents: [{ parts: [{ text: "Reply with the one Nepali word for hello." }] }] }),
+        });
+        const body = (await res.json().catch(() => ({}))) as any;
+        if (res.ok) {
+          const text = body.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join("").trim();
+          report("Gemini (GEMINI_API_KEY)", "PASS", `model ${model} answered: ${clean(text ?? "")}`);
+          done = true;
+          break outer;
+        }
+        last = `${model}: HTTP ${res.status}: ${clean(body.error?.message ?? "")}`;
+        if (res.status !== 503 && res.status !== 429 && res.status !== 500) break outer; // a real key problem
+      } catch (e) {
+        last = clean((e as Error).message);
+      }
+      await new Promise((r) => setTimeout(r, attempt * 5000)); // wait 5 s, 10 s
+    }
+  }
+  if (!done) {
+    const busy = /HTTP (503|429|500)/.test(last);
+    report("Gemini (GEMINI_API_KEY)", busy ? "BUSY" : "FAIL", busy ? `key accepted, but Google is busy right now (${last})` : last);
   }
 }
 
