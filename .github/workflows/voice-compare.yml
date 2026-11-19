@@ -1,16 +1,12 @@
 # Compares free Nepali voices side by side, so you can pick the one you like.
 #   1. Gemini TTS  (same free Google AI Studio key as the app)
 #   2. Edge TTS    (what we use now)
-#   3. Meta MMS    (open source, runs on GitHub's computer; test only, not for money-making videos)
+# (Meta's open-source MMS voice was left out: its license does not allow money-making videos.)
 # Run it: Actions tab -> "Voice compare" -> "Run workflow".
 # Download the "nepali-voice-compare" file at the bottom of the run page.
 name: Voice compare
 on:
   workflow_dispatch:
-  push:
-    branches: ["claude/**"]
-    paths:
-      - .github/workflows/voice-compare.yml
 permissions:
   contents: read
 env:
@@ -53,22 +49,3 @@ jobs:
           path: samples/
           retention-days: 30
 
-  meta-mms:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install --index-url https://download.pytorch.org/whl/cpu torch && pip install transformers scipy uroman
-      - name: Meta MMS voice
-        run: |
-          mkdir -p samples
-          python scripts/voice-compare/mms_speak.py "$NE" samples/mms-nepali.wav \
-            && echo "PASS mms" | tee -a "$GITHUB_STEP_SUMMARY" || { echo "FAIL mms" | tee -a "$GITHUB_STEP_SUMMARY"; exit 1; }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nepali-voice-compare-mms
-          path: samples/
-          retention-days: 30
