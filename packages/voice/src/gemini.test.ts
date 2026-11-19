@@ -3,7 +3,7 @@
  */
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { geminiVoice, splitAtPauses, fitWords, VoiceQuotaError } from "./gemini";
+import { geminiVoice, pickVoice, splitAtPauses, fitWords, VoiceQuotaError } from "./gemini";
 import { makeVoiceover } from "./voiceover";
 import { pcmDurationMs, SAMPLE_RATE, silence } from "./wav";
 
@@ -66,7 +66,7 @@ test("all scenes go in ONE request (saves the free daily limit)", async () => {
   assert.ok(!String(calls[0].url).includes("test-key"));
   const body = calls[0].body;
   assert.deepEqual(body.generationConfig.responseModalities, ["AUDIO"]);
-  assert.equal(body.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, "Kore");
+  assert.equal(body.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, "Aoede"); // first default voice when there is no story id
   assert.match(body.contents[0].parts[0].text, /नमस्ते साथीहरू\n\nफलो गर्नुहोस्/);
   assert.ok(vo.cues.length > 0); // subtitles were made
 });
@@ -75,4 +75,15 @@ test("a used-up free limit (429) becomes VoiceQuotaError", async () => {
   process.env.GEMINI_API_KEY = "test-key";
   fakeGemini(Buffer.alloc(0), 429);
   await assert.rejects(geminiVoice().speak("नमस्ते", "ne"), VoiceQuotaError);
+});
+
+test("each story gets one of the chosen voices, and always the same one", () => {
+  const picks = new Set<string>();
+  for (let i = 0; i < 20; i++) {
+    const v = pickVoice("Aoede,Charon", `story-${i}`);
+    assert.equal(v, pickVoice("Aoede,Charon", `story-${i}`)); // same story, same voice
+    picks.add(v);
+  }
+  assert.deepEqual([...picks].sort(), ["Aoede", "Charon"]); // both voices are used
+  assert.equal(pickVoice("Charon"), "Charon");
 });

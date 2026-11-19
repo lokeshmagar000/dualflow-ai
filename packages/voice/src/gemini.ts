@@ -13,7 +13,10 @@
  * word times, stretched to fit the real length of each scene.
  *
  * Settings (all optional):
- *   GEMINI_VOICE_NE / GEMINI_VOICE_EN   voice name (default Kore)
+ *   GEMINI_VOICE_NE / GEMINI_VOICE_EN   voice name, or several separated by commas
+ *                                       (default "Aoede,Charon": a woman and a man).
+ *                                       With several, each story gets one of them, so
+ *                                       videos are sometimes female, sometimes male.
  *   GEMINI_TTS_MODEL                    model (default gemini-3.1-flash-tts-preview)
  *   GEMINI_TTS_STYLE                    how to speak, e.g. "calm, like a news reader"
  */
@@ -190,9 +193,28 @@ function batches(texts: string[]): number[][] {
   return groups;
 }
 
-export function geminiVoice(): VoiceProvider & { speakMany(texts: string[], language: Language): Promise<ManyResult> } {
+/** The owner's chosen voices (2026-11-19): Aoede (woman, light) and Charon (man, calm). */
+const DEFAULT_VOICES = "Aoede,Charon";
+
+/**
+ * Pick one voice from a list for a story. The same story always gets the same
+ * voice (so a retry does not change it), and different stories get different ones.
+ */
+export function pickVoice(list: string, seed?: string): string {
+  const voices = list.split(",").map((v) => v.trim()).filter(Boolean);
+  if (voices.length === 0) return "Kore";
+  if (!seed) return voices[0]!;
+  let hash = 0;
+  for (const ch of seed) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return voices[hash % voices.length]!;
+}
+
+/** `seed` = the story id, used to choose between several voices. */
+export function geminiVoice(
+  seed?: string,
+): VoiceProvider & { speakMany(texts: string[], language: Language): Promise<ManyResult> } {
   const voiceFor = (language: Language) =>
-    (language === "ne" ? process.env.GEMINI_VOICE_NE : process.env.GEMINI_VOICE_EN) || "Kore";
+    pickVoice((language === "ne" ? process.env.GEMINI_VOICE_NE : process.env.GEMINI_VOICE_EN) || DEFAULT_VOICES, seed);
 
   return {
     name: "gemini",

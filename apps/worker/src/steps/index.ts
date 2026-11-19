@@ -142,7 +142,7 @@ const voice: Step = async (data) => {
 
   const language = variant.language as Language;
   const characters = variant.scenes.reduce((n, s) => n + s.text.length, 0);
-  let provider = getVoiceProvider();
+  let provider = getVoiceProvider(story.id); // story id: Gemini picks a voice per story
   if (provider.name !== "mock") await assertBudget(story.workspaceId); // kill switch + budget
   if (provider.name === "azure") await assertAzureFreeQuota(story.workspaceId, characters);
 
