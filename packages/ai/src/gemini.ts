@@ -62,6 +62,11 @@ function retryDelaySeconds(errorBody: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/** How long to wait for one Gemini answer (GEMINI_TIMEOUT_SECONDS, default 60). */
+function timeoutMs(): number {
+  return Number(process.env.GEMINI_TIMEOUT_SECONDS ?? 60) * 1000;
+}
+
 /**
  * Ask Gemini. With `search: true` Gemini searches Google first (for research).
  *
@@ -100,12 +105,25 @@ export async function askGemini(opts: {
         : {}),
     };
     // The key goes in a header (not the URL), so it never shows up in logs.
-    const res = await fetch(`${API}/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(120_000),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${API}/${encodeURIComponent(model)}:generateContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": key },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs()),
+      });
+    } catch (err) {
+      // No answer in time (Google Search sometimes hangs on the free tier): try the next option.
+      const name = (err as Error).name;
+      if (name === "TimeoutError" || name === "AbortError") {
+        console.warn(`Gemini: ${model}${search ? " with search" : ""} did not answer in time, trying the next option.`);
+        lastStatus = 0;
+        lastDetails = "timeout";
+        continue;
+      }
+      throw err;
+    }
 
     if (res.ok) {
       const data = (await res.json()) as GeminiResponse;
@@ -137,6 +155,7 @@ export async function askGemini(opts: {
     // Otherwise the free DAILY limit is used up: wait for tomorrow.
     throw new AIQuotaError("Gemini free daily limit reached. Will continue after it resets.", nextQuotaReset());
   }
+  if (lastStatus === 0) throw new Error("Gemini did not answer in time. Will retry.");
   throw new Error(`Gemini is busy right now (HTTP ${lastStatus}). Will retry.`);
 }
 

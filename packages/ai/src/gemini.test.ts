@@ -110,6 +110,19 @@ test("research without free Google Search quota falls back to no search", async 
   assert.equal(calls[2]!.body.tools, undefined); // third try: no search
 });
 
+test("a request that hangs (timeout) moves on to the next option", async () => {
+  useGemini();
+  let n = 0;
+  globalThis.fetch = (async () => {
+    n++;
+    if (n === 1) throw Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+    return new Response(JSON.stringify(answer(n === 2 ? "Notes" : JSON.stringify(research))), { status: 200 });
+  }) as typeof fetch;
+  const out = await researchTopic({ title: "Everest", format: "SHORT" });
+  assert.equal(out.research.visualPlan.length, 2);
+  assert.equal(n, 3); // hung try, then notes from the next option, then the plan
+});
+
 test("a short per-minute limit is retried soon, not postponed to tomorrow", async () => {
   useGemini();
   fakeFetch([{ status: 429, body: '{"error":{"details":[{"retryDelay":"20s"}]}}' }]);

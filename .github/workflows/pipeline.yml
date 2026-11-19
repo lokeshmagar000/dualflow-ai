@@ -66,7 +66,9 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pip install -r packages/voice/python/requirements.txt
-          ffmpeg -version | head -1
+          # FFmpeg turns the voice MP3 into raw audio. The runner image does not always have it.
+          command -v ffmpeg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
+          ffmpeg -version | head -n 1
       - name: Check settings
         run: |
           if [ -z "$DATABASE_URL" ]; then echo "::error::Add the DATABASE_URL secret (see README, Free plan setup)"; exit 1; fi
