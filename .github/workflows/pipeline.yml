@@ -16,6 +16,10 @@ on:
         description: "Add a practice story first (Mount Everest, Nepali + English)"
         type: boolean
         default: false
+      remake_latest:
+        description: "Remake the newest video (same script and voice, no Gemini needed)"
+        type: boolean
+        default: false
   # Test runs: changing this file on a claude/ branch makes one practice story.
   push:
     branches: ["claude/**"]
@@ -90,6 +94,9 @@ jobs:
       - name: Add a practice story
         if: inputs.demo_story || github.event_name == 'push'
         run: pnpm --filter @dualflow/worker demo-story
+      - name: Remake the newest video
+        if: inputs.remake_latest
+        run: pnpm --filter @dualflow/worker remake-video
       - name: Make the videos
         run: pnpm --filter @dualflow/worker once
         env:

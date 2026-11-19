@@ -10,7 +10,8 @@
     "cleanup": "tsx src/cleanup.ts",
     "typecheck": "tsc --noEmit",
     "check-keys": "tsx src/check-keys.ts",
-    "demo-story": "tsx src/demo-story.ts"
+    "demo-story": "tsx src/demo-story.ts",
+    "remake-video": "tsx src/remake-video.ts"
   },
   "dependencies": {
     "@dualflow/ai": "workspace:*",
