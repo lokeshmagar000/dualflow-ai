@@ -97,7 +97,7 @@ free limit is used, the waiting jobs, a **Run now** button and the kill switch.
      (and later `AZURE_SPEECH_KEY` or `ANTHROPIC_API_KEY`)
    - Variables (optional): `AI_PROVIDER` (default `gemini`), `VOICE_PROVIDER` (default `edge`),
      `GEMINI_DAILY_REQUESTS` (default `20`), `R2_BUCKET` (default `dualflow`), `EDGE_VOICE_NE`
-5. **Render** (render.com → New → Blueprint → this repo). Fill in the values it asks for. For **Run now**, make a
+5. **Render** (render.com → New → Blueprint → this repo). Fill in the values it asks for. Beginner steps: [docs/put-dashboard-online.md](docs/put-dashboard-online.md). For **Run now**, make a
    fine-grained GitHub token for only this repo with *Actions: Read and write* and set it as `GITHUB_DISPATCH_TOKEN`
    (and `GITHUB_REPO=lokeshmagar000/dualflow-ai`) on `dualflow-api`.
 6. Open the dashboard, add an idea, and press **Run now** (or wait for the next 3-hour run).

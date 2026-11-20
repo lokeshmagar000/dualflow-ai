@@ -43,7 +43,7 @@ You need **one Nepali and one English account on each platform** (8 accounts in 
 4. **APIs & Services → Library** → search **YouTube Data API v3** → **Enable**.
 5. **APIs & Services → OAuth consent screen** (Google Auth Platform):
    - User type: **External**. App name: DualFlow. Your email as support and developer contact.
-   - Privacy policy link: `https://<your-dashboard>.onrender.com/privacy`
+   - Privacy policy link: `https://<your-dashboard>/privacy`
    - Add yourself as a test user.
    - Then press **Publish app** so the status is **In production**.
      ⚠️ If it stays in **Testing**, your token stops working after **7 days**.
@@ -72,7 +72,7 @@ You need **one Nepali and one English account on each platform** (8 accounts in 
    (Page settings → Linked accounts → Instagram).
 3. Go to **developers.facebook.com** → **My Apps → Create app** → use case **"Manage everything on your Page"**
    (or type *Business*). Add the products **Facebook Login for Business** and **Instagram** (API setup with Facebook login).
-4. In **App settings → Basic**: add the privacy link `https://<your-dashboard>.onrender.com/privacy`,
+4. In **App settings → Basic**: add the privacy link `https://<your-dashboard>/privacy`,
    terms link `.../terms`, a data deletion link (use the privacy link), an icon and a category.
 5. Open **Graph API Explorer** (Tools menu). Pick your app. Add these permissions:
    `pages_show_list, pages_read_engagement, pages_manage_posts, business_management, instagram_basic, instagram_content_publish`
@@ -94,7 +94,7 @@ You need **one Nepali and one English account on each platform** (8 accounts in 
 
 1. Go to **developers.tiktok.com** → log in → **Manage apps → Connect an app**.
 2. Fill in: app name DualFlow, icon, description, category, and the website/privacy/terms links
-   (`https://<your-dashboard>.onrender.com/`, `/privacy`, `/terms`).
+   (`https://<your-dashboard>/`, `/privacy`, `/terms`).
 3. Add the products **Login Kit** and **Content Posting API** and turn on **Direct Post**.
    Scopes: `user.info.basic`, `video.publish`, `video.upload`.
 4. Submit the app for review. When it is approved you can post **private** videos.

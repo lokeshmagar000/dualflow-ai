@@ -1,4 +1,5 @@
 # FREE PLAN hosting on Render (render.com -> New -> Blueprint -> pick this repo).
+# Beginner steps: docs/put-dashboard-online.md
 # Two free web services: the API and the dashboard. Free services sleep after
 # 15 minutes without visits; the first visit after that takes about a minute.
 # Values marked "sync: false" are asked for once in Render's screen. Never put keys in this file.
@@ -45,7 +46,7 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: API_URL
-        sync: false # the dualflow-api address, e.g. https://dualflow-api.onrender.com
+        sync: false # the dualflow-api address, e.g. https://dualflow-api.onrender.com (check it after the first deploy)
       - key: INTERNAL_API_KEY
         fromService: { type: web, name: dualflow-api, envVarKey: INTERNAL_API_KEY }
       - key: ADMIN_EMAIL
@@ -54,3 +55,6 @@ services:
         sync: false
       - key: SESSION_SECRET
         generateValue: true
+      # Name shown on the public /privacy page (Google, Meta and TikTok read it).
+      - key: NEXT_PUBLIC_OWNER_NAME
+        value: Namaste Facts

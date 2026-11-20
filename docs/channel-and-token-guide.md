@@ -25,8 +25,11 @@ TikTok needs TikTok to approve your app first (a few days to a few weeks), so **
 
 1. **One Google account (Gmail)** for both YouTube channels. Turn on 2-Step Verification
    (myaccount.google.com → Security). Platforms trust accounts with it.
-2. **Your dashboard address.** It looks like `https://dualflow-web.onrender.com`.
+2. **Your dashboard address.** First put the dashboard online with
+   [put-dashboard-online.md](put-dashboard-online.md) (free, about 20 minutes). Render then shows your own address;
+   it looks like `https://dualflow-web.onrender.com` but may have extra letters, like `https://dualflow-web-k3x9.onrender.com`.
    Open `https://<your-dashboard>/privacy` in your browser. You should see the privacy page.
+   In the TikTok and R2 steps below, if your address is different, replace `dualflow-web.onrender.com` with yours.
    Google, Meta and TikTok all ask for this link. In this guide, `<your-dashboard>` means your address.
 3. **Where tokens go (GitHub Secrets):**
    github.com → your repo **dualflow-ai** → **Settings** → **Secrets and variables** → **Actions** →
