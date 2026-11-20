@@ -135,7 +135,7 @@ export function tiktokUploader(language: Lang, env: Env = process.env): Uploader
         const to = i === count - 1 ? size : from + chunkSize; // last piece takes the rest
         const res = await http(uploadUrl, {
           method: "PUT",
-          headers: { "content-type": "video/mp4", "content-length": String(to - from), "content-range": `bytes ${from}-${to - 1}/${size}` },
+          headers: { "content-type": input.mimeType || "video/mp4", "content-length": String(to - from), "content-range": `bytes ${from}-${to - 1}/${size}` },
           body: new Uint8Array(input.video.subarray(from, to)),
           timeoutSec: 600,
           tries: 2,

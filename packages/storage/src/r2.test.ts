@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { deleteFile, fileExists, listFiles, readFile, saveFile } from "./index";
+import { deleteFile, fileExists, fileSize, listFiles, readFile, saveFile, uploadUrlFor } from "./index";
 
 test("R2: upload, check, download, list and delete", async () => {
   const files = new Map<string, Buffer>();
@@ -32,6 +32,7 @@ test("R2: upload, check, download, list and delete", async () => {
         res.statusCode = 404;
         return res.end();
       } else if (req.method === "GET") return res.end(files.get(key));
+      else if (req.method === "HEAD") res.setHeader("content-length", files.get(key)!.length);
       res.end();
     });
   });
@@ -50,6 +51,8 @@ test("R2: upload, check, download, list and delete", async () => {
     assert.equal(await fileExists("stories/s1/ne/run-1/subtitles.srt"), true);
     assert.equal(await fileExists("stories/s1/en/run-1/subtitles.srt"), false);
     assert.equal((await readFile("stories/s1/ne/run-1/subtitles.srt")).toString("utf8"), "नमस्ते");
+    assert.equal(await fileSize("stories/s1/ne/run-1/subtitles.srt"), Buffer.byteLength("नमस्ते"));
+    assert.equal(await fileSize("stories/s1/en/run-1/subtitles.srt"), null);
     const listed = await listFiles("stories/s1/");
     assert.deepEqual(listed.map((f) => f.key), ["stories/s1/ne/run-1/subtitles.srt"]);
     await deleteFile("stories/s1/ne/run-1/subtitles.srt");
@@ -59,4 +62,24 @@ test("R2: upload, check, download, list and delete", async () => {
     process.env.STORAGE = "local";
     server.close();
   }
+});
+
+test("R2: a presigned upload address is signed and expires", async () => {
+  Object.assign(process.env, {
+    STORAGE: "r2",
+    R2_ENDPOINT: "http://127.0.0.1:9",
+    R2_BUCKET: "my-bucket",
+    R2_ACCESS_KEY_ID: "test-id",
+    R2_SECRET_ACCESS_KEY: "test-secret",
+  });
+  try {
+    const url = new URL((await uploadUrlFor("uploads/abc/video.mp4"))!);
+    assert.equal(url.pathname, "/my-bucket/uploads/abc/video.mp4");
+    assert.equal(url.searchParams.get("X-Amz-Expires"), "3600");
+    assert.ok(url.searchParams.get("X-Amz-Signature"));
+    assert.equal(url.toString().includes("test-secret"), false);
+  } finally {
+    process.env.STORAGE = "local";
+  }
+  assert.equal(await uploadUrlFor("uploads/abc/video.mp4"), null);
 });

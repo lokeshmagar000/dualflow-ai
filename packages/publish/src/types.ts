@@ -8,8 +8,10 @@ export type Lang = "ne" | "en";
 export interface UploadInput {
   language: Lang;
   format: "SHORT" | "LONG";
-  /** The .mp4 file's bytes. */
+  /** The video file's bytes. */
   video: Buffer;
+  /** "video/mp4" (default) or "video/quicktime" for .mov files from the bulk upload page. */
+  mimeType?: string;
   /** The thumbnail .jpg (optional; only some platforms use it). */
   thumbnail?: Buffer | null;
   title: string;

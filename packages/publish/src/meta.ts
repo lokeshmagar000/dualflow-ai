@@ -16,6 +16,7 @@
  */
 import { PublishConfigError, PublishQuotaError } from "./errors";
 import { cut, http, readJson } from "./http";
+import { facebookAsReel } from "./limits";
 import type { ChannelCheck, Lang, UploadInput, UploadResult, Uploader } from "./types";
 
 type Env = Record<string, string | undefined>;
@@ -79,12 +80,13 @@ export function facebookUploader(language: Lang, env: Env = process.env): Upload
       const { pageId, token } = need();
       const auth = { authorization: `Bearer ${token}` };
 
-      if (input.format === "LONG") {
-        // Long video: one form upload to graph-video (max 1 GB / 20 min).
+      if (!facebookAsReel(input.format, input.durationSec)) {
+        // Long video (or a Short longer than 90 s, which cannot be a Reel): one form upload to graph-video (max 1 GB / 20 min).
         const form = new FormData();
         form.set("title", cut(input.title, 250));
         form.set("description", caption(input, 5000));
-        form.set("source", new Blob([new Uint8Array(input.video)], { type: "video/mp4" }), "video.mp4");
+        const mov = input.mimeType === "video/quicktime";
+        form.set("source", new Blob([new Uint8Array(input.video)], { type: mov ? "video/quicktime" : "video/mp4" }), mov ? "video.mov" : "video.mp4");
         const res = await http(`https://graph-video.facebook.com/${version}/${encodeURIComponent(pageId)}/videos`, {
           method: "POST", headers: auth, body: form, timeoutSec: 600, tries: 2,
         });

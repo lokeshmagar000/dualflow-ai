@@ -23,6 +23,7 @@ export async function retryUpload(formData: FormData) {
   const id = String(formData.get("publicationId"));
   await api(`/publications/${id}/retry`, { method: "POST", body: "{}" });
   revalidatePath("/calendar");
+  revalidatePath("/bulk-upload");
   const storyId = formData.get("storyId");
   if (storyId) revalidatePath(`/content/${storyId}`);
 }

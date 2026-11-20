@@ -12,6 +12,12 @@ import { assignSlots, planRecentStories, syncChannels, uploadDue } from "./publi
 async function main() {
   if (!publishEnabled()) {
     console.log("Publishing is off (set the GitHub variable PUBLISH_ENABLED=true to turn it on).");
+    // Leave a note on uploads that are waiting (e.g. from the bulk upload page), so you can see why.
+    const noted = await prisma.publication.updateMany({
+      where: { status: "SCHEDULED", scheduledAt: { lte: new Date() } },
+      data: { error: "Publishing is off: set the GitHub variable PUBLISH_ENABLED=true, then press Upload now on the Bulk upload page." },
+    });
+    if (noted.count) console.log(`Left a note on ${noted.count} waiting upload(s).`);
     return;
   }
   const channels = configuredChannels();

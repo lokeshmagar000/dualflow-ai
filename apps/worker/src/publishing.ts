@@ -13,9 +13,14 @@
  *                       PUBLISH_DRY_RUN=true only prints what would happen.
  *   5. A story is marked PUBLISHED only when EVERY channel got its video.
  *      Only then does the cleanup delete its files (DELETE_AFTER_PUBLISH).
+ *
+ * Videos from the bulk upload page (topic source UPLOAD) are different: you chose the
+ * platforms yourself, so planStory() never adds other channels to them, and they count
+ * as PUBLISHED when the channels YOU picked have them.
  */
 import { prisma, type Language, type Platform, type PublishMode } from "@dualflow/db";
 import {
+  checkLimits,
   configuredChannels,
   dryRun,
   getUploader,
@@ -26,9 +31,11 @@ import {
   type ChannelConfig,
   type PlatformName,
 } from "@dualflow/publish";
-import { readFile } from "@dualflow/storage";
+import { contentTypeFor, readFile } from "@dualflow/storage";
 
 const MINUTE = 60_000;
+/** Shown on an upload while PUBLISH_DRY_RUN=true. */
+export const PRACTICE_NOTE = "Practice mode (GitHub variable PUBLISH_DRY_RUN=true): nothing was uploaded. Set it to false for real uploads.";
 const toPlatform = (p: PlatformName) => p.toUpperCase() as Platform;
 const toName = (p: Platform) => p.toLowerCase() as PlatformName;
 const toMode = (m: ChannelConfig["mode"]) => m.toUpperCase() as PublishMode;
@@ -61,7 +68,9 @@ async function activeChannels(workspaceId: string) {
  */
 export async function planStory(storyId: string) {
   if (!publishEnabled()) return;
-  const story = await prisma.story.findUniqueOrThrow({ where: { id: storyId }, include: { variants: true } });
+  const story = await prisma.story.findUniqueOrThrow({ where: { id: storyId }, include: { variants: true, topic: true } });
+  // Bulk uploads: only the platforms you ticked. Never add more by ourselves.
+  if (story.topic.source === "UPLOAD") return;
   const channels = await syncChannels(story.workspaceId); // also picks up a changed PUBLISH_MODE
   let queued = 0;
   for (const v of story.variants) {
@@ -88,7 +97,7 @@ export async function markScheduled(storyId: string) {
 export async function planRecentStories(workspaceId: string) {
   const days = Number(process.env.PUBLISH_BACKLOG_DAYS ?? 14);
   const stories = await prisma.story.findMany({
-    where: { workspaceId, status: { in: ["READY", "SCHEDULED"] }, updatedAt: { gte: new Date(Date.now() - days * 24 * 60 * MINUTE) } },
+    where: { workspaceId, status: { in: ["READY", "SCHEDULED"] }, topic: { source: { not: "UPLOAD" } }, updatedAt: { gte: new Date(Date.now() - days * 24 * 60 * MINUTE) } },
     select: { id: true },
   });
   for (const s of stories) await planStory(s.id);
@@ -154,7 +163,9 @@ export async function uploadDue(workspaceId: string, now = new Date()) {
         continue;
       }
       if (practice) {
-        console.log(`${label}: PRACTICE (dry run) - would upload ${v.outputKey} now. Nothing was changed.`);
+        console.log(`${label}: PRACTICE (dry run) - would upload ${v.outputKey} now. Nothing was uploaded.`);
+        // Only a note, so the bulk upload page can tell you why nothing happened. The status stays the same.
+        await prisma.publication.update({ where: { id: pub.id }, data: { error: PRACTICE_NOTE } });
         result.practice++;
         continue;
       }
@@ -172,11 +183,15 @@ export async function uploadDue(workspaceId: string, now = new Date()) {
           readFile(v.outputKey),
           v.thumbnails[0] ? readFile(v.thumbnails[0].storageKey).catch(() => null) : Promise.resolve(null),
         ]);
+        // Last check of the platform's size and length rules (see packages/publish/src/limits.ts).
+        const limits = checkLimits(uploader.platform, { sizeBytes: video.length, durationSec: v.durationSec });
+        if (!limits.ok) throw new PublishConfigError(`${ch.name}: ${limits.problems.join(" ")}`);
         const started = Date.now();
         const res = await uploader.upload({
           language: v.language,
           format: v.story.format,
           video,
+          mimeType: contentTypeFor(v.outputKey),
           thumbnail,
           title: v.title || v.story.topic.title,
           description: v.description ?? "",
@@ -223,12 +238,16 @@ export async function uploadDue(workspaceId: string, now = new Date()) {
 export async function markPublishedIfDone(storyId: string) {
   const story = await prisma.story.findUniqueOrThrow({
     where: { id: storyId },
-    include: { variants: { include: { publications: true } } },
+    include: { variants: { include: { publications: true } }, topic: { select: { source: true } } },
   });
   const channels = await activeChannels(story.workspaceId);
+  const picked = story.topic.source === "UPLOAD";
   let allDone = channels.length > 0;
   for (const v of story.variants) {
-    const mine = channels.filter((c) => c.language === v.language);
+    // Bulk upload: only the channels you picked (they have an upload row). Otherwise: every channel of this language.
+    const mine = picked
+      ? channels.filter((c) => v.publications.some((p) => p.channelId === c.id))
+      : channels.filter((c) => c.language === v.language);
     const done = mine.length > 0 && mine.every((c) => v.publications.some((p) => p.channelId === c.id && p.status === "PUBLISHED"));
     if (done && v.status !== "PUBLISHED") await prisma.variant.update({ where: { id: v.id }, data: { status: "PUBLISHED" } });
     if (!done) allDone = false;

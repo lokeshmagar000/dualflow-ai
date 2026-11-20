@@ -114,7 +114,7 @@ export function youtubeUploader(language: Lang, env: Env = process.env): Uploade
             authorization: `Bearer ${token}`,
             "content-type": "application/json; charset=UTF-8",
             "x-upload-content-length": String(input.video.length),
-            "x-upload-content-type": "video/mp4",
+            "x-upload-content-type": input.mimeType || "video/mp4",
           },
           body: JSON.stringify(meta),
         },
@@ -126,7 +126,7 @@ export function youtubeUploader(language: Lang, env: Env = process.env): Uploade
       // Step 2: send the video. (One request; our videos are small. 10 minute limit.)
       const put = await http(uploadUrl, {
         method: "PUT",
-        headers: { "content-type": "video/mp4", "content-length": String(input.video.length) },
+        headers: { "content-type": input.mimeType || "video/mp4", "content-length": String(input.video.length) },
         body: new Uint8Array(input.video),
         timeoutSec: 600,
         tries: 2,

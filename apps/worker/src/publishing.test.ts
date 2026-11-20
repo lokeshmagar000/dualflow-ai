@@ -159,3 +159,37 @@ test("manual mode adds nothing to the queue", { skip }, async () => {
   await planStory(storyId);
   assert.equal(await prisma.publication.count({ where: { variant: { storyId } } }), 0);
 });
+
+test("bulk upload: only the ticked channel gets it, and then the story is PUBLISHED", { skip }, async () => {
+  process.env.PUBLISH_MODE = "auto";
+  const channels = await syncChannels(workspaceId);
+  const ne = channels.find((c) => c.language === "ne")!;
+  const topic = await prisma.topic.create({ data: { workspaceId, title: "My own video", source: "UPLOAD", status: "USED" } });
+  const story = await prisma.story.create({
+    data: {
+      workspaceId,
+      topicId: topic.id,
+      status: "SCHEDULED",
+      variants: { create: [{ language: "ne", status: "SCHEDULED", title: "My own video", outputKey: "stories/x/ne/video.mp4", durationSec: 30 }] },
+    },
+    include: { variants: true },
+  });
+  await prisma.publication.create({ data: { variantId: story.variants[0]!.id, channelId: ne.id, status: "SCHEDULED", scheduledAt: new Date(Date.now() - 1000) } });
+
+  // Auto mode must NOT add the other channels to a bulk upload.
+  await planStory(story.id);
+  assert.equal(await prisma.publication.count({ where: { variant: { storyId: story.id } } }), 1);
+
+  // Practice mode: nothing uploaded, but a note explains why.
+  process.env.PUBLISH_DRY_RUN = "true";
+  await uploadDue(workspaceId, new Date());
+  process.env.PUBLISH_DRY_RUN = "false";
+  const noted = await prisma.publication.findFirstOrThrow({ where: { variant: { storyId: story.id } } });
+  assert.equal(noted.status, "SCHEDULED");
+  assert.match(noted.error ?? "", /Practice mode/);
+
+  await uploadDue(workspaceId, new Date());
+  const done = await prisma.story.findUniqueOrThrow({ where: { id: story.id }, include: { variants: { include: { publications: true } } } });
+  assert.equal(done.variants[0]!.publications[0]!.status, "PUBLISHED");
+  assert.equal(done.status, "PUBLISHED", "only the ticked channel counts");
+});

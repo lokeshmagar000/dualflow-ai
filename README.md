@@ -135,6 +135,10 @@ It is **off** until you set `PUBLISH_ENABLED=true`, and starts in practice mode 
 Step-by-step setup (free): **[docs/social-setup.md](docs/social-setup.md)**. Code: `packages/publish`
 (uploaders) and `apps/worker/src/publishing.ts` (modes, queue, retries).
 
+**Bulk upload:** have your own finished video? Open **Bulk upload** in the dashboard, drop it once,
+write one caption and press **Send everywhere**: it goes to every channel of its language, and you see
+each platform's result. Setup and limits: **[docs/bulk-upload.md](docs/bulk-upload.md)**.
+
 ## Mac app (make videos with one button)
 
 `desktop/` is a small Mac app: type an idea, press **Make video now**, watch the run,

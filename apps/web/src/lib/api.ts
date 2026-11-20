@@ -114,3 +114,30 @@ export interface PipelineStatus {
   runNowAvailable: boolean;
   quotas: { name: string; used: number; limit: number | null }[];
 }
+
+/* ---------- Bulk upload page ---------- */
+export interface BulkChannel {
+  id: string;
+  platform: "YOUTUBE" | "FACEBOOK" | "INSTAGRAM" | "TIKTOK";
+  language: "ne" | "en";
+  name: string;
+}
+export interface BulkSetup {
+  channels: BulkChannel[];
+  storage: "r2" | "local";
+  uploadRunReady: boolean;
+}
+export interface BulkUploadItem {
+  id: string;
+  format: "SHORT" | "LONG";
+  createdAt: string;
+  variants: {
+    id: string;
+    language: "ne" | "en";
+    title: string | null;
+    durationSec: number | null;
+    publications: (Pick<Publication, "id" | "status" | "postUrl" | "error" | "attempts" | "publishedAt" | "scheduledAt"> & {
+      channel: { name: string; platform: string };
+    })[];
+  }[];
+}

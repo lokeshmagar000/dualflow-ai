@@ -7,7 +7,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import { prisma } from "@dualflow/db";
-import { triggerQuietly } from "../github";
+import { startUploadRun } from "../github";
 import { getDefaultWorkspace } from "../workspace";
 
 export async function publishingRoutes(app: FastifyInstance) {
@@ -85,7 +85,7 @@ export async function publishingRoutes(app: FastifyInstance) {
     if (queued === 0) return reply.code(409).send({ error: "Nothing to upload (no finished video, or already uploaded)." });
     await prisma.variant.updateMany({ where: { storyId: story.id, status: "READY" }, data: { status: "SCHEDULED" } });
     await prisma.story.updateMany({ where: { id: story.id, status: "READY" }, data: { status: "SCHEDULED" } });
-    await triggerQuietly(req.log);
+    await startUploadRun(req.log); // the small "Upload now" run, not the whole pipeline
     return { ok: true, queued };
   });
 
@@ -96,7 +96,7 @@ export async function publishingRoutes(app: FastifyInstance) {
     if (!pub) return reply.code(404).send({ error: "Upload not found" });
     if (pub.status !== "FAILED") return reply.code(409).send({ error: "Only failed uploads can be retried." });
     await prisma.publication.update({ where: { id: pub.id }, data: { status: "SCHEDULED", scheduledAt: new Date(), attempts: 0, error: null } });
-    await triggerQuietly(req.log);
+    await startUploadRun(req.log); // the small "Upload now" run, not the whole pipeline
     return { ok: true };
   });
 }

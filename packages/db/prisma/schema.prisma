@@ -42,6 +42,7 @@ enum TopicSource {
   CHAT
   DIRECTOR
   MANUAL
+  UPLOAD // your own finished video, sent with the bulk upload page
 }
 
 enum TopicStatus {

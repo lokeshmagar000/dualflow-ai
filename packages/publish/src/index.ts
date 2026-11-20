@@ -11,6 +11,7 @@ export * from "./types";
 export * from "./errors";
 export * from "./config";
 export * from "./schedule";
+export * from "./limits";
 export { chunkPlan } from "./tiktok";
 
 export function getUploader(platform: PlatformName, language: Lang, env: Record<string, string | undefined> = process.env): Uploader {

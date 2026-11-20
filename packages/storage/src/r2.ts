@@ -89,3 +89,23 @@ export async function r2List(prefix: string): Promise<StoredFile[]> {
   } while (token);
   return files;
 }
+
+/** The file's size in bytes, or null when it does not exist. */
+export async function r2Size(key: string): Promise<number | null> {
+  const res = await r2().fetch(objectUrl(key), { method: "HEAD" });
+  if (res.status === 404) return null;
+  await check(res, `check of ${key}`);
+  return Number(res.headers.get("content-length") ?? 0);
+}
+
+/**
+ * A "presigned" upload address: a normal web address with a signature in it,
+ * which lets a browser PUT one file to one key for a short time, WITHOUT knowing our secret key.
+ * Used by the bulk upload page, so a big video goes straight to R2 (not through our small free server).
+ */
+export async function r2PresignPut(key: string, expiresSec = 3600): Promise<string> {
+  const url = new URL(objectUrl(key));
+  url.searchParams.set("X-Amz-Expires", String(expiresSec));
+  const signed = await r2().sign(url.toString(), { method: "PUT", aws: { signQuery: true } });
+  return signed.url;
+}

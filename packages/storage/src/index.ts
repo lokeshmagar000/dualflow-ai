@@ -15,7 +15,7 @@
 import { mkdir, readdir, readFile as fsReadFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { r2Delete, r2Exists, r2Get, r2List, r2Put } from "./r2";
+import { r2Delete, r2Exists, r2Get, r2List, r2PresignPut, r2Put, r2Size } from "./r2";
 
 /** The project's top folder: this file is at packages/storage/src/index.ts. */
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -77,6 +77,26 @@ export async function deleteFile(key: string): Promise<void> {
   await rm(pathForKey(key), { force: true });
 }
 
+/** The file's size in bytes, or null when there is no such file. */
+export async function fileSize(key: string): Promise<number | null> {
+  if (storageDriver() === "r2") return r2Size(checkKey(key));
+  try {
+    const s = await stat(pathForKey(key));
+    return s.isFile() ? s.size : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * An address the browser can PUT one file to, for one hour (R2 only).
+ * Local storage has no such address: the API takes the file itself instead.
+ */
+export async function uploadUrlFor(key: string): Promise<string | null> {
+  if (storageDriver() !== "r2") return null;
+  return r2PresignPut(checkKey(key));
+}
+
 export interface StoredFile {
   key: string;
   size: number;
@@ -115,6 +135,7 @@ export function contentTypeFor(key: string): string {
   if (key.endsWith(".wav")) return "audio/wav";
   if (key.endsWith(".mp3")) return "audio/mpeg";
   if (key.endsWith(".mp4")) return "video/mp4";
+  if (key.endsWith(".mov")) return "video/quicktime";
   if (key.endsWith(".srt")) return "application/x-subrip; charset=utf-8";
   if (key.endsWith(".vtt")) return "text/vtt; charset=utf-8";
   if (key.endsWith(".png")) return "image/png";

@@ -23,6 +23,9 @@ importers:
       '@dualflow/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@dualflow/publish':
+        specifier: workspace:*
+        version: link:../../packages/publish
       '@dualflow/queue':
         specifier: workspace:*
         version: link:../../packages/queue
@@ -60,6 +63,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@dualflow/publish':
+        specifier: workspace:*
+        version: link:../../packages/publish
       '@dualflow/shared':
         specifier: workspace:*
         version: link:../../packages/shared
