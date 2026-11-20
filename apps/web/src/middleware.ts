@@ -8,7 +8,8 @@ export async function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-// Protect everything except the login page and static files.
+// Protect everything except the login page, the public privacy/terms pages
+// (Google, Meta and TikTok ask for their links) and static files.
 export const config = {
-  matcher: ["/((?!login|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!login|privacy|terms|_next/static|_next/image|favicon.ico).*)"],
 };

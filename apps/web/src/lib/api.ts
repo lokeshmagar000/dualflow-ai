@@ -77,7 +77,31 @@ export interface StoryDetail extends Omit<Story, "topic" | "variants"> {
     durationSec: number | null;
     scenes: Scene[];
     voice: VoiceInfo | null;
+    publications: (Publication & { channel: { name: string; platform: string } })[];
   })[];
+}
+/** One upload of one video to one channel. */
+export interface Publication {
+  id: string;
+  status: string; // READY = waiting for approval, SCHEDULED, GENERATING = uploading, PUBLISHED, FAILED
+  scheduledAt: string | null;
+  publishedAt: string | null;
+  postUrl: string | null;
+  attempts: number;
+  error: string | null;
+}
+export interface QueueItem extends Publication {
+  channel: { name: string; platform: string; language: "ne" | "en" };
+  variant: { id: string; title: string | null; language: "ne" | "en"; story: { id: string; topic: { title: string } } };
+}
+export interface ChannelInfo {
+  id: string;
+  platform: string;
+  language: "ne" | "en";
+  name: string;
+  mode: "AUTO" | "APPROVAL" | "MANUAL";
+  updatedAt: string;
+  counts: Record<string, number>;
 }
 export interface CostSummary {
   todayUsd: number;

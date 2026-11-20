@@ -126,6 +126,15 @@ Change it with GitHub **Variables** (Settings → Secrets and variables → Acti
 
 Try it on your computer: `pnpm --filter @dualflow/video smoke` (makes `test-video-ne.mp4` and `test-video-en.mp4`).
 
+## Upload to social channels (Phase 2)
+
+Finished videos can go up by themselves: Nepali videos to your Nepali channels, English videos
+to your English channels, on YouTube, Facebook, Instagram and TikTok. Three modes (auto, approval,
+manual), a time-slot queue, retries, and files are deleted only after every upload worked.
+It is **off** until you set `PUBLISH_ENABLED=true`, and starts in practice mode (`PUBLISH_DRY_RUN=true`).
+Step-by-step setup (free): **[docs/social-setup.md](docs/social-setup.md)**. Code: `packages/publish`
+(uploaders) and `apps/worker/src/publishing.ts` (modes, queue, retries).
+
 ## Mac app (make videos with one button)
 
 `desktop/` is a small Mac app: type an idea, press **Make video now**, watch the run,

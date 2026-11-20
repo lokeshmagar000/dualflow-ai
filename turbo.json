@@ -23,6 +23,9 @@
     "test": {
       "dependsOn": [
         "^build"
+      ],
+      "passThroughEnv": [
+        "DATABASE_URL"
       ]
     }
   }

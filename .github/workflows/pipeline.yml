@@ -84,6 +84,34 @@ jobs:
       R2_BUCKET: ${{ secrets.R2_BUCKET || vars.R2_BUCKET || 'dualflow' }}
       WORKER_CONCURRENCY: "2"
       WORKER_MAX_MINUTES: "40"
+      # Uploads to social channels (see docs/social-setup.md). Off until PUBLISH_ENABLED=true.
+      PUBLISH_ENABLED: ${{ vars.PUBLISH_ENABLED || 'false' }}
+      PUBLISH_DRY_RUN: ${{ vars.PUBLISH_DRY_RUN || 'true' }}
+      PUBLISH_MODE: ${{ vars.PUBLISH_MODE || 'approval' }}
+      PUBLISH_MODE_YOUTUBE: ${{ vars.PUBLISH_MODE_YOUTUBE }}
+      PUBLISH_MODE_FACEBOOK: ${{ vars.PUBLISH_MODE_FACEBOOK }}
+      PUBLISH_MODE_INSTAGRAM: ${{ vars.PUBLISH_MODE_INSTAGRAM }}
+      PUBLISH_MODE_TIKTOK: ${{ vars.PUBLISH_MODE_TIKTOK }}
+      PUBLISH_PLATFORMS: ${{ vars.PUBLISH_PLATFORMS }}
+      PUBLISH_TIMES: ${{ vars.PUBLISH_TIMES }}
+      PUBLISH_TIMEZONE: ${{ vars.PUBLISH_TIMEZONE }}
+      YOUTUBE_PRIVACY: ${{ vars.YOUTUBE_PRIVACY || 'private' }}
+      YOUTUBE_CATEGORY_ID: ${{ vars.YOUTUBE_CATEGORY_ID }}
+      TIKTOK_PRIVACY: ${{ vars.TIKTOK_PRIVACY }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN_NE: ${{ secrets.YOUTUBE_REFRESH_TOKEN_NE }}
+      YOUTUBE_REFRESH_TOKEN_EN: ${{ secrets.YOUTUBE_REFRESH_TOKEN_EN }}
+      FACEBOOK_PAGE_ID_NE: ${{ secrets.FACEBOOK_PAGE_ID_NE }}
+      FACEBOOK_PAGE_ID_EN: ${{ secrets.FACEBOOK_PAGE_ID_EN }}
+      FACEBOOK_PAGE_TOKEN_NE: ${{ secrets.FACEBOOK_PAGE_TOKEN_NE }}
+      FACEBOOK_PAGE_TOKEN_EN: ${{ secrets.FACEBOOK_PAGE_TOKEN_EN }}
+      INSTAGRAM_USER_ID_NE: ${{ secrets.INSTAGRAM_USER_ID_NE }}
+      INSTAGRAM_USER_ID_EN: ${{ secrets.INSTAGRAM_USER_ID_EN }}
+      TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+      TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+      TIKTOK_REFRESH_TOKEN_NE: ${{ secrets.TIKTOK_REFRESH_TOKEN_NE }}
+      TIKTOK_REFRESH_TOKEN_EN: ${{ secrets.TIKTOK_REFRESH_TOKEN_EN }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -118,6 +146,11 @@ jobs:
         run: pnpm --filter @dualflow/worker once
         env:
           VIDEO_COPY_DIR: ${{ github.workspace }}/videos
+      # Upload finished videos whose time has come (does nothing until PUBLISH_ENABLED=true).
+      # A problem here never stops the cleanup or the video download below.
+      - name: Upload to social channels
+        if: always()
+        run: pnpm --filter @dualflow/worker upload
       # Download the finished videos from the bottom of the run page ("videos").
       - uses: actions/upload-artifact@v4
         if: always()
