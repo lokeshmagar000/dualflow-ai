@@ -27,7 +27,7 @@ It is behind the same login as the rest of the dashboard, so nobody else can use
 ## One-time setup (free)
 
 The bulk page uses what you already set up in [social-setup.md](social-setup.md) (channel tokens,
-`PUBLISH_ENABLED=true`, `PUBLISH_DRY_RUN=false`). Two more things:
+`PUBLISH_ENABLED=true`, `PUBLISH_DRY_RUN=false`; beginner version: [channel-and-token-guide.md](channel-and-token-guide.md)). Two more things:
 
 ### 1. Let your browser send videos to R2 (CORS)
 

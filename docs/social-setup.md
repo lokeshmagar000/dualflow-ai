@@ -1,5 +1,8 @@
 # Connect your social channels (free)
 
+> 👉 **New to this?** Follow the beginner step-by-step guide first:
+> **[channel-and-token-guide.md](channel-and-token-guide.md)** (make the 8 accounts, get every token, test one video).
+
 DualFlow can upload every finished video by itself: the **Nepali** video to your Nepali
 channels and the **English** video to your English channels.
 Everything here is **free**. The slow part is waiting for the platforms to approve your app,
@@ -98,8 +101,9 @@ You need **one Nepali and one English account on each platform** (8 accounts in 
 5. Then apply for the **Direct Post audit** (so videos can be public). Until then, both TikTok accounts
    must be set to **private** in the TikTok app.
 6. Copy the **Client key** and **Client secret** into GitHub Secrets as `TIKTOK_CLIENT_KEY` and `TIKTOK_CLIENT_SECRET`.
-7. The per-account tokens (`TIKTOK_REFRESH_TOKEN_NE` / `_EN`) need a small sign-in page.
-   **Tell Claude when the app is approved** and we will add a "Connect TikTok" button for this step.
+7. The per-account tokens (`TIKTOK_REFRESH_TOKEN_NE` / `_EN`): after approval (or in Sandbox), follow
+   [channel-and-token-guide.md, Part 2D](channel-and-token-guide.md#2d-tiktok-refresh-tokens-after-approval-or-in-sandbox-on-your-mac)
+   (sign in once per account, then one Terminal command).
 
 ---
 
