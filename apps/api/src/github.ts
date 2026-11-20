@@ -10,18 +10,20 @@
  * Without them, "Run now" is off and the scheduled runs (or your local worker) do the work.
  */
 const WORKFLOW = "pipeline.yml";
+/** The small "Upload now" run (.github/workflows/upload.yml): uploads only, done in a few minutes. */
+export const UPLOAD_WORKFLOW = "upload.yml";
 
 export function githubRunConfigured(): boolean {
   return Boolean(process.env.GITHUB_REPO && process.env.GITHUB_DISPATCH_TOKEN);
 }
 
-export async function triggerPipelineRun(): Promise<{ started: boolean; message: string }> {
+export async function triggerPipelineRun(workflow = WORKFLOW): Promise<{ started: boolean; message: string }> {
   if (!githubRunConfigured()) {
     return { started: false, message: "Run now is not set up (GITHUB_REPO and GITHUB_DISPATCH_TOKEN). The next scheduled run will do it." };
   }
   const repo = process.env.GITHUB_REPO!;
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return { started: false, message: "GITHUB_REPO must look like owner/name." };
-  const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/dispatches`, {
+  const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${process.env.GITHUB_DISPATCH_TOKEN}`,
@@ -33,7 +35,10 @@ export async function triggerPipelineRun(): Promise<{ started: boolean; message:
     body: JSON.stringify({ ref: process.env.GITHUB_REF || "main" }),
     signal: AbortSignal.timeout(15_000),
   });
-  if (res.status === 204) return { started: true, message: "Started. Videos will be ready in about 10-15 minutes." };
+  if (res.status === 204) {
+    const message = workflow === WORKFLOW ? "Started. Videos will be ready in about 10-15 minutes." : "Started. Uploads take about 2-5 minutes.";
+    return { started: true, message };
+  }
   return { started: false, message: `GitHub said ${res.status}: ${(await res.text()).slice(0, 200)}` };
 }
 
@@ -45,5 +50,21 @@ export async function triggerQuietly(log: { warn: (msg: string) => void }) {
     if (!r.started) log.warn(r.message);
   } catch (err) {
     log.warn(`Could not start the GitHub run: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * Start the small "Upload now" run. Returns a sentence for the page;
+ * a GitHub problem never breaks the request (the next Pipeline run uploads it anyway).
+ */
+export async function startUploadRun(log: { warn: (msg: string) => void }): Promise<string> {
+  if (!githubRunConfigured()) return "Upload now is not set up on Render (GITHUB_REPO and GITHUB_DISPATCH_TOKEN), so the next Pipeline run (every 3 hours) will upload it.";
+  try {
+    const r = await triggerPipelineRun(UPLOAD_WORKFLOW);
+    if (!r.started) log.warn(r.message);
+    return r.started ? r.message : `Could not start the upload run (${r.message}). The next Pipeline run will upload it.`;
+  } catch (err) {
+    log.warn(`Could not start the upload run: ${(err as Error).message}`);
+    return "Could not reach GitHub. The next Pipeline run will upload it.";
   }
 }

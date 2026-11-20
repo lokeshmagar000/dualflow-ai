@@ -77,7 +77,31 @@ export interface StoryDetail extends Omit<Story, "topic" | "variants"> {
     durationSec: number | null;
     scenes: Scene[];
     voice: VoiceInfo | null;
+    publications: (Publication & { channel: { name: string; platform: string } })[];
   })[];
+}
+/** One upload of one video to one channel. */
+export interface Publication {
+  id: string;
+  status: string; // READY = waiting for approval, SCHEDULED, GENERATING = uploading, PUBLISHED, FAILED
+  scheduledAt: string | null;
+  publishedAt: string | null;
+  postUrl: string | null;
+  attempts: number;
+  error: string | null;
+}
+export interface QueueItem extends Publication {
+  channel: { name: string; platform: string; language: "ne" | "en" };
+  variant: { id: string; title: string | null; language: "ne" | "en"; story: { id: string; topic: { title: string } } };
+}
+export interface ChannelInfo {
+  id: string;
+  platform: string;
+  language: "ne" | "en";
+  name: string;
+  mode: "AUTO" | "APPROVAL" | "MANUAL";
+  updatedAt: string;
+  counts: Record<string, number>;
 }
 export interface CostSummary {
   todayUsd: number;
@@ -89,4 +113,31 @@ export interface PipelineStatus {
   queue: { readyNow: number; later: number; running: number; nextJobAt: string | null };
   runNowAvailable: boolean;
   quotas: { name: string; used: number; limit: number | null }[];
+}
+
+/* ---------- Bulk upload page ---------- */
+export interface BulkChannel {
+  id: string;
+  platform: "YOUTUBE" | "FACEBOOK" | "INSTAGRAM" | "TIKTOK";
+  language: "ne" | "en";
+  name: string;
+}
+export interface BulkSetup {
+  channels: BulkChannel[];
+  storage: "r2" | "local";
+  uploadRunReady: boolean;
+}
+export interface BulkUploadItem {
+  id: string;
+  format: "SHORT" | "LONG";
+  createdAt: string;
+  variants: {
+    id: string;
+    language: "ne" | "en";
+    title: string | null;
+    durationSec: number | null;
+    publications: (Pick<Publication, "id" | "status" | "postUrl" | "error" | "attempts" | "publishedAt" | "scheduledAt"> & {
+      channel: { name: string; platform: string };
+    })[];
+  }[];
 }

@@ -29,6 +29,7 @@ export async function storyRoutes(app: FastifyInstance) {
           include: {
             scenes: { orderBy: { order: "asc" } },
             voiceovers: { orderBy: { createdAt: "desc" }, take: 1 },
+            publications: { include: { channel: { select: { name: true, platform: true } } }, orderBy: { createdAt: "asc" } },
           },
           orderBy: { language: "asc" },
         },

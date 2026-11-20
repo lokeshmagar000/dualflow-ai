@@ -8,7 +8,9 @@
  *     to keep them for RETENTION_DAYS instead. The story text stays in the database.
  *  3. Deletes all files of stories that FAILED (or were PUBLISHED) more than
  *     RETENTION_DAYS ago (default 30).
- *  4. Deletes finished job rows older than 30 days, so the database stays small (Neon free: 1 GB).
+ *  4. Bulk upload videos (uploads/...): deleted once every ticked channel has them, after
+ *     RETENTION_DAYS in any case, and after 1 day if no upload uses them (the sending was stopped).
+ *  5. Deletes finished job rows older than 30 days, so the database stays small (Neon free: 1 GB).
  */
 import { prisma } from "@dualflow/db";
 import { deleteFile, listFiles } from "@dualflow/storage";
@@ -26,9 +28,10 @@ async function main() {
     select: {
       id: true,
       run: true,
+      createdAt: true,
       status: true,
       updatedAt: true,
-      variants: { select: { publications: { select: { status: true } } } },
+      variants: { select: { outputKey: true, publications: { select: { status: true } } } },
     },
   });
   const byId = new Map(stories.map((s) => [s.id, s]));
@@ -48,6 +51,20 @@ async function main() {
     const orphan = !story; // the story was deleted
     const uploaded = story && deleteAfterPublish && uploadedEverywhere(story);
     if (oldRun || expired || orphan || uploaded) {
+      await deleteFile(file.key);
+      deleted++;
+      freedBytes += file.size;
+    }
+  }
+
+  // Videos sent with the bulk upload page. Keys look like: uploads/<random>/video.mp4
+  const storyByVideo = new Map(stories.flatMap((s) => s.variants.filter((v) => v.outputKey).map((v) => [v.outputKey!, s] as const)));
+  for (const file of await listFiles("uploads/")) {
+    const story = storyByVideo.get(file.key);
+    const abandoned = !story && file.modified < new Date(Date.now() - DAY);
+    const expired = story && story.createdAt < oldDate;
+    const uploaded = story && deleteAfterPublish && uploadedEverywhere(story);
+    if (abandoned || expired || uploaded) {
       await deleteFile(file.key);
       deleted++;
       freedBytes += file.size;

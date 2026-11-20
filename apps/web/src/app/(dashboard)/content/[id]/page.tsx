@@ -4,6 +4,8 @@ import { api, type StoryDetail } from "@/lib/api";
 import { ApiError, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { VoicePlayer } from "@/components/VoicePlayer";
 import { retryStory } from "../actions";
+import { approveStory, retryUpload, uploadNow } from "../publish-actions";
+import { UploadStatus, nepalTime } from "@/components/UploadStatus";
 
 /** 7350 ms -> "0:07" */
 function clock(ms: number | null) {
@@ -84,6 +86,8 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
         ))}
       </div>
 
+      <UploadsCard story={story} />
+
       {story.research && (
         <Card className="mt-6">
           <h2 className="mb-2 font-semibold">Research</h2>
@@ -101,5 +105,56 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
         </Card>
       )}
     </>
+  );
+}
+
+/** Uploads to social channels: status per channel, plus Approve / Upload now buttons. */
+function UploadsCard({ story }: { story: StoryDetail }) {
+  const videosReady = story.variants.some((v) => ["READY", "SCHEDULED", "PUBLISHED"].includes(v.status));
+  if (!videosReady) return null;
+  const pubs = story.variants.flatMap((v) => v.publications.map((p) => ({ ...p, language: v.language })));
+  const waitingApproval = pubs.some((p) => p.status === "READY");
+  return (
+    <Card className="mt-6">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-semibold">Uploads to social channels</h2>
+        <div className="flex gap-2">
+          {waitingApproval && (
+            <form action={approveStory}>
+              <input type="hidden" name="storyId" value={story.id} />
+              <button className="rounded-lg bg-emerald-600 px-3 py-1 text-sm text-white hover:bg-emerald-700">Approve</button>
+            </form>
+          )}
+          <form action={uploadNow}>
+            <input type="hidden" name="storyId" value={story.id} />
+            <button className="rounded-lg bg-zinc-900 px-3 py-1 text-sm text-white hover:bg-zinc-700">Upload now</button>
+          </form>
+        </div>
+      </div>
+      {pubs.length === 0 ? (
+        <p className="text-sm text-zinc-500">Not in the upload queue. Press &quot;Upload now&quot;, or see the Channels page to set up auto or approval mode.</p>
+      ) : (
+        <ul className="divide-y divide-zinc-100 text-sm">
+          {pubs.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center gap-2 py-2">
+              <span className="w-48 font-medium">{p.channel.name}</span>
+              <UploadStatus status={p.status} />
+              <span className="text-zinc-500">
+                {p.status === "PUBLISHED" ? `on ${nepalTime(p.publishedAt)}` : p.status === "SCHEDULED" ? `at ${nepalTime(p.scheduledAt)}` : ""}
+              </span>
+              {p.postUrl && <a href={p.postUrl} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">open</a>}
+              {p.status === "FAILED" && (
+                <form action={retryUpload}>
+                  <input type="hidden" name="publicationId" value={p.id} />
+                  <input type="hidden" name="storyId" value={story.id} />
+                  <button className="rounded bg-red-600 px-2 py-0.5 text-xs text-white hover:bg-red-700">Try again</button>
+                </form>
+              )}
+              {p.error && <p className="w-full text-xs text-zinc-500">{p.error}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
