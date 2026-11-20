@@ -109,3 +109,21 @@ export async function r2PresignPut(key: string, expiresSec = 3600): Promise<stri
   const signed = await r2().sign(url.toString(), { method: "PUT", aws: { signQuery: true } });
   return signed.url;
 }
+
+/**
+ * A presigned DOWNLOAD address: lets the browser GET one file for a short time
+ * (default 1 hour), straight from R2. Used by the "Ready to upload" page, so big
+ * videos do not have to pass through our small free server.
+ * `fileName` is the name the browser saves the file as; `inline` lets the browser
+ * play or show the file instead of saving it.
+ */
+export async function r2PresignGet(key: string, opts: { fileName?: string; inline?: boolean; expiresSec?: number } = {}): Promise<string> {
+  const url = new URL(objectUrl(key));
+  url.searchParams.set("X-Amz-Expires", String(opts.expiresSec ?? 3600));
+  if (opts.fileName) {
+    const safe = opts.fileName.replace(/[^\w.\-]+/g, "_");
+    url.searchParams.set("response-content-disposition", `${opts.inline ? "inline" : "attachment"}; filename="${safe}"`);
+  }
+  const signed = await r2().sign(url.toString(), { method: "GET", aws: { signQuery: true } });
+  return signed.url;
+}

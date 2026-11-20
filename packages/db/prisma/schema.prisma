@@ -236,6 +236,8 @@ model Variant {
   thumbnailHeadline String?
   lastError         String?
   outputKey         String? // final video file in storage
+  // You uploaded this video yourself (the "Mark as uploaded" button on the Ready to upload page).
+  manualUploadedAt  DateTime?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 

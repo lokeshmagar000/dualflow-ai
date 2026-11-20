@@ -5,3 +5,4 @@ export { ConfigError, isPermanentError, currentModel, BUDGET_MODEL, QUALITY_MODE
 export { isMockAI } from "./mock";
 export { aiProvider, AIQuotaError, nextQuotaReset, currentQuotaDayStart, type AIProviderName } from "./provider";
 export { geminiModel, DEFAULT_GEMINI_MODEL } from "./gemini";
+export { suggestTopic, TopicIdeaSchema, DEFAULT_NICHE, type TopicIdea } from "./topic";

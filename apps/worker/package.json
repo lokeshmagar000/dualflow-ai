@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "check-keys": "tsx src/check-keys.ts",
     "demo-story": "tsx src/demo-story.ts",
+    "auto-ideas": "tsx src/auto-ideas.ts",
     "remake-video": "tsx src/remake-video.ts",
     "upload": "tsx src/publish.ts",
     "check-channels": "tsx src/check-channels.ts",

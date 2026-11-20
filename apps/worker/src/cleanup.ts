@@ -8,9 +8,12 @@
  *     to keep them for RETENTION_DAYS instead. The story text stays in the database.
  *  3. Deletes all files of stories that FAILED (or were PUBLISHED) more than
  *     RETENTION_DAYS ago (default 30).
- *  4. Bulk upload videos (uploads/...): deleted once every ticked channel has them, after
+ *  4. Videos you upload yourself (the "Ready to upload" page): all files of a story are
+ *     deleted KEEP_DAYS_AFTER_UPLOAD days (default 7) after you marked EVERY language as uploaded.
+ *     Finished videos you never mark are deleted after READY_KEEP_DAYS (default 30).
+ *  5. Bulk upload videos (uploads/...): deleted once every ticked channel has them, after
  *     RETENTION_DAYS in any case, and after 1 day if no upload uses them (the sending was stopped).
- *  5. Deletes finished job rows older than 30 days, so the database stays small (Neon free: 1 GB).
+ *  6. Deletes finished job rows older than 30 days, so the database stays small (Neon free: 1 GB).
  */
 import { prisma } from "@dualflow/db";
 import { deleteFile, listFiles } from "@dualflow/storage";
@@ -31,7 +34,7 @@ async function main() {
       createdAt: true,
       status: true,
       updatedAt: true,
-      variants: { select: { outputKey: true, publications: { select: { status: true } } } },
+      variants: { select: { outputKey: true, manualUploadedAt: true, publications: { select: { status: true } } } },
     },
   });
   const byId = new Map(stories.map((s) => [s.id, s]));
@@ -40,6 +43,21 @@ async function main() {
     const pubs = s.variants.flatMap((v) => v.publications);
     return s.status === "PUBLISHED" && pubs.length > 0 && pubs.every((p) => p.status === "PUBLISHED");
   };
+
+  const keepAfterUpload = Number(process.env.KEEP_DAYS_AFTER_UPLOAD ?? 7);
+  const readyKeepDays = Number(process.env.READY_KEEP_DAYS ?? 30);
+  const READY_LIKE = ["READY", "APPROVED", "SCHEDULED"];
+  /** You uploaded every language yourself, more than KEEP_DAYS_AFTER_UPLOAD days ago. */
+  const manuallyDone = (s: (typeof stories)[number]) => {
+    const made = s.variants.filter((v) => v.outputKey);
+    const limit = Date.now() - keepAfterUpload * DAY;
+    return made.length > 0 && made.every((v) => v.manualUploadedAt && v.manualUploadedAt.getTime() < limit);
+  };
+  /** Finished but never uploaded, for longer than READY_KEEP_DAYS. */
+  const readyExpired = (s: (typeof stories)[number]) =>
+    READY_LIKE.includes(s.status) && s.createdAt.getTime() < Date.now() - readyKeepDays * DAY;
+  /** Stories whose video files we delete: the dashboard then shows "deleted" instead of a Download button. */
+  const goneVideos = new Set<string>();
 
   for (const file of await listFiles("stories/")) {
     // Keys look like: stories/<storyId>/<language>/run-<number>/<file>
@@ -50,7 +68,9 @@ async function main() {
     const expired = story && ["PUBLISHED", "FAILED"].includes(story.status) && story.updatedAt < oldDate;
     const orphan = !story; // the story was deleted
     const uploaded = story && deleteAfterPublish && uploadedEverywhere(story);
-    if (oldRun || expired || orphan || uploaded) {
+    const manual = story && (manuallyDone(story) || readyExpired(story));
+    if (oldRun || expired || orphan || uploaded || manual) {
+      if (manual && !oldRun) goneVideos.add(story.id);
       await deleteFile(file.key);
       deleted++;
       freedBytes += file.size;
@@ -69,6 +89,10 @@ async function main() {
       deleted++;
       freedBytes += file.size;
     }
+  }
+
+  if (goneVideos.size > 0) {
+    await prisma.variant.updateMany({ where: { storyId: { in: [...goneVideos] } }, data: { outputKey: null } });
   }
 
   const jobs = await prisma.pipelineJob.deleteMany({

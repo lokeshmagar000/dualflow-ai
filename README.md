@@ -107,6 +107,14 @@ To hear the free voices first, run **Actions → Voice sample → Run workflow**
 **Edge TTS on your own computer** needs Python 3 and FFmpeg:
 `pip install -r packages/voice/python/requirements.txt`.
 
+## Automatic videos and "Ready to upload"
+
+Every pipeline run (every 3 hours) adds the next story by itself: first your unused ideas from
+**Ideas & Chat**, otherwise the AI Content Director picks a fresh topic (`apps/worker/src/auto-ideas.ts`,
+`packages/ai/src/topic.ts`). It stops at `AUTO_STORIES_PER_DAY` a day (default 2, Nepal time; `0` = off).
+Finished videos appear on the dashboard's **Ready to upload** page: play, download (straight from R2),
+copy title / description / hashtags, and **Mark as uploaded**. Beginner guide: **[docs/automatic-videos.md](docs/automatic-videos.md)**.
+
 ## Video look: Word Pop subtitles and the intro
 
 Every video starts with a **2-second animated intro** (channel name, a coloured bar, an optional

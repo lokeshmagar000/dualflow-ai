@@ -12,6 +12,7 @@ import { costRoutes } from "./routes/costs";
 import { pipelineRoutes } from "./routes/pipeline";
 import { publishingRoutes } from "./routes/publishing";
 import { bulkRoutes } from "./routes/bulk";
+import { readyRoutes } from "./routes/ready";
 
 const app = Fastify({ logger: true });
 
@@ -40,6 +41,7 @@ await app.register(costRoutes);
 await app.register(pipelineRoutes);
 await app.register(publishingRoutes);
 await app.register(bulkRoutes);
+await app.register(readyRoutes);
 
 const port = Number(process.env.PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });

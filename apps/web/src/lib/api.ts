@@ -150,3 +150,24 @@ export interface BulkUploadItem {
     })[];
   }[];
 }
+
+/* ---------- Ready to upload page ---------- */
+export interface ReadyVariant {
+  id: string;
+  language: "ne" | "en";
+  title: string | null;
+  description: string | null;
+  hashtags: string[];
+  durationSec: number | null;
+  outputKey: string | null; // null = the video file was deleted (cleanup)
+  manualUploadedAt: string | null;
+  thumbnails: { id: string }[];
+  subtitles: { id: string }[];
+}
+export interface ReadyStory {
+  id: string;
+  status: string;
+  createdAt: string;
+  topic: { title: string; source: string };
+  variants: ReadyVariant[];
+}
