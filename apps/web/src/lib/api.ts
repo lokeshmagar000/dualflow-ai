@@ -4,7 +4,16 @@
  */
 import "server-only";
 
-const API_URL = process.env.API_URL ?? "http://localhost:4000";
+/**
+ * The API address. People often type it without "https://" or with a "/" at
+ * the end, so we fix both here instead of failing.
+ */
+function apiBaseUrl() {
+  let url = (process.env.API_URL ?? "").trim() || "http://localhost:4000";
+  if (!/^https?:\/\//.test(url)) url = `https://${url}`;
+  return url.replace(/\/+$/, "");
+}
+const API_URL = apiBaseUrl();
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {

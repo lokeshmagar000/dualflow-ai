@@ -1,6 +1,6 @@
 # Bulk upload: one video to every channel in one click
 
-Open your dashboard and click **Bulk upload** (the link is `https://<your-dashboard>.onrender.com/bulk-upload`).
+Open your dashboard and click **Bulk upload** (the link is `https://<your-dashboard>/bulk-upload`).
 It is behind the same login as the rest of the dashboard, so nobody else can use it.
 
 1. Drop your finished video (.mp4 or .mov, up to 1 GB).
