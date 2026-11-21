@@ -197,3 +197,14 @@ export interface ReadyPage {
   pageSize: number;
   videoCount: number; // video files "Download all" puts in the zip
 }
+
+/* ---------- Automatic videos (Ideas page) ---------- */
+export interface AutoStatus {
+  enabled: boolean; // the Auto mode switch
+  paused: boolean; // kill switch on the Costs page
+  perDay: number;
+  nextRuns: string[]; // next scheduled run times (ISO)
+  generateNowAvailable: boolean; // false = GITHUB_DISPATCH_TOKEN not set on Render
+  waitingIdeas: number;
+  aiTopics: { id: string; title: string; createdAt: string; storyId: string | null; storyStatus: string | null }[];
+}

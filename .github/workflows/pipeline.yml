@@ -11,7 +11,7 @@
 # They are never written in the code. See README "Free plan setup".
 name: Pipeline
 # The name shown in the run list (the Mac app shows it too).
-run-name: ${{ inputs.topic && format('Idea - {0}', inputs.topic) || format('Pipeline ({0})', github.event_name) }}
+run-name: ${{ inputs.topic && format('Idea - {0}', inputs.topic) || inputs.auto_now && 'Generate now (automatic topic)' || format('Pipeline ({0})', github.event_name) }}
 on:
   # GitHub's clock is UTC. Nepal is UTC + 5:45, so:
   #   2:00 AM Nepal = 20:15 UTC (the evening before)
@@ -27,6 +27,10 @@ on:
         description: "Your own idea (optional). Makes one story about it in Nepali + English."
         type: string
         default: ""
+      auto_now:
+        description: "Make one automatic video now (the AI picks the topic), even if today already has enough"
+        type: boolean
+        default: false
       demo_story:
         description: "Add a practice story first (Mount Everest, Nepali + English)"
         type: boolean
@@ -159,6 +163,9 @@ jobs:
       - name: Pick the next topic automatically
         if: github.event_name != 'push' && !inputs.remake_latest
         run: pnpm --filter @dualflow/worker auto-ideas
+        env:
+          # "Generate now" button: make one even if Auto mode is off or today already has enough.
+          AUTO_FORCE: ${{ inputs.auto_now && 'true' || 'false' }}
       - name: Remake the newest video
         if: inputs.remake_latest
         run: pnpm --filter @dualflow/worker remake-video
