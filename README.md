@@ -19,7 +19,7 @@ packages/storage Files on this computer or in Cloudflare R2
 
 How a video moves through the system:
 
-1. You add an idea in **Ideas & Chat** and click **Make NE + EN video**.
+1. You add an idea in **Ideas & auto mode** and click **Make video**.
 2. The API creates a **Story** with two **Variants** (Nepali and English) and queues a `research` job.
 3. The worker runs `research`, then `script → voice → thumbnail → render` for **both languages in parallel**.
 4. When both variants are ready, the Story is ready. (Phase 1 adds the real AI work.)
@@ -84,7 +84,7 @@ The free plan runs without any server that is on all day:
 
 Every part is a switch, so moving to a paid provider later is a settings change, not new code.
 The worker stops by itself at the Gemini daily limit (`GEMINI_DAILY_REQUESTS`) and at 90% of Azure's free
-characters, and continues when the limit resets. The **Costs & Automation** page shows how much of each
+characters, and continues when the limit resets. The **Costs & limits** page shows how much of each
 free limit is used, the waiting jobs, a **Run now** button and the kill switch.
 
 ### Free plan setup (one time)
@@ -111,7 +111,7 @@ To hear the free voices first, run **Actions → Voice sample → Run workflow**
 ## Automatic videos and "Ready to upload"
 
 Every automatic pipeline run (2:00 AM and 4:00 AM Nepal time) adds the next story by itself: first your unused ideas from
-**Ideas & Chat**, otherwise the AI Content Director picks a fresh topic (`apps/worker/src/auto-ideas.ts`,
+**Ideas & auto mode**, otherwise the AI Content Director picks a fresh topic (`apps/worker/src/auto-ideas.ts`,
 `packages/ai/src/topic.ts`). It stops at `AUTO_STORIES_PER_DAY` a day (default 2, Nepal time; `0` = off).
 Finished videos appear on the dashboard's **Ready to upload** page: play, download (straight from R2),
 copy title / description / hashtags, and **Mark as uploaded**. Beginner guide: **[docs/automatic-videos.md](docs/automatic-videos.md)**.

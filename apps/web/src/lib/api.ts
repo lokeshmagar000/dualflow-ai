@@ -15,21 +15,84 @@ function apiBaseUrl() {
 }
 const API_URL = apiBaseUrl();
 
+/** True when the API runs inside this same server (one server mode, scripts/start-dashboard.sh). */
+export function oneServerMode() {
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(API_URL) && Boolean(process.env.DATABASE_URL);
+}
+
+/** What kind of problem happened, so the page can explain it in plain words. */
+export type ApiProblemKind = "blocked" | "waking" | "unauthorized" | "old" | "server" | "offline";
+
 /**
- * fetch(), but if the API cannot be reached at all (for example it is still
- * starting after the server woke up) we wait a moment and try again,
- * instead of showing an error straight away.
+ * The error thrown when the API does not answer well.
+ * "message" is short and readable: we never copy a whole web page (like Render's
+ * "Just a moment..." page) into it, which used to fill the screen with red code.
+ */
+export class ApiProblem extends Error {
+  constructor(public kind: ApiProblemKind, public status: number | null, message: string, public detail = "") {
+    super(message);
+    this.name = "ApiProblem";
+  }
+}
+
+/** Turns an answer body into one short line (HTML pages become a short note). */
+function shortBody(text: string) {
+  const t = text.trim();
+  if (t.startsWith("<")) {
+    return /just a moment|cf-chl|challenge/i.test(t) ? "Render's protection page (\"Just a moment...\")" : "a web page instead of data";
+  }
+  try {
+    const j = JSON.parse(t) as { error?: unknown; message?: unknown };
+    const m = typeof j.message === "string" && j.message ? j.message : j.error; // Fastify puts the useful text in "message"
+    if (typeof m === "string") return m.slice(0, 200);
+  } catch { /* not JSON */ }
+  return t.slice(0, 200);
+}
+
+function problemFor(status: number, body: string, path: string): ApiProblem {
+  const isChallenge = body.trimStart().startsWith("<") && /just a moment|cf-chl|challenge/i.test(body);
+  const short = shortBody(body);
+  const msg = `${path} answered ${status}: ${short}`;
+  if (status === 429 || isChallenge) return new ApiProblem("blocked", status, msg, short);
+  if (status === 502 || status === 503 || status === 504) return new ApiProblem("waking", status, msg, short);
+  if (status === 401 || status === 403) return new ApiProblem("unauthorized", status, msg, short);
+  // 404 "Route GET /x not found" = the API does not know this address yet (older version).
+  // Other 404s (like "Story not found") are normal answers.
+  if (status === 404 && /^Route /.test(short)) return new ApiProblem("old", status, msg, short);
+  return new ApiProblem("server", status, msg, short);
+}
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * fetch(), but it tries again when the API is still starting (could not connect,
+ * or a 502/503/504 "waking up" answer) or said "too many requests" (429).
+ * Buttons (POST/DELETE) are never repeated by themselves, so nothing happens twice.
  */
 async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  const safeToRepeat = !init.method || init.method === "GET";
   const waits = [1000, 2000, 4000, 8000]; // up to 15 seconds in total
   for (let attempt = 0; ; attempt++) {
+    let res: Response;
     try {
-      return await fetch(url, init);
+      res = await fetch(url, init);
     } catch (err) {
-      // Only "could not connect" errors land here; a 404 or 500 answer does not.
-      if (attempt >= waits.length || init.method === "POST" || init.method === "DELETE") throw err;
-      await new Promise((r) => setTimeout(r, waits[attempt]));
+      // Only "could not connect" errors land here.
+      if (attempt >= waits.length || !safeToRepeat) {
+        throw new ApiProblem("offline", null, `Could not connect to ${url.replace(/\?.*/, "")} (${err instanceof Error ? err.message : String(err)})`);
+      }
+      await wait(waits[attempt] ?? 1000);
+      continue;
     }
+    const retryable = res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504;
+    // A "too many requests" answer gets only 2 more tries, so we do not make it worse.
+    const maxTries = res.status === 429 ? 2 : waits.length;
+    if (retryable && safeToRepeat && attempt < maxTries) {
+      await res.text().catch(() => ""); // read and drop this answer (cancel() can hang inside Next.js)
+      await wait((waits[attempt] ?? 1000) + 500);
+      continue;
+    }
+    return res;
   }
 }
 
@@ -43,8 +106,14 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     },
     cache: "no-store", // always show fresh data
   });
-  if (!res.ok) throw new Error(`API ${path} failed: ${res.status} ${await res.text()}`);
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  if (!res.ok) throw problemFor(res.status, text, path);
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // A 200 answer that is not data (for example a protection page) counts as blocked.
+    throw problemFor(text.trimStart().startsWith("<") ? 429 : 500, text, path);
+  }
 }
 
 /** Like api(), but returns the raw response (for files such as audio). */
@@ -53,6 +122,24 @@ export async function apiRaw(path: string): Promise<Response> {
     headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "" },
     cache: "no-store",
   });
+}
+
+/** What a button shows after it ran: a green note (ok) or a red one. */
+export type ActionResult = { ok?: boolean; message?: string; values?: Record<string, string> }; // values: what you typed, kept after an error
+
+/** A short, readable error text for buttons (server actions). */
+export function problemText(e: unknown): string {
+  if (e instanceof ApiProblem) {
+    switch (e.kind) {
+      case "blocked": return "Render blocked the request to the API server (too many requests). Wait a minute and try again. The lasting fix is one server mode (see Settings).";
+      case "waking": return "The API server is waking up. Try again in about a minute.";
+      case "offline": return "Could not connect to the API server. Try again in a minute.";
+      case "unauthorized": return "The dashboard and the API have different INTERNAL_API_KEY values on Render.";
+      case "old": return "The API server runs an older version. Redeploy it on Render (see Settings).";
+      default: return e.detail || e.message;
+    }
+  }
+  return e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300);
 }
 
 /* Types for the data the API returns (simplified). */

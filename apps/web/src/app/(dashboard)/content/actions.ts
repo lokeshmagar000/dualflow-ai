@@ -1,14 +1,19 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { api } from "@/lib/api";
+import { ApiProblem, api, problemText, type ActionResult } from "@/lib/api";
 
 /** Run the pipeline again for a failed story. */
-export async function retryStory(formData: FormData) {
+export async function retryStory(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const storyId = String(formData.get("storyId"));
-  await api(`/stories/${storyId}/retry`, { method: "POST", body: "{}" });
+  try {
+    await api(`/stories/${storyId}/retry`, { method: "POST", body: "{}" });
+  } catch (e) {
+    return { message: problemText(e) };
+  }
   revalidatePath(`/content/${storyId}`);
   revalidatePath("/content");
+  return { ok: true, message: "Started again. It takes about 15 minutes." };
 }
 
 /** What the Delete button shows after trying. */
@@ -25,18 +30,13 @@ export async function deleteStory(_prev: DeleteState, formData: FormData): Promi
   try {
     await api(`/stories/${storyId}`, { method: "DELETE", body: "{}" });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
     // 404 "Story not found" = it is already gone (for example you pressed twice). That is fine.
-    if (!msg.includes("Story not found")) {
-      return {
-        error: msg.includes("Route DELETE")
-          ? "The API server has not updated yet. On Render open dualflow-api → Manual Deploy → Deploy latest commit, then try again."
-          : "Could not delete it right now. Wait a minute and try again.",
-      };
-    }
+    const alreadyGone = e instanceof ApiProblem && e.status === 404 && e.kind !== "old";
+    if (!alreadyGone) return { error: problemText(e) };
   }
   revalidatePath("/ready");
   revalidatePath("/content");
+  revalidatePath("/library");
   revalidatePath("/");
   // From the story's own page we go back to the list, because the page is gone now.
   if (goTo.startsWith("/")) redirect(goTo);

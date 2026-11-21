@@ -6,6 +6,7 @@
  * error message if it did not work (shown in red under the button).
  */
 import { useActionState } from "react";
+import { IconTrash } from "./icons";
 import { deleteStory, type DeleteState } from "@/app/(dashboard)/content/actions";
 
 export function DeleteStoryButton({ storyId, title, goTo }: { storyId: string; title: string; goTo?: string }) {
@@ -23,13 +24,10 @@ export function DeleteStoryButton({ storyId, title, goTo }: { storyId: string; t
     >
       <input type="hidden" name="storyId" value={storyId} />
       {goTo && <input type="hidden" name="goTo" value={goTo} />}
-      <button
-        disabled={pending}
-        className="rounded-lg border border-red-200 px-3 py-1 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
-      >
-        {pending ? "Deleting…" : "🗑 Delete"}
+      <button disabled={pending} className="btn btn-sm btn-danger">
+        <IconTrash className="h-4 w-4" /> {pending ? "Deleting…" : "Delete"}
       </button>
-      {state.error && <span className="mt-1 max-w-xs text-right text-xs text-red-600">{state.error}</span>}
+      {state.error && <span role="alert" className="mt-1 max-w-xs text-right text-xs text-bad">{state.error}</span>}
     </form>
   );
 }

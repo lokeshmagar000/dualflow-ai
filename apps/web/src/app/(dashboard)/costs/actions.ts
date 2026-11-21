@@ -1,25 +1,29 @@
 "use server";
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { api } from "@/lib/api";
+import { api, problemText, type ActionResult } from "@/lib/api";
 
 /** "Run now": ask GitHub Actions to make the waiting videos right away. */
-export async function runNow() {
-  let message: string;
+export async function runNow(_prev: ActionResult): Promise<ActionResult> {
   try {
-    message = (await api<{ message: string }>("/pipeline/run-now", { method: "POST", body: "{}" })).message;
+    const r = await api<{ message: string }>("/pipeline/run-now", { method: "POST", body: "{}" });
+    revalidatePath("/costs");
+    return { ok: true, message: r.message };
   } catch (e) {
     // The API answers 409 with a reason when Run now is not set up.
-    const text = e instanceof Error ? e.message : String(e);
-    message = text.match(/"message":"([^"]+)"/)?.[1] ?? "Could not start the run.";
+    return { message: problemText(e) };
   }
-  redirect(`/costs?msg=${encodeURIComponent(message)}`);
 }
 
 /** The kill switch: pause or resume all automation. */
-export async function setPaused(formData: FormData) {
+export async function setPaused(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const paused = formData.get("paused") === "true";
-  await api("/automation/pause", { method: "POST", body: JSON.stringify({ paused }) });
+  try {
+    await api("/automation/pause", { method: "POST", body: JSON.stringify({ paused }) });
+  } catch (e) {
+    return { message: problemText(e) };
+  }
   revalidatePath("/costs");
+  revalidatePath("/ideas");
   revalidatePath("/");
+  return { ok: true, message: paused ? "All automation is paused." : "Automation is running again." };
 }

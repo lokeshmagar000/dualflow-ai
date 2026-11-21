@@ -160,19 +160,19 @@ export function BulkUploadForm({ channels, storage }: { channels: BulkChannel[];
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-5">
         {/* 1. The video */}
         <label
-          className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-zinc-300 bg-white p-6 text-center hover:border-brand-500"
+          className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-stroke-strong bg-surface p-6 text-center hover:border-brand"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
             pickFile(e.dataTransfer.files[0] ?? null);
           }}
         >
-          <span className="text-sm font-semibold">{file ? file.name : "Drop your video here, or tap to choose"}</span>
-          <span className="text-xs text-zinc-500">
+          <span className="font-semibold">{file ? file.name : "Drop your video here, or tap to choose"}</span>
+          <span className="text-xs text-fg3">
             .mp4 or .mov, up to {niceSize(LIMITS.pageMaxBytes)}
             {facts && ` · ${niceSize(facts.sizeBytes)}`}
             {facts?.durationSec ? ` · ${niceDuration(facts.durationSec)}` : ""}
@@ -182,49 +182,49 @@ export function BulkUploadForm({ channels, storage }: { channels: BulkChannel[];
           <input ref={fileInput} type="file" accept="video/mp4,video/quicktime,.mp4,.mov" className="sr-only" disabled={busy}
             onChange={(e) => pickFile(e.target.files?.[0] ?? null)} />
         </label>
-        {tooBig && <p className="text-sm text-red-600">This file is too big for the page ({niceSize(file!.size)}).</p>}
-        {facts && !facts.durationSec && <p className="text-sm text-amber-700">This browser could not read the video's length, so the length rules are checked by each platform.</p>}
+        {tooBig && <p className="text-bad">This file is too big for the page ({niceSize(file!.size)}).</p>}
+        {facts && !facts.durationSec && <p className="text-warn">This browser could not read the video's length, so the length rules are checked by each platform.</p>}
 
         {/* 2. Language: decides which channels get it */}
         <fieldset>
-          <legend className="mb-2 text-sm font-medium">Language of the video</legend>
+          <legend className="mb-2 font-semibold">Language of the video</legend>
           <div className="flex gap-2">
             {(["ne", "en"] as Lang[]).map((l) => (
               <button key={l} type="button" disabled={busy}
                 onClick={() => { setLanguage(l); setLanguageTouched(true); }}
-                className={`rounded-lg px-4 py-2 text-sm ring-1 ${language === l ? "bg-brand-500 text-white ring-brand-500" : "bg-white text-zinc-700 ring-zinc-300 hover:bg-zinc-50"}`}>
+                className={`btn ${language === l ? "btn-primary" : ""}`}>
                 {LANG_LABEL[l]}
               </button>
             ))}
           </div>
-          <p className="mt-1 text-xs text-zinc-500">Nepali videos go only to your Nepali channels, English videos only to your English channels.</p>
+          <p className="mt-1 text-xs text-fg3">Nepali videos go only to your Nepali channels, English videos only to your English channels.</p>
         </fieldset>
 
         {/* 3. Words */}
         <div>
-          <label className="mb-1 block text-sm font-medium" htmlFor="bulk-title">Title <span className="text-zinc-400">({title.length}/100)</span></label>
+          <label className="mb-1 block font-semibold" htmlFor="bulk-title">Title <span className="font-normal text-fg4">({title.length}/100)</span></label>
           <input id="bulk-title" value={title} maxLength={100} disabled={busy} onChange={(e) => setTitle(e.target.value)} lang={language}
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm" placeholder="e.g. 5 facts about Mount Everest" />
+            className="field" placeholder="e.g. 5 facts about Mount Everest" />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium" htmlFor="bulk-caption">Caption <span className="text-zinc-400">({caption.length}/2200)</span></label>
+          <label className="mb-1 block font-semibold" htmlFor="bulk-caption">Caption <span className="font-normal text-fg4">({caption.length}/2200)</span></label>
           <textarea id="bulk-caption" value={caption} maxLength={2200} rows={4} disabled={busy} onChange={(e) => setCaption(e.target.value)} lang={language}
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm" placeholder="One caption for every platform" />
+            className="field" placeholder="One caption for every platform" />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium" htmlFor="bulk-tags">Hashtags <span className="text-zinc-400">(optional, up to 30)</span></label>
+          <label className="mb-1 block font-semibold" htmlFor="bulk-tags">Hashtags <span className="font-normal text-fg4">(optional, up to 30)</span></label>
           <input id="bulk-tags" value={hashtags} disabled={busy} onChange={(e) => setHashtags(e.target.value)}
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm" placeholder="#nepal #facts #NamasteFacts" />
+            className="field" placeholder="#nepal #facts #NamasteFacts" />
         </div>
       </div>
 
       {/* 4. Channels, with each platform's rules checked */}
       <div className="space-y-4">
-        {preview && <video src={preview} controls muted playsInline className="max-h-72 w-full rounded-xl bg-black" />}
-        <div className="rounded-2xl bg-white p-4 ring-1 ring-zinc-200">
-          <p className="mb-2 text-sm font-semibold">Send to ({chosen.length}/{myChannels.length})</p>
+        {preview && <video src={preview} controls muted playsInline className="max-h-72 w-full rounded-lg bg-black" />}
+        <div className="card p-4">
+          <p className="mb-2 font-semibold">Send to ({chosen.length}/{myChannels.length})</p>
           {myChannels.length === 0 && (
-            <p className="text-sm text-zinc-500">
+            <p className="text-fg3">
               No {language === "ne" ? "Nepali" : "English"} channels yet. Add the tokens (docs/social-setup.md), then run
               &quot;Test my channels&quot; in GitHub Actions.
             </p>
@@ -235,13 +235,13 @@ export function BulkUploadForm({ channels, storage }: { channels: BulkChannel[];
               const blocked = check?.ok === false;
               return (
                 <li key={c.id}>
-                  <label className={`flex items-center gap-2 text-sm ${blocked ? "text-zinc-400" : ""}`}>
+                  <label className={`flex min-h-8 items-center gap-2 ${blocked ? "text-fg4" : ""}`}>
                     <input type="checkbox" disabled={busy || blocked} checked={!blocked && !unticked.has(c.id)} onChange={() => toggle(c.id)} />
-                    <span className="font-medium">{c.name}</span>
-                    {check && <span className={blocked ? "text-red-600" : "text-emerald-600"}>{blocked ? "✗ will refuse it" : "✓ fits"}</span>}
+                    <span className="font-semibold">{c.name}</span>
+                    {check && <span className={blocked ? "text-bad" : "text-ok"}>{blocked ? "✗ will refuse it" : "✓ fits"}</span>}
                   </label>
-                  {check?.problems.map((p) => <p key={p} className="ml-6 text-xs text-red-600">{p}</p>)}
-                  {check?.notes.map((n) => <p key={n} className="ml-6 text-xs text-zinc-500">{n}</p>)}
+                  {check?.problems.map((p) => <p key={p} className="ml-6 text-xs text-bad">{p}</p>)}
+                  {check?.notes.map((n) => <p key={n} className="ml-6 text-xs text-fg3">{n}</p>)}
                 </li>
               );
             })}
@@ -249,18 +249,18 @@ export function BulkUploadForm({ channels, storage }: { channels: BulkChannel[];
         </div>
 
         <button type="button" onClick={send} disabled={!canSend}
-          className="w-full rounded-xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40">
+          className="btn btn-primary w-full">
           {step === "uploading" ? `Sending video… ${progress}%` : step === "saving" ? "Starting the uploads…" : "Send everywhere"}
         </button>
         {step === "uploading" && (
-          <div className="h-2 overflow-hidden rounded-full bg-zinc-200">
-            <div className="h-full bg-brand-500 transition-all" style={{ width: `${progress}%` }} />
+          <div className="h-1.5 overflow-hidden rounded-full bg-subtle2">
+            <div className="h-full bg-brand transition-all" style={{ width: `${progress}%` }} />
           </div>
         )}
         {message && (
-          <p className={`rounded-lg p-3 text-sm ${step === "error" ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{message}</p>
+          <p className={`rounded-md p-3 ${step === "error" ? "bg-bad-tint text-bad" : "bg-ok-tint text-ok"}`}>{message}</p>
         )}
-        {storage === "local" && <p className="text-xs text-zinc-500">Local storage: the video is saved on this computer.</p>}
+        {storage === "local" && <p className="text-xs text-fg3">Local storage: the video is saved on this computer.</p>}
       </div>
     </div>
   );
