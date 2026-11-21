@@ -103,9 +103,17 @@ export async function makeJobFolder(): Promise<{ dir: string; url: (name: string
 const browserExecutable = () => process.env.REMOTION_BROWSER || null;
 
 /** Render the full video to `outFile` (.mp4, H.264 + AAC: works on every platform). */
+/**
+ * Remotion fills any prop we leave out from the example props in Root.tsx.
+ * So optional props always get a value here ("" = none), never "left out".
+ */
+function withDefaults<T extends { brandTag?: string }>(props: T): Record<string, unknown> {
+  return { ...props, brandTag: props.brandTag ?? "" } as unknown as Record<string, unknown>;
+}
+
 export async function renderVideo(props: VideoProps, outFile: string, onProgress?: (p: number) => void) {
   const serveUrl = await getBundle();
-  const inputProps = props as unknown as Record<string, unknown>;
+  const inputProps = withDefaults(props);
   const composition = await selectComposition({ serveUrl, id: "Video", inputProps, browserExecutable: browserExecutable() });
   let lastShown = -1;
   await renderMedia({
@@ -130,7 +138,7 @@ export async function renderVideo(props: VideoProps, outFile: string, onProgress
 /** Render the thumbnail to `outFile` (.jpg). */
 export async function renderThumbnail(props: ThumbnailProps, outFile: string) {
   const serveUrl = await getBundle();
-  const inputProps = props as unknown as Record<string, unknown>;
+  const inputProps = withDefaults(props);
   const composition = await selectComposition({ serveUrl, id: "Thumbnail", inputProps, browserExecutable: browserExecutable() });
   await renderStill({
     serveUrl,

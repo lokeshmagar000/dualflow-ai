@@ -56,7 +56,7 @@ for (const language of ["ne", "en"] as const) {
       audioFile: job.url("voice.wav"),
       durationMs,
       brand: brandFor(language).name,
-      brandTag: brandFor(language).tag || undefined,
+      brandTag: brandFor(language).tag,
       accent: BRAND_COLORS.marigold,
       scenes: [
         { startMs: 0, endMs: durationMs / 2, text: "" },
@@ -78,7 +78,7 @@ for (const language of ["ne", "en"] as const) {
   for (const size of ["shorts", "youtube", "feed"] as const) {
     const b = brandFor(language);
     await renderThumbnail(
-      { format: "SHORT", size, language, headline: HEADLINES[language], brand: b.name, brandTag: b.tag || undefined, accent: BRAND_COLORS.marigold },
+      { format: "SHORT", size, language, headline: HEADLINES[language], brand: b.name, brandTag: b.tag, accent: BRAND_COLORS.marigold },
       path.join(out, `test-thumbnail-${language}-${size}.jpg`),
     );
   }

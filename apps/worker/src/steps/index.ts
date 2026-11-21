@@ -313,7 +313,7 @@ const render: Step = async (data) => {
         audioFile: job.url("voice.wav"),
         durationMs,
         brand,
-        brandTag: brandInfo.tag || undefined,
+        brandTag: brandInfo.tag, // always a string: "" = no label (see Root.tsx)
         accent,
         scenes: variant.scenes.map((s, i) => ({
           startMs: s.startMs ?? 0,
@@ -355,7 +355,7 @@ const render: Step = async (data) => {
           headline: variant.thumbnailHeadline || variant.title || story.topic.title,
           media: photo ? toMedia(photo) : clipFrame,
           brand,
-          brandTag: brandInfo.tag || undefined,
+          brandTag: brandInfo.tag, // always a string: "" = no label (see Root.tsx)
           accent,
         },
         file,
