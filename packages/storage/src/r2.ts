@@ -50,6 +50,13 @@ export async function r2Get(key: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
+/** The file as a stream: it flows piece by piece, so a big video never sits whole in memory. */
+export async function r2Stream(key: string): Promise<ReadableStream<Uint8Array>> {
+  const res = await check(await r2().fetch(objectUrl(key)), `download of ${key}`);
+  if (!res.body) throw new Error(`R2 download of ${key} returned no data`);
+  return res.body;
+}
+
 export async function r2Exists(key: string): Promise<boolean> {
   const res = await r2().fetch(objectUrl(key), { method: "HEAD" });
   if (res.status === 404) return false;

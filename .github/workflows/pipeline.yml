@@ -1,10 +1,10 @@
 # FREE PLAN: this is the "worker". It makes the videos, then the machine stops.
 #
 # It starts:
-#   - every 3 hours by itself (schedule). Each time it adds the next AUTOMATIC story
-#     (your unused ideas first, otherwise the AI picks a topic), up to
-#     AUTO_STORIES_PER_DAY a day (default 2). Finished videos wait on the dashboard's
-#     "Ready to upload" page for you to download.
+#   - by itself every night at 2:00 AM and 4:00 AM Nepal time (schedule). Each run adds
+#     one AUTOMATIC story = one Nepali video + one English video (your unused ideas
+#     first, otherwise the AI picks a topic), up to AUTO_STORIES_PER_DAY a day (default 2).
+#     Finished videos wait on the dashboard's "Ready to upload" page for you to download.
 #   - when you press "Run now" in the dashboard (or "Run workflow" in the Actions tab).
 #
 # Your keys are stored in GitHub: Settings -> Secrets and variables -> Actions.
@@ -13,8 +13,14 @@ name: Pipeline
 # The name shown in the run list (the Mac app shows it too).
 run-name: ${{ inputs.topic && format('Idea - {0}', inputs.topic) || format('Pipeline ({0})', github.event_name) }}
 on:
+  # GitHub's clock is UTC. Nepal is UTC + 5:45, so:
+  #   2:00 AM Nepal = 20:15 UTC (the evening before)
+  #   4:00 AM Nepal = 22:15 UTC (the evening before)
+  # GitHub sometimes starts scheduled runs 5-30 minutes late when it is busy.
+  # To change the times: edit these lines (minute hour * * *, in UTC).
   schedule:
-    - cron: "17 */3 * * *" # minute 17 of every 3rd hour (UTC). Odd minutes avoid GitHub's busy times.
+    - cron: "15 20 * * *" # 2:00 AM Nepal
+    - cron: "15 22 * * *" # 4:00 AM Nepal
   workflow_dispatch:
     inputs:
       topic:

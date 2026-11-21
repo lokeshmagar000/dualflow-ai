@@ -1,6 +1,6 @@
 /**
  * "Run now": start the GitHub Actions pipeline run right away,
- * instead of waiting for the next scheduled run (every 3 hours).
+ * instead of waiting for the next scheduled run (2 AM and 4 AM Nepal time).
  *
  * Settings (on Render, never in code):
  *   GITHUB_REPO            e.g. "lokeshmagar000/dualflow-ai"
@@ -58,7 +58,7 @@ export async function triggerQuietly(log: { warn: (msg: string) => void }) {
  * a GitHub problem never breaks the request (the next Pipeline run uploads it anyway).
  */
 export async function startUploadRun(log: { warn: (msg: string) => void }): Promise<string> {
-  if (!githubRunConfigured()) return "Upload now is not set up on Render (GITHUB_REPO and GITHUB_DISPATCH_TOKEN), so the next Pipeline run (every 3 hours) will upload it.";
+  if (!githubRunConfigured()) return "Upload now is not set up on Render (GITHUB_REPO and GITHUB_DISPATCH_TOKEN), so the next Pipeline run (2 AM and 4 AM Nepal time) will upload it.";
   try {
     const r = await triggerPipelineRun(UPLOAD_WORKFLOW);
     if (!r.started) log.warn(r.message);

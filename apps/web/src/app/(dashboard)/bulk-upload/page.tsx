@@ -40,7 +40,7 @@ export default async function BulkUploadPage() {
         </div>
         {!setup.uploadRunReady && (
           <p className="mb-3 text-xs text-amber-700">
-            Quick uploads are off (GITHUB_REPO and GITHUB_DISPATCH_TOKEN on Render), so videos go up with the next Pipeline run (every 3 hours).
+            Quick uploads are off (GITHUB_REPO and GITHUB_DISPATCH_TOKEN on Render), so videos go up with the next Pipeline run (2 AM or 4 AM Nepal time).
           </p>
         )}
         {recent.length === 0 && <Card><p className="text-sm text-zinc-500">Nothing sent yet.</p></Card>}

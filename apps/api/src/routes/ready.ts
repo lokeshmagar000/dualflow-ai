@@ -1,13 +1,15 @@
 /**
  * "Ready to upload" page: finished videos you download and upload yourself.
  *
- *   GET  /ready?show=waiting|uploaded|all   finished stories, newest first
- *   GET  /variants/:id/download/:kind       video, thumbnail or srt (?inline=1 to play/show it)
- *   POST /variants/:id/uploaded             { uploaded: true | false } = the "Mark as uploaded" button
+ *   GET  /ready?show=waiting|uploaded|all&page=1   finished stories, newest first, 10 per page
+ *   GET  /ready/zip?show=waiting|uploaded|all      "Download all": every video of that tab in one .zip
+ *   GET  /variants/:id/download/:kind              video, thumbnail or srt (?inline=1 to play/show it)
+ *   POST /variants/:id/uploaded                    { uploaded: true | false } = the "Mark as uploaded" button
  */
 import type { FastifyInstance } from "fastify";
+import archiver from "archiver";
 import { prisma, type Prisma } from "@dualflow/db";
-import { contentTypeFor, downloadUrlFor, fileExists, readFile } from "@dualflow/storage";
+import { contentTypeFor, downloadUrlFor, fileExists, readFile, readStream } from "@dualflow/storage";
 import { getDefaultWorkspace } from "../workspace";
 
 const KINDS = ["video", "thumbnail", "srt"] as const;
@@ -33,44 +35,150 @@ export function downloadName(opts: { createdAt: Date; language: string; englishT
   return `${opts.createdAt.toISOString().slice(0, 10)}-${opts.language}-${slugify(opts.englishTitle)}${extra}.${ext}`;
 }
 
+/** How many stories one page shows. Fewer stories = a faster page. */
+export const PAGE_SIZE = 10;
+/** The most videos one "Download all" zip holds (keeps the free server from running for hours). */
+export const ZIP_MAX_VIDEOS = 40;
+
+/** Which videos each tab shows. */
+function variantFilterFor(show: string): Prisma.VariantWhereInput {
+  if (show === "uploaded") return { manualUploadedAt: { not: null } };
+  if (show === "all") return {};
+  return { manualUploadedAt: null, outputKey: { not: null } }; // "waiting"
+}
+
+/** Finished stories of this workspace (not bulk uploads) that have a video matching the tab. */
+function storyFilterFor(workspaceId: string, show: string): Prisma.StoryWhereInput {
+  return {
+    workspaceId,
+    status: { in: ["READY", "APPROVED", "SCHEDULED", "PUBLISHED"] },
+    topic: { source: { not: "UPLOAD" } }, // bulk uploads are your own videos
+    variants: { some: variantFilterFor(show) },
+  };
+}
+
+/** The text file put next to each video in the zip: title, description and hashtags, ready to paste. */
+export function uploadText(v: { title: string | null; description: string | null; hashtags: string[] }): string {
+  const tags = v.hashtags.map((h) => `#${h.replace(/^#/, "")}`).join(" ");
+  return [`TITLE:\n${v.title ?? ""}`, `DESCRIPTION:\n${v.description ?? ""}`, `HASHTAGS:\n${tags}`].join("\n\n") + "\n";
+}
+
 export async function readyRoutes(app: FastifyInstance) {
-  app.get<{ Querystring: { show?: string } }>("/ready", async (req) => {
+  app.get<{ Querystring: { show?: string; page?: string } }>("/ready", async (req) => {
     const ws = await getDefaultWorkspace();
     const show = req.query.show ?? "waiting";
-    const variantFilter: Prisma.VariantWhereInput =
-      show === "uploaded"
-        ? { manualUploadedAt: { not: null } }
-        : show === "all"
-          ? {}
-          : { manualUploadedAt: null, outputKey: { not: null } };
-    return prisma.story.findMany({
-      where: {
-        workspaceId: ws.id,
-        status: { in: ["READY", "APPROVED", "SCHEDULED", "PUBLISHED"] },
-        topic: { source: { not: "UPLOAD" } }, // bulk uploads are your own videos
-        variants: { some: variantFilter },
-      },
-      include: {
-        topic: { select: { title: true, source: true } },
-        variants: {
-          orderBy: { language: "asc" }, // "en" first, then "ne"
-          select: {
-            id: true,
-            language: true,
-            title: true,
-            description: true,
-            hashtags: true,
-            durationSec: true,
-            outputKey: true,
-            manualUploadedAt: true,
-            thumbnails: { select: { id: true }, take: 1 },
-            subtitles: { select: { id: true }, take: 1 },
+    const page = Math.max(1, Math.floor(Number(req.query.page) || 1));
+    const where = storyFilterFor(ws.id, show);
+
+    // Both questions go to the database at the same time.
+    const [total, stories, videoCount] = await Promise.all([
+      prisma.story.count({ where }),
+      prisma.story.findMany({
+        where,
+        select: {
+          id: true,
+          status: true,
+          createdAt: true,
+          topic: { select: { title: true, source: true } },
+          variants: {
+            orderBy: { language: "asc" }, // "en" first, then "ne"
+            select: {
+              id: true,
+              language: true,
+              title: true,
+              description: true,
+              hashtags: true,
+              durationSec: true,
+              outputKey: true,
+              manualUploadedAt: true,
+              thumbnails: { select: { storageKey: true }, orderBy: { createdAt: "desc" }, take: 1 },
+              subtitles: { select: { id: true }, take: 1 },
+            },
           },
         },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+      }),
+      // For the "Download all" button: how many video files this tab has.
+      prisma.variant.count({ where: { ...variantFilterFor(show), outputKey: { not: null }, story: storyFilterFor(ws.id, show) } }),
+    ]);
+
+    // Give the browser a direct R2 address for each small preview picture. Before, every
+    // picture went browser -> dashboard -> API -> R2, which made the page slow to fill.
+    // (Making the address is quick: it is signed here, without asking R2.)
+    const withPictures = await Promise.all(
+      stories.map(async (s) => ({
+        ...s,
+        variants: await Promise.all(
+          s.variants.map(async ({ thumbnails, ...v }) => ({
+            ...v,
+            thumbnails: thumbnails.map(() => ({ id: "latest" })),
+            thumbnailUrl: thumbnails[0] && v.outputKey ? await downloadUrlFor(thumbnails[0].storageKey, { inline: true }) : null,
+          })),
+        ),
+      })),
+    );
+    return { stories: withPictures, total, page, pageSize: PAGE_SIZE, videoCount: Math.min(videoCount, ZIP_MAX_VIDEOS) };
+  });
+
+  /**
+   * "Download all": one .zip with every video of the tab (newest first, up to ZIP_MAX_VIDEOS).
+   * Inside: a "Nepali" and an "English" folder, each video with its thumbnail and a .txt
+   * holding the title, description and hashtags to paste.
+   * Files flow straight from R2 into the zip ("streaming"), one at a time, so even
+   * a big zip needs very little memory on the free server.
+   */
+  app.get<{ Querystring: { show?: string } }>("/ready/zip", async (req, reply) => {
+    const ws = await getDefaultWorkspace();
+    const show = req.query.show ?? "waiting";
+    const variants = await prisma.variant.findMany({
+      where: { ...variantFilterFor(show), outputKey: { not: null }, story: storyFilterFor(ws.id, show) },
+      select: {
+        language: true,
+        title: true,
+        description: true,
+        hashtags: true,
+        outputKey: true,
+        thumbnails: { select: { storageKey: true }, orderBy: { createdAt: "desc" }, take: 1 },
+        story: { select: { createdAt: true, topic: { select: { title: true } }, variants: { select: { language: true, title: true } } } },
       },
-      orderBy: { createdAt: "desc" },
-      take: 60,
+      orderBy: [{ story: { createdAt: "desc" } }, { language: "desc" }],
+      take: ZIP_MAX_VIDEOS,
     });
+    if (variants.length === 0) return reply.code(404).send({ error: "No videos to download on this tab" });
+
+    // "store" = no squeezing. Videos are already compressed, so squeezing only wastes time.
+    const zip = archiver("zip", { store: true });
+    zip.on("warning", (err) => req.log.warn(err));
+    const day = new Date().toISOString().slice(0, 10);
+    reply
+      .header("content-type", "application/zip")
+      .header("content-disposition", `attachment; filename="namaste-videos-${show}-${day}.zip"`)
+      .send(zip); // the zip is sent while it is still being made
+
+    // Add the files one after another (each starts only when the last one is in the zip).
+    void (async () => {
+      try {
+        for (const v of variants) {
+          const englishTitle = v.story.variants.find((x) => x.language === "en")?.title || v.story.topic.title;
+          const folder = v.language === "ne" ? "Nepali" : "English";
+          const base = { createdAt: v.story.createdAt, language: v.language, englishTitle };
+          const videoName = downloadName({ ...base, kind: "video" });
+          await addAndWait(zip, await readStream(v.outputKey!), `${folder}/${videoName}`);
+          const thumb = v.thumbnails[0]?.storageKey;
+          if (thumb) {
+            await addAndWait(zip, await readStream(thumb).catch(() => null), `${folder}/${downloadName({ ...base, kind: "thumbnail" })}`);
+          }
+          zip.append(uploadText(v), { name: `${folder}/${videoName.replace(/\.mp4$/, "")}-text.txt` });
+        }
+        await zip.finalize();
+      } catch (err) {
+        req.log.error(err, "Download all failed");
+        zip.abort(); // the browser shows the download as failed instead of a broken zip
+      }
+    })();
+    return reply;
   });
 
   app.get<{ Params: { id: string; kind: string }; Querystring: { inline?: string } }>(
@@ -123,5 +231,21 @@ export async function readyRoutes(app: FastifyInstance) {
       data: { workspaceId: ws.id, actor: "owner", action: uploaded ? "video.marked_uploaded" : "video.unmarked_uploaded", target: variant.id },
     });
     return updated;
+  });
+}
+
+/** Put one file into the zip and wait until it is fully written (so only one file is open at a time). */
+function addAndWait(zip: archiver.Archiver, stream: NodeJS.ReadableStream | null, name: string): Promise<void> {
+  if (!stream) return Promise.resolve(); // e.g. the thumbnail was already deleted
+  return new Promise((resolve, reject) => {
+    const done = (entry: archiver.EntryData) => {
+      if (entry.name === name) {
+        zip.off("entry", done);
+        resolve();
+      }
+    };
+    zip.on("entry", done);
+    stream.once("error", reject);
+    zip.append(stream as NodeJS.ReadableStream & import("node:stream").Readable, { name });
   });
 }

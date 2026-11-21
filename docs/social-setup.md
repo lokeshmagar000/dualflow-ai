@@ -141,5 +141,5 @@ Optional: a different mode per platform, e.g. `PUBLISH_MODE_TIKTOK=manual`.
   for the next day. A wrong token stops at once and shows the reason on the dashboard.
 - Files are deleted from storage **only after the video is on every channel** (`DELETE_AFTER_PUBLISH`).
   If one upload fails, the files are kept.
-- Uploads run inside the pipeline run (every 3 hours), so a video can go up up to 3 hours after its time.
+- Uploads run inside the pipeline run (automatic at 2 AM and 4 AM Nepal time, or when you press Run now), so a video can go up hours after its time.
   This costs no extra GitHub minutes. "Upload now" starts a run right away.
