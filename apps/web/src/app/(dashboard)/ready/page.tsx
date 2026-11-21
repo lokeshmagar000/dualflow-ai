@@ -33,7 +33,17 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
   } catch (e) {
     return (<><PageHeader title="Ready to upload" /><ApiError error={e} /></>);
   }
-  const { stories, total, pageSize, videoCount } = data;
+  // If the API server still runs the older version (it answers with a plain list),
+  // show the list anyway instead of crashing, plus a note on how to update it.
+  const oldApi = Array.isArray(data);
+  if (oldApi) {
+    const list = data as unknown as ReadyData["stories"];
+    data = { stories: list, total: list.length, page: 1, pageSize: Math.max(1, list.length), videoCount: 0 };
+  }
+  const stories = data.stories ?? [];
+  const total = data.total ?? stories.length;
+  const pageSize = data.pageSize || 10;
+  const videoCount = data.videoCount ?? 0;
   const pages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
@@ -42,6 +52,8 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
         title="Ready to upload"
         subtitle="New videos (Nepali + English) are made by themselves every night at 2 AM and 4 AM Nepal time. Download, upload to your channels, then mark as uploaded."
       />
+
+      {oldApi && <OldApiNote />}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {TABS.map((t) => (
@@ -109,6 +121,19 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
         and 30 days after they were made if you never mark them. The story text stays.
       </p>
     </>
+  );
+}
+
+/** Shown when dualflow-api on Render has not been updated to the newest code yet. */
+function OldApiNote() {
+  return (
+    <Card className="mb-4 border-amber-200 bg-amber-50">
+      <p className="text-sm text-amber-800">
+        The API server is still running an older version, so <b>Delete</b> and <b>Download all</b> do not work yet.
+        Fix: Render → <b>dualflow-api</b> → <b>Manual Deploy</b> → <b>Deploy latest commit</b>, wait until it says Live,
+        then reload this page. (Or follow docs/faster-dashboard.md, step 1.)
+      </p>
+    </Card>
   );
 }
 
