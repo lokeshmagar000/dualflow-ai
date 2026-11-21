@@ -17,7 +17,7 @@ export function githubRunConfigured(): boolean {
   return Boolean(process.env.GITHUB_REPO && process.env.GITHUB_DISPATCH_TOKEN);
 }
 
-export async function triggerPipelineRun(workflow = WORKFLOW): Promise<{ started: boolean; message: string }> {
+export async function triggerPipelineRun(workflow = WORKFLOW, inputs?: Record<string, string>): Promise<{ started: boolean; message: string }> {
   if (!githubRunConfigured()) {
     return { started: false, message: "Run now is not set up (GITHUB_REPO and GITHUB_DISPATCH_TOKEN). The next scheduled run will do it." };
   }
@@ -32,7 +32,7 @@ export async function triggerPipelineRun(workflow = WORKFLOW): Promise<{ started
       "content-type": "application/json",
       "user-agent": "dualflow-ai",
     },
-    body: JSON.stringify({ ref: process.env.GITHUB_REF || "main" }),
+    body: JSON.stringify({ ref: process.env.GITHUB_REF || "main", ...(inputs ? { inputs } : {}) }),
     signal: AbortSignal.timeout(15_000),
   });
   if (res.status === 204) {

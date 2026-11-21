@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -19,6 +20,10 @@ const NAV = [
 
 export function Sidebar({ logout }: { logout: () => Promise<void> }) {
   const path = usePathname();
+  // Instant feedback: the menu item you click shows a small spinner until its page has arrived.
+  // (We tried a loading.tsx page for this, but it made buttons like Delete hang on "Saving…".)
+  const [opening, setOpening] = useState<string | null>(null);
+  useEffect(() => setOpening(null), [path]); // the new page is here: hide the spinner
   return (
     <aside className="flex w-full flex-col border-b border-zinc-200 bg-white md:h-screen md:w-60 md:border-b-0 md:border-r">
       <div className="px-5 py-4">
@@ -30,8 +35,12 @@ export function Sidebar({ logout }: { logout: () => Promise<void> }) {
           const active = item.href === "/" ? path === "/" : path.startsWith(item.href);
           return (
             <Link key={item.href} href={item.href}
+              onClick={() => { if (!active) setOpening(item.href); }}
               className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm ${active ? "bg-brand-500/10 font-semibold text-brand-600" : "text-zinc-600 hover:bg-zinc-100"}`}>
               {item.label}
+              {opening === item.href && (
+                <span className="ml-2 inline-block h-3 w-3 animate-spin rounded-full border-2 border-zinc-300 border-t-brand-500 align-middle" aria-label="Loading" />
+              )}
             </Link>
           );
         })}

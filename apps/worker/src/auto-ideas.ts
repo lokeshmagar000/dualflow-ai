@@ -11,6 +11,10 @@
  *   1. your own ideas on the "Ideas & Chat" page that are not made yet (oldest first),
  *   2. otherwise the AI Content Director picks a new topic (packages/ai/src/topic.ts).
  *
+ * Auto mode switch (dashboard, Ideas page): when you turn it OFF, scheduled runs add nothing.
+ * The "Generate now" button sets AUTO_FORCE=true: it adds one story even when Auto mode
+ * is off or today already has enough.
+ *
  * It waits (adds nothing) while another story is still being made, while the
  * kill switch is on, or when today's free Gemini requests would not be enough
  * for a whole story. Then the next run tries again.
@@ -45,10 +49,11 @@ export function startOfLocalDay(timeZone: string, now = new Date()): Date {
 }
 
 async function main() {
+  const force = process.env.AUTO_FORCE === "true"; // the "Generate now" button
   const perDay = Number(process.env.AUTO_STORIES_PER_DAY ?? 2);
   const perRun = Math.max(1, Number(process.env.AUTO_STORIES_PER_RUN ?? 1));
   const timeZone = process.env.AUTO_TIMEZONE || "Asia/Kathmandu";
-  if (!(perDay > 0)) {
+  if (!(perDay > 0) && !force) {
     console.log("Automatic videos are off (AUTO_STORIES_PER_DAY=0).");
     return;
   }
@@ -58,6 +63,13 @@ async function main() {
     update: {},
     create: { slug: "default", name: "DualFlow" },
   });
+
+  // The Auto mode switch is saved as an "automation rule" without a channel. No rule yet = on.
+  const autoRule = await prisma.automationRule.findFirst({ where: { workspaceId: workspace.id, channelId: null } });
+  if (autoRule && !autoRule.enabled && !force) {
+    console.log("Auto mode is OFF (Ideas page). No new story added. Press Generate now for one anyway.");
+    return;
+  }
 
   if (await prisma.budget.findFirst({ where: { workspaceId: workspace.id, paused: true } })) {
     console.log("Automation is paused (kill switch on the Costs page). No new story added.");
@@ -73,7 +85,7 @@ async function main() {
   }
 
   const today = await prisma.story.count({ where: { ...made, createdAt: { gte: startOfLocalDay(timeZone) } } });
-  const room = Math.min(perRun, perDay - today);
+  const room = force ? 1 : Math.min(perRun, perDay - today);
   if (room <= 0) {
     console.log(`Today already has ${today} of ${perDay} automatic stories. Next one tomorrow.`);
     return;

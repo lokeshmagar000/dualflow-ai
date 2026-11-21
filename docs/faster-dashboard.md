@@ -8,7 +8,7 @@
 | Every page went from the dashboard server **over the internet** to the API server and back. | In one server mode the API runs on the same machine, so this trip is almost instant. |
 | The **Ready to upload** page loaded up to 60 stories at once, and every preview picture went browser → dashboard → API → R2. | Now 10 stories per page (with **Older →** buttons), and preview pictures come **straight from R2**. |
 | Each page asked the database for the workspace again. | The API now remembers it. |
-| After a click, the screen **froze** until everything was ready, so it felt broken. | A grey "Loading…" page now shows **instantly** on every click. |
+| After a click, the screen **froze** until everything was ready, so it felt broken. | The menu item you click now shows a small spinner **instantly** until the page arrives. |
 
 The code changes work by themselves after merging. Steps 1 and 2 are a few clicks for you.
 

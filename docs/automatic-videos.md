@@ -28,6 +28,16 @@ GitHub's clock is UTC, which is 5 hours 45 minutes *behind* Nepal:
 
 If you add a third time, also set `AUTO_STORIES_PER_DAY` to `3` (below).
 
+## Auto mode switch and "Generate now" (Ideas & Chat page)
+
+At the top of **Ideas & Chat** is the **🤖 Automatic videos** card:
+- **Auto mode ON/OFF**: ON = the AI makes videos by itself at 2 AM and 4 AM. OFF = the night runs make nothing.
+- **⚡ Generate now**: the AI picks a topic and makes one Nepali + English video right away (about 15-20 minutes),
+  even when Auto mode is off. It needs `GITHUB_REPO` + `GITHUB_DISPATCH_TOKEN` on Render. Without them, use
+  GitHub → **Actions** → **Pipeline** → **Run workflow** → tick **Make one automatic video now**.
+- It also shows the next run times and the topics the AI picked.
+Your own ideas (added below the card) are always made first.
+
 ## Delete a video
 
 **Ready to upload** (or a story's page under **Content**) → **🗑 Delete** → **OK**.
