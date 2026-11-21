@@ -104,3 +104,22 @@ test("R2: a presigned download address saves the file under a clean name", async
   }
   assert.equal(await downloadUrlFor("stories/s1/ne/run-1/video.mp4"), null);
 });
+
+test("R2 is picked by itself when the R2 keys are set but STORAGE is not (Render often misses STORAGE)", async () => {
+  const { storageDriver } = await import("./index");
+  const keep = { ...process.env };
+  try {
+    for (const k of ["STORAGE", "R2_ENDPOINT", "R2_BUCKET", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"]) delete process.env[k];
+    assert.equal(storageDriver(), "local"); // no keys: the computer's own disk
+    Object.assign(process.env, { R2_ACCOUNT_ID: "acc", R2_ACCESS_KEY_ID: "id", R2_SECRET_ACCESS_KEY: "secret" });
+    assert.equal(storageDriver(), "r2"); // keys but no STORAGE: R2
+    process.env.STORAGE = "local";
+    assert.equal(storageDriver(), "local"); // STORAGE always wins
+    delete process.env.STORAGE;
+    // No R2_BUCKET: the bucket "dualflow" is used.
+    const url = await downloadUrlFor("stories/x/en/video.mp4");
+    assert.match(url ?? "", /^https:\/\/acc\.r2\.cloudflarestorage\.com\/dualflow\/stories\/x\/en\/video\.mp4\?/);
+  } finally {
+    process.env = keep;
+  }
+});

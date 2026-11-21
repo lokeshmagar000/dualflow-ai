@@ -14,8 +14,8 @@ let client: AwsClient | null = null;
 function r2() {
   const accessKeyId = process.env.R2_ACCESS_KEY_ID;
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  if (!accessKeyId || !secretAccessKey || !process.env.R2_BUCKET || !(process.env.R2_ACCOUNT_ID || process.env.R2_ENDPOINT)) {
-    throw new Error("STORAGE=r2 needs R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET.");
+  if (!accessKeyId || !secretAccessKey || !(process.env.R2_ACCOUNT_ID || process.env.R2_ENDPOINT)) {
+    throw new Error("STORAGE=r2 needs R2_ACCOUNT_ID, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY (R2_BUCKET is optional, default \"dualflow\").");
   }
   client ??= new AwsClient({ accessKeyId, secretAccessKey, service: "s3", region: "auto" });
   return client;
@@ -24,7 +24,7 @@ function r2() {
 /** https://<account>.r2.cloudflarestorage.com/<bucket> */
 function bucketUrl(): string {
   const base = process.env.R2_ENDPOINT || `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
-  return `${base.replace(/\/$/, "")}/${encodeURIComponent(process.env.R2_BUCKET ?? "")}`;
+  return `${base.replace(/\/$/, "")}/${encodeURIComponent(process.env.R2_BUCKET?.trim() || "dualflow")}`;
 }
 
 /** Each part of the key is URL-encoded, the slashes stay. */
