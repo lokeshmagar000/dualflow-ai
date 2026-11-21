@@ -4,7 +4,8 @@
  */
 import Link from "next/link";
 import { api, type BulkSetup, type BulkUploadItem } from "@/lib/api";
-import { ApiError, Card, PageHeader } from "@/components/ui";
+import { ApiError, EmptyState, LangBadge, Notice, PageHeader, SectionTitle } from "@/components/ui";
+import { ActionButton } from "@/components/ActionButton";
 import { UploadStatus, nepalTime } from "@/components/UploadStatus";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { retryUpload } from "../content/publish-actions";
@@ -16,6 +17,7 @@ export default async function BulkUploadPage() {
   let recent: BulkUploadItem[];
   try {
     [setup, recent] = await Promise.all([api<BulkSetup>("/bulk-uploads/setup"), api<BulkUploadItem[]>("/bulk-uploads")]);
+    recent = Array.isArray(recent) ? recent : [];
   } catch (e) {
     return (<><PageHeader title="Bulk upload" /><ApiError error={e} /></>);
   }
@@ -25,52 +27,43 @@ export default async function BulkUploadPage() {
 
   return (
     <>
-      <PageHeader title="Bulk upload" subtitle="One video, one caption, one click: it goes to every channel of its language." />
+      <PageHeader title="Bulk upload" subtitle="Send your own finished video to every channel of its language: one video, one caption, one click." />
       <AutoRefresh active={pending} />
       <BulkUploadForm channels={setup.channels} storage={setup.storage} />
 
-      <section className="mt-10">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Your bulk uploads</h2>
-          {pending && (
-            <form action={runUploadNow}>
-              <button className="rounded-lg bg-white px-3 py-1.5 text-sm ring-1 ring-zinc-300 hover:bg-zinc-50">Upload now</button>
-            </form>
-          )}
-        </div>
+      <section>
+        <SectionTitle action={pending ? <ActionButton action={runUploadNow} label="Upload now" pendingLabel="Starting…" className="btn" showOk align="end" /> : undefined}>
+          Your bulk uploads
+        </SectionTitle>
         {!setup.uploadRunReady && (
-          <p className="mb-3 text-xs text-amber-700">
-            Quick uploads are off (GITHUB_REPO and GITHUB_DISPATCH_TOKEN on Render), so videos go up with the next Pipeline run (2 AM or 4 AM Nepal time).
-          </p>
+          <Notice tone="warn">
+            Quick uploads are off (<code>GITHUB_REPO</code> and <code>GITHUB_DISPATCH_TOKEN</code> on Render), so videos go up with the next Pipeline run (2 AM or 4 AM Nepal time).
+          </Notice>
         )}
-        {recent.length === 0 && <Card><p className="text-sm text-zinc-500">Nothing sent yet.</p></Card>}
+        {recent.length === 0 && <EmptyState title="Nothing sent yet">Videos you send with the form above show here, with the result for each platform.</EmptyState>}
         <div className="space-y-4">
           {recent.map((s) =>
-            s.variants.map((v) => (
-              <Card key={v.id}>
-                <div className="mb-2 flex flex-wrap items-baseline gap-2">
-                  <Link href={`/content/${s.id}`} lang={v.language} className="font-medium hover:underline">{v.title}</Link>
-                  <span className="text-xs text-zinc-500">
-                    {v.language === "ne" ? "Nepali" : "English"} · {s.format === "SHORT" ? "Short" : "Long"} · {nepalTime(s.createdAt)}
-                  </span>
+            (s.variants ?? []).map((v) => (
+              <section key={v.id} className="card p-4 sm:p-5">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <Link href={`/content/${s.id}`} lang={v.language} className="font-semibold hover:text-brand-fg">{v.title ?? "Untitled"}</Link>
+                  <LangBadge lang={v.language} />
+                  <span className="text-xs text-fg3">{s.format === "SHORT" ? "Short" : "Long"}, {nepalTime(s.createdAt)}</span>
                 </div>
-                <ul className="divide-y divide-zinc-100 text-sm">
-                  {v.publications.map((p) => (
+                <ul className="divide-y divide-stroke">
+                  {(v.publications ?? []).map((p) => (
                     <li key={p.id} className="flex flex-wrap items-center gap-2 py-2">
-                      <span className="w-44 font-medium">{p.channel.name}</span>
+                      <span className="min-w-40 font-semibold">{p.channel.name}</span>
                       <UploadStatus status={p.status} />
-                      {p.postUrl && <a href={p.postUrl} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">open post</a>}
+                      {p.postUrl && <a href={p.postUrl} target="_blank" rel="noopener noreferrer" className="link">Open post</a>}
                       {p.status === "FAILED" && (
-                        <form action={retryUpload}>
-                          <input type="hidden" name="publicationId" value={p.id} />
-                          <button className="rounded bg-red-600 px-2 py-0.5 text-xs text-white hover:bg-red-700">Try again</button>
-                        </form>
+                        <ActionButton action={retryUpload} fields={{ publicationId: p.id }} label="Try again" pendingLabel="Retrying…" className="btn btn-sm btn-danger" />
                       )}
-                      {p.error && <p className="w-full text-xs text-zinc-500">{p.error}</p>}
+                      {p.error && <p className="w-full break-words text-xs text-fg3">{p.error}</p>}
                     </li>
                   ))}
                 </ul>
-              </Card>
+              </section>
             )),
           )}
         </div>

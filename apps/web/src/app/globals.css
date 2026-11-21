@@ -1,14 +1,259 @@
 @import "tailwindcss";
 
-/* Fonts that draw Nepali (Devanagari) letters correctly. */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;600&display=swap");
+/*
+ * DualFlow look: Microsoft Fluent 2 style.
+ * - Colors live in CSS variables ("tokens"). Light values first, dark values below.
+ *   Every page uses the token names (bg-surface, text-fg2, ...), so dark mode works everywhere.
+ * - Brand blue comes from the Nepal flag border; crimson marks Nepali, blue marks English.
+ * Fonts: Segoe UI on Windows (the real Fluent font); Noto Sans everywhere else,
+ * which also draws Nepali (Devanagari) letters correctly. (The font link is in layout.tsx.)
+ */
 
-@theme {
-  --font-sans: "Inter", "Noto Sans Devanagari", ui-sans-serif, system-ui, sans-serif;
-  --color-brand-500: #6d5efc;
-  --color-brand-600: #5a4be6;
+/* Dark mode follows the data-theme="dark" attribute that layout.tsx puts on <html>. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  color-scheme: light;
+  --mica: #f3f3f3; /* app background behind everything (Windows 11 "Mica") */
+  --layer: #f9f9f9; /* the big content area */
+  --surface: #ffffff; /* cards */
+  --subtle: #f5f5f5; /* boxes inside cards */
+  --subtle2: #ebebeb;
+  --hover: #f0f0f0;
+  --pressed: #e0e0e0;
+  --stroke: #e0e0e0;
+  --stroke-strong: #d1d1d1;
+  --fg1: #242424;
+  --fg2: #424242;
+  --fg3: #616161;
+  --fg4: #757575;
+
+  --brand: #0b4aa8;
+  --brand-hover: #093e8c;
+  --brand-pressed: #07316e;
+  --brand-fg: #0b4aa8; /* brand-colored text and links */
+  --brand-tint: #ebf1fb;
+
+  --ne: #b4102b; /* Nepali (crimson) */
+  --ne-tint: #fdecef;
+  --en: #1d4fb8; /* English (blue) */
+  --en-tint: #e8eefa;
+
+  --ok: #0e700e;
+  --ok-tint: #f1faf1;
+  --ok-stroke: #9fd89f;
+  --warn: #8a3b00;
+  --warn-tint: #fff9f5;
+  --warn-stroke: #fdcfb4;
+  --bad: #b10e1c;
+  --bad-tint: #fdf3f4;
+  --bad-stroke: #eeacb2;
+  --info: #3b2b9e;
+  --info-tint: #f3f1fd;
+
+  --shadow-card: 0 0 2px rgb(0 0 0 / 0.12), 0 2px 4px rgb(0 0 0 / 0.08);
+  --shadow-flyout: 0 0 8px rgb(0 0 0 / 0.12), 0 14px 28px rgb(0 0 0 / 0.16);
 }
 
+[data-theme="dark"] {
+  color-scheme: dark;
+  --mica: #1c1c1c;
+  --layer: #232323;
+  --surface: #2b2b2b;
+  --subtle: #323232;
+  --subtle2: #3a3a3a;
+  --hover: #383838;
+  --pressed: #2e2e2e;
+  --stroke: #3d3d3d;
+  --stroke-strong: #525252;
+  --fg1: #ffffff;
+  --fg2: #d6d6d6;
+  --fg3: #adadad;
+  --fg4: #9a9a9a;
+
+  --brand: #2c63c8;
+  --brand-hover: #3a72da;
+  --brand-pressed: #2456b3;
+  --brand-fg: #8ab4ff;
+  --brand-tint: #1b2a44;
+
+  --ne: #ff8a9b;
+  --ne-tint: #3a1a20;
+  --en: #9db9ff;
+  --en-tint: #1a2540;
+
+  --ok: #6ccb5f;
+  --ok-tint: #0f2a0f;
+  --ok-stroke: #2f5f2f;
+  --warn: #fab577;
+  --warn-tint: #3a2210;
+  --warn-stroke: #6b3d17;
+  --bad: #ff99a4;
+  --bad-tint: #3b1015;
+  --bad-stroke: #6e2a31;
+  --info: #b9adff;
+  --info-tint: #26214a;
+
+  --shadow-card: 0 0 2px rgb(0 0 0 / 0.4), 0 2px 4px rgb(0 0 0 / 0.3);
+  --shadow-flyout: 0 0 8px rgb(0 0 0 / 0.4), 0 14px 28px rgb(0 0 0 / 0.5);
+}
+
+/* "inline" = Tailwind uses the variables directly, so they change with the theme. */
+@theme inline {
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", "Noto Sans", "Noto Sans Devanagari", system-ui, sans-serif;
+
+  --color-mica: var(--mica);
+  --color-layer: var(--layer);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-subtle2: var(--subtle2);
+  --color-hover: var(--hover);
+  --color-pressed: var(--pressed);
+  --color-stroke: var(--stroke);
+  --color-stroke-strong: var(--stroke-strong);
+  --color-fg1: var(--fg1);
+  --color-fg2: var(--fg2);
+  --color-fg3: var(--fg3);
+  --color-fg4: var(--fg4);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-fg: var(--brand-fg);
+  --color-brand-tint: var(--brand-tint);
+  --color-ne: var(--ne);
+  --color-ne-tint: var(--ne-tint);
+  --color-en: var(--en);
+  --color-en-tint: var(--en-tint);
+  --color-ok: var(--ok);
+  --color-ok-tint: var(--ok-tint);
+  --color-ok-stroke: var(--ok-stroke);
+  --color-warn: var(--warn);
+  --color-warn-tint: var(--warn-tint);
+  --color-warn-stroke: var(--warn-stroke);
+  --color-bad: var(--bad);
+  --color-bad-tint: var(--bad-tint);
+  --color-bad-stroke: var(--bad-stroke);
+  --color-info: var(--info);
+  --color-info-tint: var(--info-tint);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-flyout: var(--shadow-flyout);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
 body {
-  @apply bg-zinc-50 text-zinc-900 antialiased;
+  background: var(--mica);
+  color: var(--fg1);
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Keyboard focus: a clear two-color ring (Fluent style) only when using the keyboard. */
+:focus-visible {
+  outline: 2px solid var(--fg1);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* ---------- Reusable pieces (used as class names in the pages) ---------- */
+@layer components {
+  /* Buttons: 32px tall, 4px corners, like Fluent. On phones 40px so they are easy to tap. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 20px;
+    border: 1px solid var(--stroke-strong);
+    background: var(--surface);
+    color: var(--fg1);
+    white-space: nowrap;
+    transition: background-color 0.1s, border-color 0.1s;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  @media (min-width: 768px) {
+    .btn { min-height: 32px; padding: 0 12px; }
+  }
+  .btn:hover { background: var(--hover); }
+  .btn:active { background: var(--pressed); }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary { background: var(--brand); border-color: transparent; color: #fff; }
+  .btn-primary:hover { background: var(--brand-hover); }
+  .btn-primary:active { background: var(--brand-pressed); }
+  .btn-ok { background: var(--ok); border-color: transparent; color: #fff; }
+  [data-theme="dark"] .btn-ok { background: #107c10; }
+  .btn-ok:hover { filter: brightness(1.08); background: var(--ok); }
+  [data-theme="dark"] .btn-ok:hover { background: #107c10; }
+  .btn-danger { color: var(--bad); border-color: var(--bad-stroke); }
+  .btn-danger:hover { background: var(--bad-tint); }
+  .btn-danger-solid { background: #c50f1f; border-color: transparent; color: #fff; }
+  .btn-danger-solid:hover { background: #a80d1a; }
+  .btn-subtle { border-color: transparent; background: transparent; }
+  .btn-sm { min-height: 32px; padding: 0 10px; font-size: 13px; font-weight: 500; }
+  @media (min-width: 768px) {
+    .btn-sm { min-height: 26px; padding: 0 8px; }
+  }
+
+  /* Text boxes: thin border with a darker bottom line that turns brand blue when typing. */
+  .field {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--stroke);
+    border-bottom-color: var(--fg4);
+    background: var(--surface);
+    color: var(--fg1);
+    outline: none;
+    font-size: 16px; /* 16px stops phones from zooming in */
+  }
+  @media (min-width: 768px) {
+    .field { min-height: 32px; padding: 5px 10px; font-size: 14px; }
+  }
+  .field:focus { border-bottom: 2px solid var(--brand); padding-bottom: 7px; }
+  @media (min-width: 768px) {
+    .field:focus { padding-bottom: 4px; }
+  }
+  .field::placeholder { color: var(--fg4); }
+
+  .card {
+    background: var(--surface);
+    border-radius: 8px;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Small labels such as "Nepali" or "uploaded". */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .link { color: var(--brand-fg); text-decoration: none; }
+  .link:hover { text-decoration: underline; }
+}
+
+/* A gentle fade when a flyout (the phone menu) opens. Turned off for people who prefer less motion. */
+@keyframes df-slide-in {
+  from { transform: translateX(-16px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.df-drawer { animation: df-slide-in 0.16s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .df-drawer { animation: none; }
+  * { transition: none !important; }
 }

@@ -18,7 +18,9 @@ import { autoRoutes } from "./routes/auto";
 const app = Fastify({ logger: true });
 
 await app.register(helmet); // safe HTTP headers
-await app.register(rateLimit, { max: 200, timeWindow: "1 minute" });
+// At most 200 requests a minute from one address. The dashboard on the same machine
+// (one server mode, 127.0.0.1) is never limited: it is the only real user.
+await app.register(rateLimit, { max: 200, timeWindow: "1 minute", allowList: ["127.0.0.1", "::1", "::ffff:127.0.0.1"] });
 
 // Health check for the hosting platform. No secret needed.
 app.get("/health", async () => ({ ok: true }));

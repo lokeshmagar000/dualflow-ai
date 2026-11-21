@@ -11,5 +11,5 @@ export async function middleware(req: NextRequest) {
 // Protect everything except the login page, the public privacy/terms pages, /healthz (the keep-awake check)
 // (Google, Meta and TikTok ask for their links) and static files.
 export const config = {
-  matcher: ["/((?!login|privacy|terms|healthz|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!login|privacy|terms|healthz|_next/static|_next/image|favicon.ico|icon.svg|logo-light.svg|logo-dark.svg).*)"],
 };

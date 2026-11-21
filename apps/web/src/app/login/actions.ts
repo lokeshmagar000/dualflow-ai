@@ -11,7 +11,9 @@ function safeEqual(a: string, b: string) {
   return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
 
-export type LoginState = { error?: string };
+// "email" comes back so the box keeps what you typed after a wrong password
+// (React empties a form after it is sent).
+export type LoginState = { error?: string; email?: string };
 
 export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -20,7 +22,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const okEmail = safeEqual(email, (process.env.ADMIN_EMAIL ?? "").toLowerCase());
   const okPassword = safeEqual(password, process.env.ADMIN_PASSWORD ?? "");
   if (!okEmail || !okPassword || !process.env.ADMIN_PASSWORD) {
-    return { error: "Wrong email or password" };
+    return { error: "Wrong email or password", email };
   }
 
   const token = await createSessionToken(email);

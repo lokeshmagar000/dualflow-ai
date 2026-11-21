@@ -5,24 +5,12 @@
  * (The video itself does NOT pass through here: it goes straight to R2.)
  */
 import { revalidatePath } from "next/cache";
-import { api } from "@/lib/api";
+import { api, problemText, type ActionResult } from "@/lib/api";
 
 type Result<T> = ({ ok: true } & T) | { ok: false; error: string };
 
-/** Turn "API /x failed: 400 {"error":"..."}" into just the "..." part, for a friendly message. */
-function friendly(err: unknown): string {
-  const text = err instanceof Error ? err.message : String(err);
-  const match = text.match(/\{.*\}$/);
-  if (match) {
-    try {
-      const json = JSON.parse(match[0]);
-      if (typeof json.error === "string") return json.error;
-    } catch {
-      /* not JSON: use the whole text */
-    }
-  }
-  return text;
-}
+/** A short, readable message instead of the raw error. */
+const friendly = problemText;
 
 /** Step 1: ask for a file name and an upload address. */
 export async function startBulkUpload(file: { fileName: string; sizeBytes: number; contentType: string }): Promise<Result<{ key: string; uploadUrl: string | null }>> {
@@ -59,7 +47,12 @@ export async function createBulkUpload(input: CreateBulkInput): Promise<Result<{
 }
 
 /** "Upload now" button: start the small upload run again. */
-export async function runUploadNow() {
-  await api("/bulk-uploads/run", { method: "POST", body: "{}" });
+export async function runUploadNow(_prev: ActionResult): Promise<ActionResult> {
+  try {
+    await api("/bulk-uploads/run", { method: "POST", body: "{}" });
+  } catch (e) {
+    return { message: problemText(e) };
+  }
   revalidatePath("/bulk-upload");
+  return { ok: true, message: "Upload run started." };
 }

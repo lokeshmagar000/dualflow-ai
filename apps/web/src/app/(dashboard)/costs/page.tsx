@@ -1,74 +1,81 @@
 import { api, type CostSummary, type PipelineStatus } from "@/lib/api";
-import { ApiError, Card, PageHeader } from "@/components/ui";
+import { ApiError, Card, Notice, PageHeader, SectionTitle } from "@/components/ui";
+import { ActionButton } from "@/components/ActionButton";
+import { nepalTime } from "@/components/UploadStatus";
 import { runNow, setPaused } from "./actions";
 
-// Costs & Automation: free limits, the job queue, "Run now" and the kill switch.
-export default async function CostsPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
-  const { msg } = await searchParams;
+// Costs & limits: free limits, the job queue, "Run now" and the kill switch.
+export default async function CostsPage() {
   let costs: CostSummary;
-  let status: PipelineStatus;
+  let status: PipelineStatus | null;
   try {
-    [costs, status] = await Promise.all([api<CostSummary>("/costs/summary"), api<PipelineStatus>("/pipeline/status")]);
+    // The job queue part is optional, so an older API still shows the spend.
+    [costs, status] = await Promise.all([api<CostSummary>("/costs/summary"), api<PipelineStatus>("/pipeline/status").catch(() => null)]);
   } catch (e) {
-    return (<><PageHeader title="Costs & Automation" /><ApiError error={e} /></>);
+    return (<><PageHeader title="Costs & limits" /><ApiError error={e} /></>);
   }
-  const waiting = status.queue.readyNow + status.queue.later;
+  const queue = status?.queue ?? { readyNow: 0, later: 0, running: 0, nextJobAt: null };
+  const waiting = queue.readyNow + queue.later;
 
   return (
     <>
-      <PageHeader title="Costs & Automation" subtitle="Free plan: $0 a month while you stay inside the free limits" />
-      {msg && <Card className="mb-4 border-sky-200 bg-sky-50 text-sm text-sky-800">{msg}</Card>}
+      <PageHeader title="Costs & limits" subtitle="Free plan: $0 a month while you stay inside the free limits." />
+
+      {costs.paused && (
+        <Notice tone="bad" title="All automation is paused">
+          No videos are made and nothing is uploaded until you press Resume automation below.
+        </Notice>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <h2 className="font-semibold">Video making</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            GitHub Actions makes videos every night at 2 AM and 4 AM Nepal time. Press Run now to start at once.
-          </p>
-          <ul className="mt-3 space-y-1 text-sm">
-            <li>Ready to make now: <b>{status.queue.readyNow}</b></li>
-            <li>Running: <b>{status.queue.running}</b></li>
-            <li>Waiting for later (retry or tomorrow&apos;s free limit): <b>{status.queue.later}</b></li>
-            {status.queue.nextJobAt && waiting > 0 && (
-              <li className="text-zinc-500">Next job can start: {new Date(status.queue.nextJobAt).toLocaleString()}</li>
+        <Card title="Video making">
+          <p className="text-fg2">GitHub Actions makes videos every night at 2 AM and 4 AM Nepal time. Run now starts the waiting jobs at once.</p>
+          <dl className="mt-4 grid grid-cols-3 gap-2 rounded-md bg-subtle p-3 text-center">
+            <div><dt className="text-xs text-fg3">Ready to make</dt><dd className="text-xl font-semibold tabular-nums">{queue.readyNow}</dd></div>
+            <div><dt className="text-xs text-fg3">Running</dt><dd className="text-xl font-semibold tabular-nums">{queue.running}</dd></div>
+            <div><dt className="text-xs text-fg3">Later</dt><dd className="text-xl font-semibold tabular-nums">{queue.later}</dd></div>
+          </dl>
+          {queue.nextJobAt && waiting > 0 && (
+            <p className="mt-2 text-xs text-fg3">Next job can start {nepalTime(queue.nextJobAt)}. &quot;Later&quot; means a retry or waiting for tomorrow&apos;s free limit.</p>
+          )}
+          <div className="mt-4">
+            {status?.runNowAvailable ? (
+              <ActionButton action={runNow} label="Run now" pendingLabel="Starting…" className="btn btn-primary" showOk />
+            ) : (
+              <>
+                <button className="btn" disabled aria-disabled="true">Run now</button>
+                <p className="mt-2 text-xs text-fg3">Run now needs <code>GITHUB_REPO</code> and <code>GITHUB_DISPATCH_TOKEN</code> on Render (see Settings).</p>
+              </>
             )}
-          </ul>
-          <form action={runNow} className="mt-4">
-            <button
-              disabled={!status.runNowAvailable}
-              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Run now
-            </button>
-            {!status.runNowAvailable && (
-              <p className="mt-2 text-xs text-zinc-500">Run now needs GITHUB_REPO and GITHUB_DISPATCH_TOKEN on the API (see README).</p>
-            )}
-          </form>
+          </div>
         </Card>
 
-        <Card>
-          <h2 className="font-semibold">Spend</h2>
-          <p className="mt-3 text-3xl font-bold">${costs.monthUsd.toFixed(2)}</p>
-          <p className="text-sm text-zinc-500">this month (today ${costs.todayUsd.toFixed(2)})</p>
-          <form action={setPaused} className="mt-4">
-            <input type="hidden" name="paused" value={String(!costs.paused)} />
-            <button
-              className={`rounded-lg px-4 py-2 text-sm font-medium ${costs.paused ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}
-            >
-              {costs.paused ? "Resume automation" : "Pause all automation"}
-            </button>
-            {costs.paused && <p className="mt-2 text-xs font-medium text-red-600">Automation is paused.</p>}
-          </form>
+        <Card title="Spend">
+          <p className="text-[32px] font-semibold leading-10 tabular-nums">${(costs.monthUsd ?? 0).toFixed(2)}</p>
+          <p className="text-fg3">this month, today ${(costs.todayUsd ?? 0).toFixed(2)}</p>
+          {(costs.budgets?.length ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-fg3">Caps: {costs.budgets.map((b) => `$${b.capUsd} ${b.period.toLowerCase()}`).join(", ")}</p>
+          )}
+          <div className="mt-4 border-t border-stroke pt-4">
+            <p className="mb-2 font-semibold">Kill switch</p>
+            <ActionButton action={setPaused} fields={{ paused: String(!costs.paused) }} showOk
+              label={costs.paused ? "Resume automation" : "Pause all automation"}
+              pendingLabel="Saving…" className={costs.paused ? "btn btn-ok" : "btn btn-danger"} />
+          </div>
         </Card>
       </div>
 
-      <h2 className="mb-3 mt-8 font-semibold">Free limits</h2>
-      <Card className="space-y-4">
-        {status.quotas.map((q) => (
-          <QuotaBar key={q.name} name={q.name} used={q.used} limit={q.limit} />
-        ))}
-        <p className="text-xs text-zinc-500">
-          Making stops by itself at the Gemini daily limit and at 90% of Azure&apos;s free characters, then continues when the limit resets.
+      <SectionTitle>Free limits</SectionTitle>
+      <Card>
+        {status && status.quotas.length > 0 ? (
+          <div className="space-y-4">
+            {status.quotas.map((q) => <QuotaBar key={q.name} name={q.name} used={q.used} limit={q.limit} />)}
+          </div>
+        ) : (
+          <p className="text-fg3">No limit data yet.</p>
+        )}
+        <p className="mt-4 text-xs text-fg3">
+          Making stops by itself at the Gemini daily limit, then continues when the limit resets.
         </p>
       </Card>
     </>
@@ -77,20 +84,20 @@ export default async function CostsPage({ searchParams }: { searchParams: Promis
 
 function QuotaBar({ name, used, limit }: { name: string; used: number; limit: number | null }) {
   const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const color = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-emerald-500";
+  const color = pct >= 90 ? "bg-bad" : pct >= 70 ? "bg-warn" : "bg-ok";
   return (
     <div>
-      <div className="flex justify-between text-sm">
+      <div className="flex justify-between gap-3">
         <span>{name}</span>
-        <span className="tabular-nums text-zinc-500">
-          {used.toLocaleString()}{limit ? ` / ${limit.toLocaleString()} (${pct}%)` : ""}
+        <span className="tabular-nums text-fg3">
+          {used.toLocaleString()}{limit ? ` of ${limit.toLocaleString()} (${pct}%)` : ""}
         </span>
       </div>
-      {limit && (
-        <div className="mt-1 h-2 overflow-hidden rounded-full bg-zinc-100">
-          <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
+      {limit ? (
+        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-subtle2" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={name}>
+          <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

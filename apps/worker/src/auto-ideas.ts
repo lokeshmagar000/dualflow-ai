@@ -8,7 +8,7 @@
  * "Today" is the day in Nepal (AUTO_TIMEZONE, default Asia/Kathmandu).
  *
  * Where the topic comes from:
- *   1. your own ideas on the "Ideas & Chat" page that are not made yet (oldest first),
+ *   1. your own ideas on the "Ideas & auto mode" page that are not made yet (oldest first),
  *   2. otherwise the AI Content Director picks a new topic (packages/ai/src/topic.ts).
  *
  * Auto mode switch (dashboard, Ideas page): when you turn it OFF, scheduled runs add nothing.

@@ -73,7 +73,7 @@ export async function autoRoutes(app: FastifyInstance) {
   app.post("/auto/generate-now", async (_req, reply) => {
     const ws = await getDefaultWorkspace();
     if (await prisma.budget.findFirst({ where: { workspaceId: ws.id, paused: true } })) {
-      return reply.code(409).send({ started: false, message: "Automation is paused (kill switch on Costs & Automation). Turn it back on first." });
+      return reply.code(409).send({ started: false, message: "Automation is paused (kill switch on Costs & limits). Turn it back on first." });
     }
     const result = await triggerPipelineRun(undefined, { auto_now: "true" });
     await prisma.auditLog.create({ data: { workspaceId: ws.id, actor: "owner", action: "auto.generate_now" } });

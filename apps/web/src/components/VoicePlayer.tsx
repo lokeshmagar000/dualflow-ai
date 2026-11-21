@@ -18,7 +18,7 @@ export function VoicePlayer({ variantId, lang, cues }: { variantId: string; lang
   const current = cues.find((c) => nowMs >= c.startMs && nowMs <= c.endMs);
 
   return (
-    <div className="rounded-xl bg-zinc-900 p-3 text-white">
+    <div className="rounded-lg bg-[#1f1f1f] p-3 text-white">
       <audio
         controls
         preload="metadata"
@@ -30,7 +30,7 @@ export function VoicePlayer({ variantId, lang, cues }: { variantId: string; lang
       <p lang={lang} className="mt-2 min-h-[3rem] text-center text-lg font-semibold leading-snug">
         {current?.text ?? ""}
       </p>
-      <div className="mt-1 flex gap-3 text-xs text-zinc-400">
+      <div className="mt-1 flex gap-3 text-xs text-[#adadad]">
         <a href={`/media/${variantId}/srt`} download className="hover:text-white">Download .srt</a>
         <a href={`/media/${variantId}/vtt`} download className="hover:text-white">Download .vtt</a>
         <a href={`/media/${variantId}/audio`} download className="hover:text-white">Download audio</a>

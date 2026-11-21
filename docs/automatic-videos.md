@@ -10,7 +10,7 @@ You download them and upload them to YouTube, Facebook, Instagram and TikTok **y
    Each run makes **one story = one Nepali video + one English video**.
    (GitHub sometimes starts 5 to 30 minutes late when it is busy. That is normal.)
 2. It picks a topic:
-   - first, your own ideas on **Ideas & Chat** that are not made yet (oldest first),
+   - first, your own ideas on **Ideas & auto mode** that are not made yet (oldest first),
    - otherwise the **AI Content Director** chooses a new fact topic (it never repeats the last 60).
 3. It makes the Nepali + English scripts, voices, Word Pop subtitles, thumbnails and the two `.mp4` videos.
 4. The videos are saved in Cloudflare R2 and appear on **Ready to upload**.
@@ -28,9 +28,9 @@ GitHub's clock is UTC, which is 5 hours 45 minutes *behind* Nepal:
 
 If you add a third time, also set `AUTO_STORIES_PER_DAY` to `3` (below).
 
-## Auto mode switch and "Generate now" (Ideas & Chat page)
+## Auto mode switch and "Generate now" (Ideas & auto mode page)
 
-At the top of **Ideas & Chat** is the **🤖 Automatic videos** card:
+At the top of **Ideas & auto mode** is the **🤖 Automatic videos** card:
 - **Auto mode ON/OFF**: ON = the AI makes videos by itself at 2 AM and 4 AM. OFF = the night runs make nothing.
 - **⚡ Generate now**: the AI picks a topic and makes one Nepali + English video right away (about 15-20 minutes),
   even when Auto mode is off. It needs `GITHUB_REPO` + `GITHUB_DISPATCH_TOKEN` on Render. Without them, use
@@ -89,4 +89,4 @@ Free limits to keep in mind:
   also saves the minutes the empty runs used to take.)
 - **Cloudflare R2**: 10 GB free. Old videos are deleted by the rules above.
 
-To stop everything at once: **Costs & Automation** → kill switch (pause).
+To stop everything at once: **Costs & limits** → kill switch (pause).
