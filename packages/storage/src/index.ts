@@ -15,7 +15,7 @@
 import { mkdir, readdir, readFile as fsReadFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { r2Delete, r2Exists, r2Get, r2List, r2PresignPut, r2Put, r2Size } from "./r2";
+import { r2Delete, r2Exists, r2Get, r2List, r2PresignGet, r2PresignPut, r2Put, r2Size } from "./r2";
 
 /** The project's top folder: this file is at packages/storage/src/index.ts. */
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -95,6 +95,15 @@ export async function fileSize(key: string): Promise<number | null> {
 export async function uploadUrlFor(key: string): Promise<string | null> {
   if (storageDriver() !== "r2") return null;
   return r2PresignPut(checkKey(key));
+}
+
+/**
+ * An address the browser can download one file from, for one hour (R2 only).
+ * Local storage has none: the API sends the file itself instead.
+ */
+export async function downloadUrlFor(key: string, opts: { fileName?: string; inline?: boolean } = {}): Promise<string | null> {
+  if (storageDriver() !== "r2") return null;
+  return r2PresignGet(checkKey(key), opts);
 }
 
 export interface StoredFile {

@@ -1,7 +1,10 @@
 # FREE PLAN: this is the "worker". It makes the videos, then the machine stops.
 #
 # It starts:
-#   - every 3 hours by itself (schedule), and
+#   - every 3 hours by itself (schedule). Each time it adds the next AUTOMATIC story
+#     (your unused ideas first, otherwise the AI picks a topic), up to
+#     AUTO_STORIES_PER_DAY a day (default 2). Finished videos wait on the dashboard's
+#     "Ready to upload" page for you to download.
 #   - when you press "Run now" in the dashboard (or "Run workflow" in the Actions tab).
 #
 # Your keys are stored in GitHub: Settings -> Secrets and variables -> Actions.
@@ -82,6 +85,13 @@ jobs:
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       R2_BUCKET: ${{ secrets.R2_BUCKET || vars.R2_BUCKET || 'dualflow' }}
+      # Automatic videos (README "Automatic videos"). 0 turns them off.
+      AUTO_STORIES_PER_DAY: ${{ vars.AUTO_STORIES_PER_DAY || '2' }}
+      AUTO_TOPIC_NICHE: ${{ vars.AUTO_TOPIC_NICHE }}
+      AUTO_TIMEZONE: ${{ vars.AUTO_TIMEZONE || 'Asia/Kathmandu' }}
+      # How long finished videos stay in storage (cleanup step).
+      KEEP_DAYS_AFTER_UPLOAD: ${{ vars.KEEP_DAYS_AFTER_UPLOAD || '7' }}
+      READY_KEEP_DAYS: ${{ vars.READY_KEEP_DAYS || '30' }}
       WORKER_CONCURRENCY: "2"
       WORKER_MAX_MINUTES: "40"
       # Uploads to social channels (see docs/social-setup.md). Off until PUBLISH_ENABLED=true.
@@ -139,6 +149,10 @@ jobs:
         run: pnpm --filter @dualflow/worker demo-story
         env:
           DEMO_TOPIC: ${{ inputs.topic }}
+      # Automatic videos: add today's next story (does nothing if today already has enough).
+      - name: Pick the next topic automatically
+        if: github.event_name != 'push' && !inputs.remake_latest
+        run: pnpm --filter @dualflow/worker auto-ideas
       - name: Remake the newest video
         if: inputs.remake_latest
         run: pnpm --filter @dualflow/worker remake-video

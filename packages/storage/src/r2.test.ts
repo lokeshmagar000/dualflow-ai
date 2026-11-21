@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { deleteFile, fileExists, fileSize, listFiles, readFile, saveFile, uploadUrlFor } from "./index";
+import { deleteFile, downloadUrlFor, fileExists, fileSize, listFiles, readFile, saveFile, uploadUrlFor } from "./index";
 
 test("R2: upload, check, download, list and delete", async () => {
   const files = new Map<string, Buffer>();
@@ -82,4 +82,25 @@ test("R2: a presigned upload address is signed and expires", async () => {
     process.env.STORAGE = "local";
   }
   assert.equal(await uploadUrlFor("uploads/abc/video.mp4"), null);
+});
+
+test("R2: a presigned download address saves the file under a clean name", async () => {
+  Object.assign(process.env, {
+    STORAGE: "r2",
+    R2_ENDPOINT: "http://127.0.0.1:9",
+    R2_BUCKET: "my-bucket",
+    R2_ACCESS_KEY_ID: "test-id",
+    R2_SECRET_ACCESS_KEY: "test-secret",
+  });
+  try {
+    const url = new URL((await downloadUrlFor("stories/s1/ne/run-1/video.mp4", { fileName: "ne video 1.mp4" }))!);
+    assert.equal(url.pathname, "/my-bucket/stories/s1/ne/run-1/video.mp4");
+    assert.equal(url.searchParams.get("response-content-disposition"), 'attachment; filename="ne_video_1.mp4"');
+    assert.ok(url.searchParams.get("X-Amz-Signature"));
+    const inline = new URL((await downloadUrlFor("stories/s1/ne/run-1/video.mp4", { fileName: "a.mp4", inline: true }))!);
+    assert.equal(inline.searchParams.get("response-content-disposition"), 'inline; filename="a.mp4"');
+  } finally {
+    process.env.STORAGE = "local";
+  }
+  assert.equal(await downloadUrlFor("stories/s1/ne/run-1/video.mp4"), null);
 });
