@@ -1,6 +1,7 @@
 /** Small reusable UI pieces, in the Fluent 2 style (see globals.css for the colors). */
 import Link from "next/link";
 import { ApiProblem, oneServerMode } from "@/lib/api";
+import { insideApiStatus } from "@/lib/inside-api";
 import { RetryButton } from "./RetryButton";
 import { IconWarning } from "./icons";
 
@@ -116,6 +117,14 @@ export function Stat({ label, value, note, href, tone }: { label: string; value:
   );
 }
 
+export const STATE_TEXT: Record<string, string> = {
+  off: "not started",
+  "updating-database": "updating the database",
+  starting: "starting",
+  running: "running",
+  restarting: "restarting after a problem",
+};
+
 const GUIDE = "https://github.com/lokeshmagar000/dualflow-ai/blob/main/docs/fix-dashboard-connection.md";
 
 /**
@@ -142,7 +151,12 @@ export function ApiError({ error }: { error: unknown }) {
       ),
     },
     waking: { title: "The API server is waking up", body: <>Free Render servers sleep when nobody uses them. Wait about a minute, then press Try again.</> },
-    offline: { title: "The API server is not answering", body: <>It may be starting or redeploying. Wait a minute and press Try again. If it stays like this, check that your servers say Live on Render.</> },
+    offline: oneServer
+      ? {
+          title: "The built-in API is not running yet",
+          body: <>One server mode is on, so the API runs inside this dashboard server. Right now it is: <b>{STATE_TEXT[insideApiStatus().state]}</b>. Wait a minute and press Try again. If it stays like this, open <b>Settings</b> and send a screenshot of the Connection box.</>,
+        }
+      : { title: "The API server is not answering", body: <>It may be starting or redeploying. Wait a minute and press Try again. If it stays like this, check that your servers say Live on Render.</> },
     unauthorized: {
       title: "The dashboard and the API use different keys",
       body: <>On Render, <code>INTERNAL_API_KEY</code> must be the same on dualflow-web and dualflow-api. One server mode avoids this. <a className="link" href={GUIDE} target="_blank" rel="noopener noreferrer">Show me the steps</a></>,
@@ -154,7 +168,8 @@ export function ApiError({ error }: { error: unknown }) {
     server: { title: "The API server had a problem with this page", body: <>Press Try again. If it keeps happening, open Render, then dualflow-web (or dualflow-api), then Logs, and look for red lines.</> },
   };
   const t = text[kind] ?? text.server!;
-  const details = error instanceof Error ? error.message : String(error);
+  const inside = insideApiStatus();
+  const details = (error instanceof Error ? error.message : String(error)) + (oneServer && inside.lastError ? ` | Built-in API said: ${inside.lastError.slice(-300)}` : "");
   return (
     <div role="alert" className="card border-l-4 border-l-bad p-4 sm:p-5">
       <div className="flex items-start gap-3">
