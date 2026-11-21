@@ -1,5 +1,6 @@
 import { ApiProblem, api, oneServerMode, problemText, type AutoStatus, type BulkSetup } from "@/lib/api";
-import { Card, Notice, PageHeader } from "@/components/ui";
+import { Card, Notice, PageHeader, STATE_TEXT } from "@/components/ui";
+import { insideApiStatus } from "@/lib/inside-api";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { IconCheck, IconOpen, IconWarning } from "@/components/icons";
 
@@ -28,6 +29,7 @@ export default async function SettingsPage() {
     blocked = e instanceof ApiProblem && e.kind === "blocked";
   }
   const ms = Date.now() - started;
+  const inside = insideApiStatus();
 
   return (
     <>
@@ -46,6 +48,17 @@ export default async function SettingsPage() {
         <Card title="Connection">
           <ul className="divide-y divide-stroke">
             <Row ok={oneServer} label="One server mode" text={oneServer ? "On: the API runs inside this server." : "Off: using the separate dualflow-api server."} warnOnly />
+            {oneServer && (
+              <Row ok={inside.state === "running"} label="Built-in API"
+                text={`${STATE_TEXT[inside.state] ?? inside.state}${inside.restarts ? `, restarted ${inside.restarts} time${inside.restarts === 1 ? "" : "s"}` : ""}. Database update: ${inside.migrate}.`}
+                warnOnly={inside.state !== "restarting"} />
+            )}
+            {oneServer && inside.lastError && (
+              <li className="py-2.5">
+                <p className="font-semibold">Last message from the built-in API</p>
+                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-subtle p-2 text-xs text-fg2">{inside.lastError.slice(-800)}</pre>
+              </li>
+            )}
             <Row ok={apiOk} label="API answers" text={apiOk ? `Yes, in ${ms} ms.` : apiProblem} />
             {auto && <Row ok={auto.generateNowAvailable} label="Generate now and Run now" text={auto.generateNowAvailable ? "Ready (GitHub key found)." : "Needs GITHUB_REPO and GITHUB_DISPATCH_TOKEN on Render."} warnOnly />}
             {bulk && <Row ok={bulk.storage === "r2"} label="Video storage" text={bulk.storage === "r2" ? "Cloudflare R2 (downloads work)." : "Local files only. Add the R2 keys on Render."} warnOnly />}

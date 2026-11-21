@@ -3,21 +3,29 @@
  * The secret key stays on the server; the browser never sees it.
  */
 import "server-only";
+import { INSIDE_API_PORT, insideApiStatus, startInsideApi } from "./inside-api";
 
 /**
  * The API address. People often type it without "https://" or with a "/" at
  * the end, so we fix both here instead of failing.
  */
 function apiBaseUrl() {
+  // One server mode: the API runs on this same machine (lib/inside-api.ts).
+  if (process.env.DATABASE_URL) return `http://127.0.0.1:${INSIDE_API_PORT}`;
   let url = (process.env.API_URL ?? "").trim() || "http://localhost:4000";
   if (!/^https?:\/\//.test(url)) url = `https://${url}`;
   return url.replace(/\/+$/, "");
 }
-const API_URL = apiBaseUrl();
 
-/** True when the API runs inside this same server (one server mode, scripts/start-dashboard.sh). */
+/** True when the API runs inside this same server (one server mode: DATABASE_URL is set here). */
 export function oneServerMode() {
-  return /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(API_URL) && Boolean(process.env.DATABASE_URL);
+  return Boolean(process.env.DATABASE_URL);
+}
+
+/** True while the inside API is still getting ready (the database update or the first start). */
+function insideApiBusy() {
+  const s = insideApiStatus().state;
+  return oneServerMode() && (s === "off" || s === "updating-database" || s === "starting" || s === "restarting");
 }
 
 /** What kind of problem happened, so the page can explain it in plain words. */
@@ -70,7 +78,9 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * Buttons (POST/DELETE) are never repeated by themselves, so nothing happens twice.
  */
 async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  if (oneServerMode()) startInsideApi(); // normally already started by instrumentation.ts; this is a safety net
   const safeToRepeat = !init.method || init.method === "GET";
+  const started = Date.now();
   const waits = [1000, 2000, 4000, 8000]; // up to 15 seconds in total
   for (let attempt = 0; ; attempt++) {
     let res: Response;
@@ -78,6 +88,12 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
       res = await fetch(url, init);
     } catch (err) {
       // Only "could not connect" errors land here.
+      // In one server mode the API may still be starting (up to about a minute on the free plan): keep waiting.
+      if (insideApiBusy() && Date.now() - started < 75_000) {
+        await wait(2000);
+        attempt--; // does not count as a try
+        continue;
+      }
       if (attempt >= waits.length || !safeToRepeat) {
         throw new ApiProblem("offline", null, `Could not connect to ${url.replace(/\?.*/, "")} (${err instanceof Error ? err.message : String(err)})`);
       }
@@ -97,7 +113,7 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetchWithRetry(`${API_URL}${path}`, {
+  const res = await fetchWithRetry(`${apiBaseUrl()}${path}`, {
     ...init,
     headers: {
       "content-type": "application/json",
@@ -118,7 +134,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** Like api(), but returns the raw response (for files such as audio). */
 export async function apiRaw(path: string): Promise<Response> {
-  return fetchWithRetry(`${API_URL}${path}`, {
+  return fetchWithRetry(`${apiBaseUrl()}${path}`, {
     headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "" },
     cache: "no-store",
   });
