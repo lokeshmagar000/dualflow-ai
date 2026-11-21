@@ -9,7 +9,7 @@
  *  - Files on this computer: we pass the file through.
  * middleware.ts checks the login first, so only you can download.
  */
-import { apiRaw } from "@/lib/api";
+import { apiRaw, oneServerMode, storageSetup } from "@/lib/api";
 
 const KINDS = new Set(["video", "thumbnail", "srt"]);
 
@@ -27,7 +27,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ variantI
 
   const res = await apiRaw(`/variants/${variantId}/download/${kind}${qs ? `?${qs}` : ""}`);
   if (!res.ok) {
-    const message = res.status === 404 ? "This file is not there any more (it may have been deleted after upload)." : "Could not get the file.";
+    // Video storage not connected? Then the file is in Cloudflare R2 but this server looks on its own disk.
+    const notConnected = oneServerMode() && storageSetup().driver === "local";
+    const message = notConnected
+      ? "Your video storage (Cloudflare R2) is not connected to the dashboard, so the file cannot be found. Open Settings in the dashboard and look at the \"Video storage\" line: it says what to add on Render."
+      : res.status === 404
+        ? "This file is not there any more (it may have been deleted after upload)."
+        : `Could not get the file (error ${res.status}). Try again in a minute.`;
     return new Response(message, { status: res.status === 404 ? 404 : 502 });
   }
 

@@ -22,6 +22,19 @@ export function oneServerMode() {
   return Boolean(process.env.DATABASE_URL);
 }
 
+/**
+ * Where videos are kept, as seen from THIS server (same rules as packages/storage).
+ * Only meaningful in one server mode, where the API runs here with the same settings.
+ * `missing` lists the R2 settings that are not on Render yet.
+ */
+export function storageSetup(): { driver: "r2" | "local"; missing: string[] } {
+  const e = process.env;
+  const missing = ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"].filter((k) => !e[k]?.trim());
+  if (missing[0] === "R2_ACCOUNT_ID" && e.R2_ENDPOINT) missing.shift();
+  const choice = (e.STORAGE?.trim() || (missing.length === 0 ? "r2" : "local")).toLowerCase();
+  return { driver: choice === "r2" ? "r2" : "local", missing };
+}
+
 /** True while the inside API is still getting ready (the database update or the first start). */
 function insideApiBusy() {
   const s = insideApiStatus().state;

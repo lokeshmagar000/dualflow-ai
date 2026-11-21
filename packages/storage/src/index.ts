@@ -25,7 +25,11 @@ const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 
 export type StorageDriver = "local" | "r2";
 export function storageDriver(): StorageDriver {
-  const choice = (process.env.STORAGE ?? "local").toLowerCase();
+  // No STORAGE setting but the R2 keys are there? Then use R2.
+  // (On Render the Blueprint's STORAGE=r2 is often missing, and local files
+  // there are wiped on every restart, so Download and Delete found nothing.)
+  const fallback = process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && (process.env.R2_ACCOUNT_ID || process.env.R2_ENDPOINT) ? "r2" : "local";
+  const choice = (process.env.STORAGE?.trim() || fallback).toLowerCase();
   if (choice === "local" || choice === "r2") return choice;
   throw new Error(`Unknown STORAGE "${choice}". Use "local" or "r2".`);
 }

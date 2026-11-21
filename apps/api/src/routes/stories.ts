@@ -104,17 +104,25 @@ export async function storyRoutes(app: FastifyInstance) {
     if (!story) return reply.code(404).send({ error: "Story not found" });
 
     // All files of a story live under "stories/<storyId>/".
+    // Removing files is "best effort": if storage has a problem (wrong R2 key, slow network),
+    // we still delete the story, so the Delete button always works. Leftover files only use space.
     let files = 0;
-    for (const file of await listFiles(`stories/${story.id}/`)) {
-      await deleteFile(file.key);
-      files++;
+    let filesProblem: string | null = null;
+    try {
+      for (const file of await listFiles(`stories/${story.id}/`)) {
+        await deleteFile(file.key);
+        files++;
+      }
+    } catch (e) {
+      filesProblem = e instanceof Error ? e.message : String(e);
+      req.log.warn({ storyId: story.id, err: filesProblem }, "could not remove all files of a deleted story");
     }
     await prisma.pipelineJob.deleteMany({ where: { storyId: story.id } });
     await prisma.story.delete({ where: { id: story.id } });
     await prisma.auditLog.create({
       data: { workspaceId: ws.id, actor: "owner", action: "story.deleted", target: `${story.id} ${story.topic.title}`.slice(0, 250) },
     });
-    return { ok: true, deletedFiles: files };
+    return { ok: true, deletedFiles: files, filesProblem };
   });
 
   /** Run the whole pipeline again for a failed story. */

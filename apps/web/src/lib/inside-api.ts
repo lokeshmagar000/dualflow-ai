@@ -71,10 +71,28 @@ export function startInsideApi() {
   const dbDir = path.resolve(apiDir, "../../packages/db");
   const prismaBin = path.join(dbDir, "node_modules", ".bin", "prisma");
 
+  // When Render stops or restarts the dashboard, stop the API too. Otherwise an old API
+  // can keep port 4001 busy, and the new one cannot start ("address already in use").
+  let current: ReturnType<typeof spawn> | null = null;
+  let stopping = false;
+  const stopChild = () => {
+    stopping = true;
+    if (current && current.exitCode === null) current.kill("SIGTERM");
+  };
+  process.once("exit", stopChild);
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    process.once(signal, () => {
+      stopChild();
+      process.exit(0);
+    });
+  }
+
   const runApi = () => {
+    if (stopping) return;
     set({ state: insideApiStatus().restarts === 0 ? "starting" : "restarting", since: Date.now() });
     // "--import tsx" runs the TypeScript directly; max-old-space-size keeps memory small (free plan: 512 MB).
     const child = spawn(process.execPath, ["--import", "tsx", "--max-old-space-size=160", "src/index.ts"], { cwd: apiDir, env, stdio: ["ignore", "pipe", "pipe"] });
+    current = child;
     let printed = "";
     child.stdout.on("data", (c: Buffer) => {
       printed = tail(printed, c);
@@ -86,6 +104,7 @@ export function startInsideApi() {
       process.stderr.write(c);
     });
     child.on("exit", (code) => {
+      if (stopping) return; // the dashboard is shutting down: do not start it again
       console.error(`[one server mode] The API stopped (code ${code}). Starting it again in 3 seconds...`);
       set({ state: "restarting", restarts: insideApiStatus().restarts + 1, lastError: printed.trim() || `stopped with code ${code}` });
       setTimeout(runApi, 3000);
