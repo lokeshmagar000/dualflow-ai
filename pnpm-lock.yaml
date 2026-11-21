@@ -253,6 +253,15 @@ importers:
       '@dualflow/shared':
         specifier: workspace:*
         version: link:../shared
+      '@fontsource/anton':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource/baloo-2':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource/khand':
+        specifier: 5.3.0
+        version: 5.3.0
       '@fontsource/mukta':
         specifier: 5.3.0
         version: 5.3.0
@@ -767,6 +776,15 @@ packages:
 
   '@fastify/rate-limit@10.3.0':
     resolution: {integrity: sha512-eIGkG9XKQs0nyynatApA3EVrojHOuq4l6fhB4eeCk4PIOeadvOJz9/4w3vGI44Go17uaXOWEcPkaD8kuKm7g6Q==}
+
+  '@fontsource/anton@5.3.0':
+    resolution: {integrity: sha512-OR1D5n124n2XRs66SbX7IjcOSptljEJE8FcDNnlni2y1/M6KpTx7cU2PIWzTSsBj4WFkHPw24On8qw3qkQZuTw==}
+
+  '@fontsource/baloo-2@5.3.0':
+    resolution: {integrity: sha512-CBuxZ27jvMmD5+KaaPkMWv/yjdRNppVAd5/002yAyvyQyLNL3aZCbkx6gbAT/bjxPd1A0VMdDQjfcELI8chccQ==}
+
+  '@fontsource/khand@5.3.0':
+    resolution: {integrity: sha512-XgRPIi8UxIdvugPUPTjv2tQMSyqAvsZS5dnpvugLAMwnxIrbFM+4uSjpg6psTlTsN5AigUAnoX1Xum0o2OtA5w==}
 
   '@fontsource/mukta@5.3.0':
     resolution: {integrity: sha512-BIM9rx9SmHOcVR8cmOba9LnaFwhfiaFcclwgKV9rH4DIdCmD/tBBhtY02GGukuayxSbqfZ6pXzSO88IigTewDw==}
@@ -3285,6 +3303,12 @@ snapshots:
       fastify-plugin: 5.1.0
       toad-cache: 3.7.4
 
+  '@fontsource/anton@5.3.0': {}
+
+  '@fontsource/baloo-2@5.3.0': {}
+
+  '@fontsource/khand@5.3.0': {}
+
   '@fontsource/mukta@5.3.0': {}
 
   '@fontsource/noto-sans-devanagari@5.3.0': {}
@@ -3527,13 +3551,13 @@ snapshots:
       '@remotion/timeline-utils': 4.0.540(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@rspack/core': 2.3.0
       '@rspack/plugin-react-refresh': 2.0.2(@rspack/core@2.3.0)(react-refresh@0.18.0)
-      css-loader: 7.1.4(@rspack/core@2.3.0)(webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.33))
+      css-loader: 7.1.4(@rspack/core@2.3.0)(webpack@5.105.0(postcss@8.5.33))
       esbuild: 0.28.1
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
       react-refresh: 0.18.0
       remotion: 4.0.540(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      style-loader: 4.0.0(webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.33))
+      style-loader: 4.0.0(webpack@5.105.0(postcss@8.5.33))
       webpack: 5.105.0(esbuild@0.28.1)(postcss@8.5.33)
     transitivePeerDependencies:
       - '@minify-html/node'
@@ -4437,7 +4461,7 @@ snapshots:
       shebang-command: 2.0.0
       which: 2.0.2
 
-  css-loader@7.1.4(@rspack/core@2.3.0)(webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.33)):
+  css-loader@7.1.4(@rspack/core@2.3.0)(webpack@5.105.0(postcss@8.5.33)):
     dependencies:
       icss-utils: 5.1.0(postcss@8.5.33)
       postcss: 8.5.33
@@ -5319,7 +5343,7 @@ snapshots:
 
   strip-final-newline@2.0.0: {}
 
-  style-loader@4.0.0(webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.33)):
+  style-loader@4.0.0(webpack@5.105.0(postcss@8.5.33)):
     dependencies:
       webpack: 5.105.0(esbuild@0.28.1)(postcss@8.5.33)
 

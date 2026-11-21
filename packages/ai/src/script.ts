@@ -16,7 +16,9 @@ import { askGeminiJson } from "./gemini";
 export const ScriptSchema = z.object({
   title: z.string().describe("Video title in the target language, max 90 characters"),
   description: z.string().describe("Video description in the target language, 2-4 short paragraphs"),
-  hashtags: z.array(z.string()).describe("5-8 hashtags without the # sign"),
+  hashtags: z
+    .array(z.string())
+    .describe("6-10 hashtags without the # sign that people really search for this topic, most important first; Nepali videos: mix Devanagari and romanised Nepali tags"),
   thumbnailHeadline: z.string().describe("2-5 punchy words for the thumbnail, target language"),
   scenes: z
     .array(

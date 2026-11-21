@@ -31,6 +31,11 @@ export const ResearchSchema = z.object({
       }),
     )
     .describe("Ordered scenes. Shorts: 5-7 scenes. Long videos: 12-20 scenes."),
+  thumbnailQuery: z
+    .string()
+    .describe(
+      "Short English stock PHOTO search phrase for the thumbnail: the main subject of the video, striking and easy to recognise, e.g. 'mount everest summit sunrise'",
+    ),
 });
 export type Research = z.infer<typeof ResearchSchema>;
 

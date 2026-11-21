@@ -6,3 +6,4 @@ export { isMockAI } from "./mock";
 export { aiProvider, AIQuotaError, nextQuotaReset, currentQuotaDayStart, type AIProviderName } from "./provider";
 export { geminiModel, DEFAULT_GEMINI_MODEL } from "./gemini";
 export { suggestTopic, TopicIdeaSchema, DEFAULT_NICHE, type TopicIdea } from "./topic";
+export { findHashtags, mergeHashtags, parseHashtags, cleanTag, MAX_HASHTAGS } from "./hashtags";

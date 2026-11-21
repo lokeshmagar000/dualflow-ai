@@ -6,14 +6,16 @@
  *
  * Settings (environment variables, all optional):
  *   INTRO_SECONDS      how long the intro is (default 2). 0 = no intro.
- *   INTRO_TEXT_NE      big text in Nepali videos  (default: CHANNEL_NAME)
- *   INTRO_TEXT_EN      big text in English videos (default: CHANNEL_NAME)
- *   INTRO_TAGLINE_NE   small line under it in Nepali videos (default: none)
- *   INTRO_TAGLINE_EN   small line under it in English videos (default: none)
+ *   INTRO_TEXT_NE      big text in Nepali videos  (default: the brand name "Namaste Facts" + red "नेपाली" label)
+ *   INTRO_TEXT_EN      big text in English videos (default: the brand name, "Namaste Facts")
+ *   INTRO_TAGLINE_NE   small line under it in Nepali videos (default: "सानो तथ्य, ठूलो अचम्म")
+ *   INTRO_TAGLINE_EN   small line under it in English videos (default: "Small facts, big wonder")
+ * The brand itself comes from BRAND_NAME_* / BRAND_TAGLINE_* (see @dualflow/shared brand.ts).
  *   INTRO_SOUND        "on" (default), "off", or the path of your own .wav/.mp3 file
  */
 import { copyFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { brandFor } from "@dualflow/shared";
 import type { IntroProps } from "./types";
 
 const RATE = 44100;
@@ -87,10 +89,11 @@ export function introSettings(language: "ne" | "en", env: NodeJS.ProcessEnv = pr
   const seconds = env.INTRO_SECONDS === undefined || env.INTRO_SECONDS === "" ? 2 : Number(env.INTRO_SECONDS);
   if (!Number.isFinite(seconds) || seconds <= 0) return null;
   const up = language.toUpperCase();
-  const text = (env[`INTRO_TEXT_${up}`] || env.CHANNEL_NAME || "DualFlow").trim();
-  const tagline = (env[`INTRO_TAGLINE_${up}`] || "").trim() || undefined;
+  const brand = brandFor(language, env);
+  const text = (env[`INTRO_TEXT_${up}`] || brand.name).trim();
+  const tagline = (env[`INTRO_TAGLINE_${up}`] || brand.tagline).trim() || undefined;
   const sound = (env.INTRO_SOUND || "on").trim();
-  return { seconds: Math.min(seconds, 5), text, tagline, sound };
+  return { seconds: Math.min(seconds, 5), text, tag: brand.tag || undefined, tagline, sound };
 }
 
 /**
@@ -115,5 +118,5 @@ export async function prepareIntro(
     await writeFile(path.join(job.dir, "intro.wav"), introSoundWav(s.seconds));
     soundFile = job.url("intro.wav");
   }
-  return { text: s.text, tagline: s.tagline, durationMs: Math.round(s.seconds * 1000), soundFile };
+  return { text: s.text, tag: s.tag, tagline: s.tagline, durationMs: Math.round(s.seconds * 1000), soundFile };
 }

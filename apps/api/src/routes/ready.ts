@@ -3,13 +3,15 @@
  *
  *   GET  /ready?show=waiting|uploaded|all&page=1   finished stories, newest first, 10 per page
  *   GET  /ready/zip?show=waiting|uploaded|all      "Download all": every video of that tab in one .zip
- *   GET  /variants/:id/download/:kind              video, thumbnail or srt (?inline=1 to play/show it)
+ *   GET  /variants/:id/download/:kind              video, thumbnail or srt (?inline=1 to play/show it,
+ *                                                  thumbnail: ?size=shorts|youtube|feed for another size)
  *   POST /variants/:id/uploaded                    { uploaded: true | false } = the "Mark as uploaded" button
  */
 import type { FastifyInstance } from "fastify";
 import archiver from "archiver";
 import { prisma, type Prisma } from "@dualflow/db";
 import { contentTypeFor, downloadUrlFor, fileExists, readFile, readStream } from "@dualflow/storage";
+import { THUMBNAIL_SIZE_NAMES, thumbnailKeyFor, type ThumbnailSizeName } from "@dualflow/shared";
 import { getDefaultWorkspace } from "../workspace";
 
 const KINDS = ["video", "thumbnail", "srt"] as const;
@@ -29,9 +31,9 @@ export function slugify(text: string, max = 50): string {
 }
 
 /** e.g. "2026-11-20-en-why-mount-everest-grows.mp4". Nepali titles use the English title for the name. */
-export function downloadName(opts: { createdAt: Date; language: string; englishTitle: string; kind: Kind }): string {
+export function downloadName(opts: { createdAt: Date; language: string; englishTitle: string; kind: Kind; size?: string }): string {
   const ext = { video: "mp4", thumbnail: "jpg", srt: "srt" }[opts.kind];
-  const extra = opts.kind === "thumbnail" ? "-thumbnail" : opts.kind === "srt" ? "-subtitles" : "";
+  const extra = opts.kind === "thumbnail" ? `-thumbnail${opts.size ? `-${opts.size}` : ""}` : opts.kind === "srt" ? "-subtitles" : "";
   return `${opts.createdAt.toISOString().slice(0, 10)}-${opts.language}-${slugify(opts.englishTitle)}${extra}.${ext}`;
 }
 
@@ -91,7 +93,7 @@ export async function readyRoutes(app: FastifyInstance) {
               durationSec: true,
               outputKey: true,
               manualUploadedAt: true,
-              thumbnails: { select: { storageKey: true }, orderBy: { createdAt: "desc" }, take: 1 },
+              thumbnails: { select: { storageKey: true, sizes: true }, orderBy: { createdAt: "desc" }, take: 1 },
               subtitles: { select: { id: true }, take: 1 },
             },
           },
@@ -114,6 +116,8 @@ export async function readyRoutes(app: FastifyInstance) {
           s.variants.map(async ({ thumbnails, ...v }) => ({
             ...v,
             thumbnails: thumbnails.map(() => ({ id: "latest" })),
+            // Extra sizes (YouTube, Shorts, Facebook/Instagram post) for the download buttons.
+            thumbnailSizes: thumbnails[0]?.sizes ?? [],
             thumbnailUrl: thumbnails[0] && v.outputKey ? await downloadUrlFor(thumbnails[0].storageKey, { inline: true }) : null,
           })),
         ),
@@ -140,7 +144,7 @@ export async function readyRoutes(app: FastifyInstance) {
         description: true,
         hashtags: true,
         outputKey: true,
-        thumbnails: { select: { storageKey: true }, orderBy: { createdAt: "desc" }, take: 1 },
+        thumbnails: { select: { storageKey: true, sizes: true }, orderBy: { createdAt: "desc" }, take: 1 },
         story: { select: { createdAt: true, topic: { select: { title: true } }, variants: { select: { language: true, title: true } } } },
       },
       orderBy: [{ story: { createdAt: "desc" } }, { language: "desc" }],
@@ -169,6 +173,10 @@ export async function readyRoutes(app: FastifyInstance) {
           const thumb = v.thumbnails[0]?.storageKey;
           if (thumb) {
             await addAndWait(zip, await readStream(thumb).catch(() => null), `${folder}/${downloadName({ ...base, kind: "thumbnail" })}`);
+            for (const size of (v.thumbnails[0]?.sizes ?? []) as ThumbnailSizeName[]) {
+              const name = `${folder}/${downloadName({ ...base, kind: "thumbnail", size })}`;
+              await addAndWait(zip, await readStream(thumbnailKeyFor(thumb, size)).catch(() => null), name);
+            }
           }
           zip.append(uploadText(v), { name: `${folder}/${videoName.replace(/\.mp4$/, "")}-text.txt` });
         }
@@ -181,7 +189,7 @@ export async function readyRoutes(app: FastifyInstance) {
     return reply;
   });
 
-  app.get<{ Params: { id: string; kind: string }; Querystring: { inline?: string } }>(
+  app.get<{ Params: { id: string; kind: string }; Querystring: { inline?: string; size?: string } }>(
     "/variants/:id/download/:kind",
     async (req, reply) => {
       const kind = req.params.kind as Kind;
@@ -197,11 +205,19 @@ export async function readyRoutes(app: FastifyInstance) {
         },
       });
       if (!variant) return reply.code(404).send({ error: "Video not found" });
-      const key = { video: variant.outputKey, thumbnail: variant.thumbnails[0]?.storageKey, srt: variant.subtitles[0]?.storageKey }[kind];
+      let key = { video: variant.outputKey, thumbnail: variant.thumbnails[0]?.storageKey, srt: variant.subtitles[0]?.storageKey }[kind];
+      // Another thumbnail size: only one that was really made for this video.
+      const size = kind === "thumbnail" ? (req.query.size as ThumbnailSizeName | undefined) : undefined;
+      if (size) {
+        if (!THUMBNAIL_SIZE_NAMES.includes(size) || !variant.thumbnails[0]?.sizes.includes(size)) {
+          return reply.code(404).send({ error: "This thumbnail size was not made for this video" });
+        }
+        key = thumbnailKeyFor(key!, size);
+      }
       if (!key) return reply.code(404).send({ error: "File not made yet, or already deleted" });
 
       const englishTitle = variant.story.variants.find((v) => v.language === "en")?.title || variant.story.topic.title;
-      const fileName = downloadName({ createdAt: variant.story.createdAt, language: variant.language, englishTitle, kind });
+      const fileName = downloadName({ createdAt: variant.story.createdAt, language: variant.language, englishTitle, kind, size });
       const inline = req.query.inline === "1";
 
       // Cloudflare R2: send a short-lived download address; the browser gets the file straight from R2.

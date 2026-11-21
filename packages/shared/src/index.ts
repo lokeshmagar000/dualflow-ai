@@ -55,3 +55,20 @@ export const createStorySchema = z.object({
   format: z.enum(VIDEO_FORMATS).default("short"),
 });
 export type CreateStoryInput = z.infer<typeof createStorySchema>;
+
+export { BRAND_COLORS, brandFor, type Brand } from "./brand";
+
+/**
+ * Thumbnail sizes (one per kind of platform). The main thumbnail is "thumbnail.jpg";
+ * each extra size is saved next to it as "thumbnail-<size>.jpg".
+ */
+export const THUMBNAIL_SIZE_NAMES = ["shorts", "youtube", "feed"] as const;
+export type ThumbnailSizeName = (typeof THUMBNAIL_SIZE_NAMES)[number];
+export const THUMBNAIL_SIZE_LABELS: Record<ThumbnailSizeName, string> = {
+  shorts: "Shorts / TikTok / Reels (1080x1920)",
+  youtube: "YouTube (1280x720)",
+  feed: "Facebook / Instagram post (1080x1350)",
+};
+export function thumbnailKeyFor(mainKey: string, size: ThumbnailSizeName): string {
+  return mainKey.replace(/thumbnail\.jpg$/, `thumbnail-${size}.jpg`);
+}

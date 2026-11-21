@@ -9,6 +9,12 @@ import "@fontsource/noto-sans-devanagari/800.css";
 // Word Pop subtitles and the intro: Poppins for English, Mukta for Nepali (free Google Fonts).
 import "@fontsource/poppins/800.css";
 import "@fontsource/mukta/800.css";
+// The logo font (Latin + Devanagari): channel name and tagline.
+import "@fontsource/baloo-2/600.css";
+import "@fontsource/baloo-2/800.css";
+// Thumbnail headlines: Anton (English) and Khand (Nepali), tall bold fonts popular on YouTube thumbnails.
+import "@fontsource/anton/400.css";
+import "@fontsource/khand/700.css";
 import { FPS, sizeFor, storyFrames, storyStartFrame, thumbnailSizeFor, type ThumbnailProps, type VideoProps } from "../types";
 import { Video } from "./Video";
 import { Thumbnail } from "./Thumbnail";
@@ -20,9 +26,10 @@ const sample: VideoProps = {
   title: "सगरमाथाका तीन अचम्मका कुरा",
   audioFile: "",
   durationMs: 9000,
-  brand: "DualFlow",
-  accent: "#FFC83D",
-  intro: { text: "DualFlow नेपाली", tagline: "हरेक दिन नयाँ कुरा", durationMs: 2000, soundFile: null },
+  brand: "Namaste Facts",
+  brandTag: "नेपाली",
+  accent: "#F5A623",
+  intro: { text: "Namaste Facts", tag: "नेपाली", tagline: "सानो तथ्य, ठूलो अचम्म", durationMs: 2000, soundFile: null },
   scenes: [
     { startMs: 0, endMs: 3000, text: "नमस्ते साथीहरू!" },
     { startMs: 3000, endMs: 6000, text: "सगरमाथा संसारकै सबैभन्दा अग्लो हिमाल हो।" },
@@ -58,9 +65,9 @@ export function Root() {
         width={1080}
         height={1920}
         defaultProps={
-          { format: "SHORT", language: "ne", headline: "सगरमाथाका ३ रहस्य", brand: "DualFlow", accent: "#FFC83D" } satisfies ThumbnailProps
+          { format: "SHORT", language: "ne", headline: "सगरमाथाका ३ रहस्य", brand: "Namaste Facts", brandTag: "नेपाली", accent: "#F5A623" } satisfies ThumbnailProps
         }
-        calculateMetadata={({ props }) => thumbnailSizeFor(props.format)}
+        calculateMetadata={({ props }) => thumbnailSizeFor(props.format, props.size)}
       />
     </>
   );

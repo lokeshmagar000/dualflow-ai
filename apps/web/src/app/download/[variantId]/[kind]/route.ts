@@ -1,5 +1,6 @@
 /**
- * /download/<variantId>/<video|thumbnail|srt>   (add ?inline=1 to play or show it in the page)
+ * /download/<variantId>/<video|thumbnail|srt>   (add ?inline=1 to play or show it in the page;
+ *                                               thumbnails: ?size=shorts|youtube|feed for other sizes)
  *
  * The browser asks the dashboard; the dashboard asks the API with the secret key.
  *  - Files in Cloudflare R2: the API gives a short-lived download address and we
@@ -15,9 +16,16 @@ const KINDS = new Set(["video", "thumbnail", "srt"]);
 export async function GET(req: Request, { params }: { params: Promise<{ variantId: string; kind: string }> }) {
   const { variantId, kind } = await params;
   if (!KINDS.has(kind) || !/^[a-z0-9]+$/i.test(variantId)) return new Response("Not found", { status: 404 });
-  const inline = new URL(req.url).searchParams.get("inline") === "1";
+  const query = new URL(req.url).searchParams;
+  const inline = query.get("inline") === "1";
+  // Thumbnails come in sizes: ?size=shorts|youtube|feed
+  const size = kind === "thumbnail" && /^(shorts|youtube|feed)$/.test(query.get("size") ?? "") ? query.get("size") : null;
+  const forward = new URLSearchParams();
+  if (inline) forward.set("inline", "1");
+  if (size) forward.set("size", size);
+  const qs = forward.toString();
 
-  const res = await apiRaw(`/variants/${variantId}/download/${kind}${inline ? "?inline=1" : ""}`);
+  const res = await apiRaw(`/variants/${variantId}/download/${kind}${qs ? `?${qs}` : ""}`);
   if (!res.ok) {
     const message = res.status === 404 ? "This file is not there any more (it may have been deleted after upload)." : "Could not get the file.";
     return new Response(message, { status: res.status === 404 ? 404 : 502 });

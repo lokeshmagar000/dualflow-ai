@@ -11,6 +11,8 @@ export type VideoFormat = "SHORT" | "LONG";
 export type Media = {
   src: string;
   kind: "video" | "image";
+  /** For clips in a thumbnail: which second of the clip to show (default 0). */
+  atSec?: number;
 };
 
 export type VideoScene = {
@@ -34,6 +36,8 @@ export type VideoWord = {
 export type IntroProps = {
   /** Big text, e.g. the channel name. */
   text: string;
+  /** Small red label after the name, e.g. "नेपाली" (optional). */
+  tag?: string;
   /** Small line under it (optional), e.g. "Daily facts". */
   tagline?: string;
   /** How long the intro lasts, in milliseconds (about 2000). */
@@ -65,18 +69,38 @@ export type VideoProps = {
   subtitleStyle?: SubtitleStyle;
   /** The animated intro, or null/missing for no intro. */
   intro?: IntroProps | null;
-  /** Small name in the corner, e.g. the channel name. */
+  /** Channel name in the video's language ("Namaste Facts" / "नमस्ते फ्याक्ट्स"), shown with the logo in the corner. */
   brand: string;
-  /** Highlight colour for the title and progress bar. */
+  /** Small red label after the channel name ("नेपाली" in Nepali videos). */
+  brandTag?: string;
+  /** Highlight colour for the title and progress bar (the logo's marigold by default). */
   accent: string;
 };
 
+/**
+ * Thumbnail sizes, one per kind of platform:
+ *   shorts   1080x1920  YouTube Shorts, TikTok, Instagram Reels, Facebook Reels cover
+ *   youtube  1280x720   normal YouTube videos
+ *   feed     1080x1350  Facebook and Instagram feed posts (4:5)
+ */
+export const THUMBNAIL_SIZES = {
+  shorts: { width: 1080, height: 1920 },
+  youtube: { width: 1280, height: 720 },
+  feed: { width: 1080, height: 1350 },
+} as const;
+export type ThumbnailSize = keyof typeof THUMBNAIL_SIZES;
+
 export type ThumbnailProps = {
   format: VideoFormat;
+  /** Which size to draw. Leave out to use the video's own shape (shorts or youtube). */
+  size?: ThumbnailSize;
   language: "ne" | "en";
   headline: string;
   media?: Media | null;
+  /** Channel name ("Namaste Facts"). */
   brand: string;
+  /** Small red label after the name ("नेपाली" for the Nepali channel). */
+  brandTag?: string;
   accent: string;
 };
 
@@ -107,7 +131,12 @@ export function sizeFor(format: VideoFormat) {
   return format === "SHORT" ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
 }
 
-/** Thumbnail size: YouTube wants 1280x720 for wide videos. */
-export function thumbnailSizeFor(format: VideoFormat) {
-  return format === "SHORT" ? { width: 1080, height: 1920 } : { width: 1280, height: 720 };
+/** The thumbnail size that matches the video's shape. */
+export function mainThumbnailSize(format: VideoFormat): ThumbnailSize {
+  return format === "SHORT" ? "shorts" : "youtube";
+}
+
+/** Thumbnail size in pixels (YouTube wants 1280x720 for wide videos). */
+export function thumbnailSizeFor(format: VideoFormat, size?: ThumbnailSize) {
+  return { ...THUMBNAIL_SIZES[size ?? mainThumbnailSize(format)] };
 }
