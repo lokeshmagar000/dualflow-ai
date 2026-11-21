@@ -71,7 +71,7 @@ export type VideoProps = {
   intro?: IntroProps | null;
   /** Channel name in the video's language ("Namaste Facts" / "नमस्ते फ्याक्ट्स"), shown with the logo in the corner. */
   brand: string;
-  /** Small red label after the channel name ("नेपाली" in Nepali videos). */
+  /** Small red label after the channel name ("नेपाली" in Nepali videos, "" in English ones). Always send it. */
   brandTag?: string;
   /** Highlight colour for the title and progress bar (the logo's marigold by default). */
   accent: string;

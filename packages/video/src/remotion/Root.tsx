@@ -27,7 +27,8 @@ const sample: VideoProps = {
   audioFile: "",
   durationMs: 9000,
   brand: "Namaste Facts",
-  brandTag: "नेपाली",
+  // No brandTag here on purpose: Remotion fills missing props from these examples,
+  // so a Nepali label here once showed up in English videos.
   accent: "#F5A623",
   intro: { text: "Namaste Facts", tag: "नेपाली", tagline: "सानो तथ्य, ठूलो अचम्म", durationMs: 2000, soundFile: null },
   scenes: [
@@ -65,7 +66,7 @@ export function Root() {
         width={1080}
         height={1920}
         defaultProps={
-          { format: "SHORT", language: "ne", headline: "सगरमाथाका ३ रहस्य", brand: "Namaste Facts", brandTag: "नेपाली", accent: "#F5A623" } satisfies ThumbnailProps
+          { format: "SHORT", language: "ne", headline: "सगरमाथाका ३ रहस्य", brand: "Namaste Facts", accent: "#F5A623" } satisfies ThumbnailProps
         }
         calculateMetadata={({ props }) => thumbnailSizeFor(props.format, props.size)}
       />
