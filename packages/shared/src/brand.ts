@@ -1,12 +1,14 @@
 /**
  * The channel brand: "Namaste Facts".
  *
- * One brand, two channels. English videos say "Namaste Facts", Nepali videos
- * say "नमस्ते फ्याक्ट्स". Colours and fonts come from the final logo
+ * One brand, two channels, like the final logo files:
+ *   English videos: "Namaste Facts"
+ *   Nepali videos:  "Namaste Facts" + a red "नेपाली" label Colours and fonts come from the final logo
  * (Palm Bulb with red sparks, project files logos/final, copy in assets/brand/).
  *
  * Settings (environment variables, all optional):
  *   BRAND_NAME_EN / BRAND_NAME_NE        channel name written in the video
+ *   BRAND_TAG_EN / BRAND_TAG_NE          small red label after the name (Nepali: "नेपाली", English: none)
  *   BRAND_TAGLINE_EN / BRAND_TAGLINE_NE  small line under the name
  *   BRAND_HASHTAGS_EN / BRAND_HASHTAGS_NE  your own hashtags added to every video (comma separated)
  */
@@ -21,12 +23,13 @@ export const BRAND_COLORS = {
   snow: "#F3F6FA",
 } as const;
 
-const DEFAULTS: Record<Language, { name: string; tagline: string; hashtags: string[] }> = {
-  en: { name: "Namaste Facts", tagline: "Small facts, big wonder", hashtags: ["NamasteFacts"] },
-  ne: { name: "नमस्ते फ्याक्ट्स", tagline: "सानो तथ्य, ठूलो अचम्म", hashtags: ["NamasteFacts", "नमस्तेफ्याक्ट्स"] },
+const DEFAULTS: Record<Language, Brand> = {
+  en: { name: "Namaste Facts", tag: "", tagline: "Small facts, big wonder", hashtags: ["NamasteFacts"] },
+  ne: { name: "Namaste Facts", tag: "नेपाली", tagline: "सानो तथ्य, ठूलो अचम्म", hashtags: ["NamasteFacts", "NamasteFactsNepali"] },
 };
 
-export type Brand = { name: string; tagline: string; hashtags: string[] };
+/** `tag` is the small red label after the name ("" = none). */
+export type Brand = { name: string; tag: string; tagline: string; hashtags: string[] };
 
 type Env = Record<string, string | undefined>;
 const processEnv = (): Env => (globalThis as { process?: { env: Env } }).process?.env ?? {};
@@ -41,6 +44,7 @@ export function brandFor(language: Language, env: Env = processEnv()): Brand {
     .filter(Boolean);
   return {
     name: (env[`BRAND_NAME_${up}`] || d.name).trim(),
+    tag: (env[`BRAND_TAG_${up}`] ?? d.tag).trim(),
     tagline: (env[`BRAND_TAGLINE_${up}`] ?? d.tagline).trim(),
     hashtags: tags.length ? tags : d.hashtags,
   };

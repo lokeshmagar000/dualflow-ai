@@ -311,6 +311,8 @@ model Thumbnail {
   variantId  String
   storageKey String
   headline   String?
+  /// Extra sizes saved next to the main picture as thumbnail-<size>.jpg ("shorts", "youtube", "feed").
+  sizes      String[] @default([])
   createdAt  DateTime @default(now())
   variant    Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
 }

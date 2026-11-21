@@ -42,7 +42,7 @@ test("findHashtags searches with Gemini and falls back when it fails", async () 
   }) as typeof fetch;
   const ok = await findHashtags({ language: "ne", format: "SHORT", title: "सगरमाथा", summary: "s", scriptHashtags: ["हिमाल"] });
   assert.deepEqual(bodies[0].tools, [{ google_search: {} }]);
-  assert.deepEqual(ok.hashtags.slice(0, 4), ["सगरमाथा", "everest", "NamasteFacts", "नमस्तेफ्याक्ट्स"]);
+  assert.deepEqual(ok.hashtags.slice(0, 4), ["सगरमाथा", "everest", "NamasteFacts", "NamasteFactsNepali"]);
   assert.ok(ok.hashtags.includes("हिमाल"));
   assert.equal(ok.costs.length, 1);
 

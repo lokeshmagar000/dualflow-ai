@@ -35,6 +35,7 @@ const research = {
     { purpose: "hook" as const, idea: "Hook", visualQuery: "everest" },
     { purpose: "call_to_action" as const, idea: "Follow", visualQuery: "phone" },
   ],
+  thumbnailQuery: "mount everest",
 };
 
 function useGemini() {

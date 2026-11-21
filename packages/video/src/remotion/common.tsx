@@ -20,6 +20,12 @@ export const FONT = '"Noto Sans Devanagari", sans-serif';
 /** The logo font (Baloo 2): Latin and Devanagari letters, so both channel names match the logo. */
 export const BRAND_FONT = '"Baloo 2", "Noto Sans Devanagari", sans-serif';
 
+/** Thumbnail headline fonts: tall, heavy and easy to read small. Anton for English, Khand for Nepali. */
+export const HEADLINE_FONT = {
+  en: '"Anton", "Baloo 2", sans-serif',
+  ne: '"Khand", "Baloo 2", "Noto Sans Devanagari", sans-serif',
+} as const;
+
 /** Wait until the font has loaded, so no frame is drawn with the wrong letters. */
 export function useFonts() {
   const [handle] = useState(() => delayRender("Loading fonts"));
@@ -31,6 +37,8 @@ export function useFonts() {
       document.fonts.load(`800 64px "Mukta"`, "नमस्ते क्षेत्र"),
       document.fonts.load(`800 64px "Baloo 2"`, "नमस्ते फ्याक्ट्स Namaste Facts"),
       document.fonts.load(`600 64px "Baloo 2"`, "सानो तथ्य, ठूलो अचम्म Small facts"),
+      document.fonts.load(`400 64px "Anton"`, "EVEREST 4 MM"),
+      document.fonts.load(`700 64px "Khand"`, "सगरमाथा ४ मिमि बढ्छ"),
     ])
       .catch(() => undefined) // still draw, with the fallback font
       .then(() => continueRender(handle));
@@ -60,7 +68,7 @@ export function Background({ media, index, frames }: { media?: Media | null; ind
   if (media?.kind === "video") {
     return (
       <AbsoluteFill>
-        <OffthreadVideo src={media.src} muted style={fill} />
+        <OffthreadVideo src={media.src} muted style={fill} startFrom={Math.round((media.atSec ?? 0) * 30)} />
       </AbsoluteFill>
     );
   }
@@ -107,7 +115,31 @@ export function BrandName({ name, color = "white" }: { name: string; color?: str
  * The channel badge in the top-left corner: logo + channel name on a dark pill.
  * Always on screen, so a clip shared anywhere still shows where it came from.
  */
-export function Brand({ name, scale, opacity = 0.95 }: { name: string; scale: number; opacity?: number }) {
+/** The small red label after the channel name ("नेपाली"), like in the final logo files. */
+export function BrandTag({ text, size }: { text: string; size: number }) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        marginLeft: size * 0.35,
+        padding: `${size * 0.04}px ${size * 0.42}px 0`,
+        borderRadius: 999,
+        background: LOGO.crimson,
+        color: "#fff",
+        fontFamily: BRAND_FONT,
+        fontWeight: 800,
+        fontSize: size,
+        lineHeight: 1.35,
+        verticalAlign: "middle",
+        boxShadow: `0 ${size * 0.08}px ${size * 0.3}px rgba(0,0,0,0.35)`,
+      }}
+    >
+      {text}
+    </span>
+  );
+}
+
+export function Brand({ name, tag, scale, opacity = 0.95 }: { name: string; tag?: string; scale: number; opacity?: number }) {
   return (
     <div
       style={{
@@ -129,6 +161,7 @@ export function Brand({ name, scale, opacity = 0.95 }: { name: string; scale: nu
       <div style={{ fontFamily: BRAND_FONT, fontWeight: 800, fontSize: 38 * scale, lineHeight: 1.1, paddingTop: 4 * scale }}>
         <BrandName name={name} />
       </div>
+      {tag ? <BrandTag text={tag} size={28 * scale} /> : null}
     </div>
   );
 }

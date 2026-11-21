@@ -56,6 +56,7 @@ for (const language of ["ne", "en"] as const) {
       audioFile: job.url("voice.wav"),
       durationMs,
       brand: brandFor(language).name,
+      brandTag: brandFor(language).tag || undefined,
       accent: BRAND_COLORS.marigold,
       scenes: [
         { startMs: 0, endMs: durationMs / 2, text: "" },
@@ -71,13 +72,14 @@ for (const language of ["ne", "en"] as const) {
   console.log(`${language} video took ${((Date.now() - started) / 1000).toFixed(1)} s`);
   await job.remove();
 }
-// One thumbnail per language and size.
+// One thumbnail per language and platform size.
 const HEADLINES = { ne: "सगरमाथाका ३ रहस्य", en: "Everest grows 4 mm a year" } as const;
 for (const language of ["ne", "en"] as const) {
-  for (const format of ["SHORT", "LONG"] as const) {
+  for (const size of ["shorts", "youtube", "feed"] as const) {
+    const b = brandFor(language);
     await renderThumbnail(
-      { format, language, headline: HEADLINES[language], brand: brandFor(language).name, accent: BRAND_COLORS.marigold },
-      path.join(out, `test-thumbnail-${language}-${format.toLowerCase()}.jpg`),
+      { format: "SHORT", size, language, headline: HEADLINES[language], brand: b.name, brandTag: b.tag || undefined, accent: BRAND_COLORS.marigold },
+      path.join(out, `test-thumbnail-${language}-${size}.jpg`),
     );
   }
 }

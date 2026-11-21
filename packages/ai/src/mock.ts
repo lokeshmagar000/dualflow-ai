@@ -33,6 +33,7 @@ export function mockResearch(input: { title: string; format: "SHORT" | "LONG" })
       { purpose: "example", idea: `A simple real-life example`, visualQuery: "people talking" },
       { purpose: "call_to_action", idea: "Ask viewers to like and follow", visualQuery: "phone like button" },
     ],
+    thumbnailQuery: "nepal mountains",
   };
 }
 

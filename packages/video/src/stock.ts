@@ -185,3 +185,49 @@ export async function findMedia(
     return null;
   }
 }
+
+/**
+ * Find a PHOTO for the thumbnail (photos are sharper than a frame from a clip).
+ * `tall` = portrait photo (Shorts, Reels, feed posts); otherwise landscape (YouTube).
+ * Pixabay: "popular" order, so we get the eye-catching pictures first.
+ * Returns null when there is no key or nothing was found.
+ */
+export async function findPhoto(
+  query: string,
+  tall: boolean,
+  dir: string,
+  name: string,
+  used: Set<number>,
+): Promise<FoundMedia | null> {
+  const provider = stockProvider();
+  if (!provider || !query.trim()) return null;
+  try {
+    if (provider === "pixabay") {
+      const key = encodeURIComponent(process.env.PIXABAY_API_KEY!);
+      const q = encodeURIComponent(query.trim().slice(0, 100));
+      const { hits } = await pixabay<{ hits: PixabayImage[] }>(
+        `https://pixabay.com/api/?key=${key}&q=${q}&image_type=photo&orientation=${tall ? "vertical" : "horizontal"}&order=popular&min_width=1080&safesearch=true&per_page=20`,
+      );
+      const image = (hits ?? []).find((i) => !used.has(i.id));
+      if (!image) return null;
+      const file = `${name}.jpg`;
+      await download(image.largeImageURL, path.join(dir, file));
+      used.add(image.id);
+      return { file, kind: "image", sourceUrl: image.pageURL, provider: "pixabay", id: image.id };
+    }
+    const orientation = tall ? "portrait" : "landscape";
+    const { photos } = await pexels<{ photos: PexelsPhoto[] }>(
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query.trim())}&orientation=${orientation}&per_page=10`,
+      process.env.PEXELS_API_KEY!,
+    );
+    const photo = (photos ?? []).find((p) => !used.has(p.id));
+    if (!photo) return null;
+    const file = `${name}.jpg`;
+    await download(photo.src[orientation] ?? photo.src.large2x ?? photo.src.original!, path.join(dir, file));
+    used.add(photo.id);
+    return { file, kind: "image", sourceUrl: photo.url, provider: "pexels", id: photo.id };
+  } catch (err) {
+    console.warn(`${provider}: no thumbnail photo for "${query}" (${(err as Error).message}).`);
+    return null;
+  }
+}

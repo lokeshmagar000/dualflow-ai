@@ -126,6 +126,13 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
   );
 }
 
+/** Names for the thumbnail sizes (the button text, and the full name when you point at it). */
+const SIZE_LABELS: Record<string, { short: string; title: string }> = {
+  shorts: { short: "Shorts / Reels", title: "1080x1920: YouTube Shorts, TikTok, Instagram and Facebook Reels" },
+  youtube: { short: "YouTube", title: "1280x720: normal YouTube videos" },
+  feed: { short: "FB / Insta post", title: "1080x1350: Facebook and Instagram feed posts" },
+};
+
 function VideoCard({ v }: { v: ReadyVariant }) {
   const tags = (v.hashtags ?? []).map((h) => `#${h.replace(/^#/, "")}`);
   const hashtags = tags.join(" ");
@@ -166,9 +173,20 @@ function VideoCard({ v }: { v: ReadyVariant }) {
                 <img src={poster} alt={`${langName} thumbnail`} loading="lazy"
                   className="aspect-[9/16] w-full rounded-md bg-subtle object-cover ring-1 ring-stroke" />
               </a>
-              <a href={`/download/${v.id}/thumbnail`} className="btn btn-sm mt-2 w-full justify-center">
+              <a href={`/download/${v.id}/thumbnail`} className="btn btn-sm mt-2 w-full justify-center" title="The size that fits this video">
                 <IconDownload className="h-4 w-4" /> Thumbnail
               </a>
+              {(v.thumbnailSizes?.length ?? 0) > 0 && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs text-fg3">Other sizes:</p>
+                  {v.thumbnailSizes!.map((size) => (
+                    <a key={size} href={`/download/${v.id}/thumbnail?size=${size}`} className="btn btn-sm w-full justify-center"
+                      title={SIZE_LABELS[size]?.title}>
+                      <IconDownload className="h-4 w-4" /> {SIZE_LABELS[size]?.short ?? size}
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

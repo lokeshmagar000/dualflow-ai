@@ -6,6 +6,7 @@
  *   0-14   a light streak sweeps across the screen (you hear a "whoosh")
  *   3-13   the logo (Palm Bulb) pops in, its red sparks start to twinkle
  *   ~13    the channel name pops in, two red rings burst out (you hear the "hit" and a chime)
+ *   ~17    Nepali videos: the red "नेपाली" label pops in after the name
  *   18-30  a red-to-gold bar grows under the name, then the tagline slides up
  *   last 9 the whole intro zooms forward and fades, and the story appears behind it
  *
@@ -14,7 +15,7 @@
  */
 import { AbsoluteFill, Audio, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { FPS, INTRO_OVERLAP_MS, type IntroProps } from "../types";
-import { BRAND_FONT } from "./common";
+import { BRAND_FONT, BrandTag } from "./common";
 import { LOGO, Logo, SparkIcon } from "./Logo";
 
 const HIT = 13; // the frame where the name lands (matches the "hit" in the intro sound)
@@ -47,13 +48,15 @@ export function Intro({
     const parts = language === "en" ? [...w] : [w];
     for (const p of parts) pieces.push({ text: p, gold: wi === lastWord });
   });
-  const letters = [...intro.text].length;
+  // The label after the name takes space too (about 4 letters).
+  const letters = [...intro.text].length + (intro.tag ? 4 : 0);
   const nameSize = Math.min(132, (Math.min(width, 1080) * 0.86) / Math.max(4, letters * (language === "en" ? 0.5 : 0.43))) * unit;
 
   const streakX = interpolate(frame, [0, 14], [-0.6, 1.4], clamp);
   const logoIn = spring({ frame: frame - 3, fps, config: { damping: 10, mass: 0.7 } });
   const bar = spring({ frame: frame - 18, fps, config: { damping: 16 } });
   const tag = spring({ frame: frame - 24, fps, config: { damping: 14 } });
+  const label = spring({ frame: frame - (HIT + 4), fps, config: { damping: 9, mass: 0.6 } });
   const logoSize = 360 * unit;
 
   return (
@@ -157,6 +160,11 @@ export function Intro({
               </span>
             );
           })}
+          {intro.tag ? (
+            <span style={{ display: "inline-block", opacity: Math.min(1, label * 2), transform: `scale(${0.2 + 0.8 * label}) rotate(${(1 - label) * 20}deg)`, textShadow: "none" }}>
+              <BrandTag text={intro.tag} size={nameSize * 0.42} />
+            </span>
+          ) : null}
         </div>
         <div
           style={{

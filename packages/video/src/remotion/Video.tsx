@@ -57,7 +57,7 @@ function Story({ props, frames }: { props: VideoProps; frames: number }) {
       })}
       <Shade />
       {props.audioFile ? <Audio src={props.audioFile} /> : null}
-      <Brand name={props.brand} scale={scale * 1.2} />
+      <Brand name={props.brand} tag={props.brandTag} scale={scale * 1.2} />
       <Title text={props.title} accent={props.accent} scale={scale} tall={tall} />
       {props.subtitleStyle === "classic" ? (
         <Subtitles props={props} scale={tall ? scale : scale * 0.9} tall={tall} />

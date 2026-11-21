@@ -6,7 +6,7 @@
  *
  * Settings (environment variables, all optional):
  *   INTRO_SECONDS      how long the intro is (default 2). 0 = no intro.
- *   INTRO_TEXT_NE      big text in Nepali videos  (default: the brand name, "नमस्ते फ्याक्ट्स")
+ *   INTRO_TEXT_NE      big text in Nepali videos  (default: the brand name "Namaste Facts" + red "नेपाली" label)
  *   INTRO_TEXT_EN      big text in English videos (default: the brand name, "Namaste Facts")
  *   INTRO_TAGLINE_NE   small line under it in Nepali videos (default: "सानो तथ्य, ठूलो अचम्म")
  *   INTRO_TAGLINE_EN   small line under it in English videos (default: "Small facts, big wonder")
@@ -93,7 +93,7 @@ export function introSettings(language: "ne" | "en", env: NodeJS.ProcessEnv = pr
   const text = (env[`INTRO_TEXT_${up}`] || brand.name).trim();
   const tagline = (env[`INTRO_TAGLINE_${up}`] || brand.tagline).trim() || undefined;
   const sound = (env.INTRO_SOUND || "on").trim();
-  return { seconds: Math.min(seconds, 5), text, tagline, sound };
+  return { seconds: Math.min(seconds, 5), text, tag: brand.tag || undefined, tagline, sound };
 }
 
 /**
@@ -118,5 +118,5 @@ export async function prepareIntro(
     await writeFile(path.join(job.dir, "intro.wav"), introSoundWav(s.seconds));
     soundFile = job.url("intro.wav");
   }
-  return { text: s.text, tagline: s.tagline, durationMs: Math.round(s.seconds * 1000), soundFile };
+  return { text: s.text, tag: s.tag, tagline: s.tagline, durationMs: Math.round(s.seconds * 1000), soundFile };
 }

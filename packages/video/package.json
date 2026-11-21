@@ -16,7 +16,9 @@
   },
   "dependencies": {
     "@dualflow/shared": "workspace:*",
+    "@fontsource/anton": "5.3.0",
     "@fontsource/baloo-2": "5.3.0",
+    "@fontsource/khand": "5.3.0",
     "@fontsource/mukta": "5.3.0",
     "@fontsource/noto-sans-devanagari": "5.3.0",
     "@fontsource/poppins": "5.3.0",

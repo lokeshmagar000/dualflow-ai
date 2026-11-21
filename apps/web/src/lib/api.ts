@@ -284,6 +284,7 @@ export interface ReadyVariant {
   manualUploadedAt: string | null;
   thumbnails: { id: string }[];
   thumbnailUrl: string | null; // direct address of the preview picture (fast), or null
+  thumbnailSizes?: string[]; // extra sizes: "shorts" | "youtube" | "feed"
   subtitles: { id: string }[];
 }
 export interface ReadyStory {

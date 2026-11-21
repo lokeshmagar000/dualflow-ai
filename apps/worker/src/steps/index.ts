@@ -11,7 +11,7 @@
  */
 import { prisma, type Prisma } from "@dualflow/db";
 import { findHashtags, researchTopic, writeScript, type Research } from "@dualflow/ai";
-import { BRAND_COLORS, brandFor, JOB_NAMES, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
+import { BRAND_COLORS, brandFor, JOB_NAMES, THUMBNAIL_SIZE_NAMES, thumbnailKeyFor, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
 import { AIQuotaError, nextQuotaReset } from "@dualflow/ai";
 import {
   buildCues,
@@ -22,7 +22,17 @@ import {
   type WordTiming,
 } from "@dualflow/voice";
 import { readFile, saveFile } from "@dualflow/storage";
-import { findMedia, makeJobFolder, prepareIntro, renderThumbnail, renderVideo, type FoundMedia } from "@dualflow/video";
+import {
+  findMedia,
+  findPhoto,
+  mainThumbnailSize,
+  makeJobFolder,
+  prepareIntro,
+  renderThumbnail,
+  renderVideo,
+  type FoundMedia,
+  type Media,
+} from "@dualflow/video";
 import { copyFile, mkdir, readFile as readLocal, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { enqueue } from "@dualflow/queue";
@@ -80,7 +90,11 @@ const research: Step = async ({ storyId, run = 1 }) => {
       where: { id: story.id },
       data: {
         visualPlan: research.visualPlan as unknown as Prisma.InputJsonValue,
-        research: { summary: research.summary, facts: research.facts } as unknown as Prisma.InputJsonValue,
+        research: {
+          summary: research.summary,
+          facts: research.facts,
+          thumbnailQuery: research.thumbnailQuery,
+        } as unknown as Prisma.InputJsonValue,
       },
     }),
   ]);
@@ -99,7 +113,7 @@ const script: Step = async (data) => {
   await prisma.variant.update({ where: { id: variant.id }, data: { status: "GENERATING", lastError: null } });
 
   // Rebuild the Research object saved by the research step.
-  const saved = story.research as unknown as Pick<Research, "summary" | "facts"> | null;
+  const saved = story.research as unknown as Pick<Research, "summary" | "facts" | "thumbnailQuery"> | null;
   const visualPlan = story.visualPlan as unknown as Research["visualPlan"] | null;
   if (!saved || !visualPlan) throw new Error("Research is missing for this story.");
 
@@ -107,7 +121,7 @@ const script: Step = async (data) => {
     language: variant.language as Language,
     title: story.topic.title,
     format: story.format,
-    research: { ...saved, visualPlan },
+    research: { ...saved, thumbnailQuery: saved.thumbnailQuery ?? "", visualPlan },
   });
   await recordCosts(story.workspaceId, story.id, costs);
 
@@ -284,7 +298,8 @@ const render: Step = async (data) => {
     const words = (voiceover.wordTimings as unknown as WordTiming[] | null) ?? [];
     const durationMs = Math.round(variant.durationSec * 1000);
     // "Namaste Facts" in English videos, "नमस्ते फ्याक्ट्स" in Nepali videos (BRAND_NAME_* settings).
-    const brand = brandFor(language).name;
+    const brandInfo = brandFor(language);
+    const brand = brandInfo.name;
     const accent = process.env.VIDEO_ACCENT || BRAND_COLORS.marigold;
     const toMedia = (m: FoundMedia | null | undefined) => (m ? { src: job.url(m.file), kind: m.kind } : null);
 
@@ -298,6 +313,7 @@ const render: Step = async (data) => {
         audioFile: job.url("voice.wav"),
         durationMs,
         brand,
+        brandTag: brandInfo.tag || undefined,
         accent,
         scenes: variant.scenes.map((s, i) => ({
           startMs: s.startMs ?? 0,
@@ -317,18 +333,37 @@ const render: Step = async (data) => {
     );
     console.log(`[render] ${language} video made in ${Math.round((Date.now() - started) / 1000)} s`);
 
-    const thumbFile = path.join(job.dir, "thumbnail.jpg");
-    await renderThumbnail(
-      {
-        format,
-        language,
-        headline: variant.thumbnailHeadline || variant.title || story.topic.title,
-        media: toMedia(media.find((m) => m) ?? null),
-        brand,
-        accent,
-      },
-      thumbFile,
-    );
+    // Thumbnails: one per platform size, with a photo of the video's main subject
+    // (the research step picks the search words). No photo found: a frame from the first clip.
+    const research = story.research as { thumbnailQuery?: string } | null;
+    const thumbQuery = research?.thumbnailQuery || plan[0]?.visualQuery || story.topic.title;
+    const photoIds = new Set<number>();
+    const tallPhoto = await findPhoto(thumbQuery, true, job.dir, "thumb-photo-tall", photoIds);
+    const widePhoto = await findPhoto(thumbQuery, false, job.dir, "thumb-photo-wide", photoIds);
+    const firstClip = media.find((m) => m) ?? null;
+    const clipFrame: Media | null = firstClip ? { ...toMedia(firstClip)!, atSec: 1.5 } : null;
+    const mainSize = mainThumbnailSize(format);
+    const thumbFiles: Record<string, string> = {};
+    for (const size of THUMBNAIL_SIZE_NAMES) {
+      const photo = size === "youtube" ? (widePhoto ?? tallPhoto) : (tallPhoto ?? widePhoto);
+      const file = path.join(job.dir, size === mainSize ? "thumbnail.jpg" : `thumbnail-${size}.jpg`);
+      await renderThumbnail(
+        {
+          format,
+          size,
+          language,
+          headline: variant.thumbnailHeadline || variant.title || story.topic.title,
+          media: photo ? toMedia(photo) : clipFrame,
+          brand,
+          brandTag: brandInfo.tag || undefined,
+          accent,
+        },
+        file,
+      );
+      thumbFiles[size] = file;
+    }
+    const thumbFile = thumbFiles[mainSize]!;
+    const extraSizes = THUMBNAIL_SIZE_NAMES.filter((size) => size !== mainSize);
 
     // Upload. The run number in the folder keeps a retry from overwriting older files.
     const folder = `stories/${story.id}/${language}/run-${data.run ?? 1}`;
@@ -336,12 +371,14 @@ const render: Step = async (data) => {
     const thumbKey = `${folder}/thumbnail.jpg`;
     await saveFile(videoKey, await readLocal(videoFile));
     await saveFile(thumbKey, await readLocal(thumbFile));
+    for (const size of extraSizes) await saveFile(thumbnailKeyFor(thumbKey, size), await readLocal(thumbFiles[size]!));
     // Optional: also keep a copy here (GitHub shows them as a download, so you can watch them).
     if (process.env.VIDEO_COPY_DIR) {
       await mkdir(process.env.VIDEO_COPY_DIR, { recursive: true });
       const name = `${story.topic.title}-${language}`.replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 80);
       await copyFile(videoFile, path.join(process.env.VIDEO_COPY_DIR, `${name}.mp4`));
       await copyFile(thumbFile, path.join(process.env.VIDEO_COPY_DIR, `${name}.jpg`));
+      for (const size of extraSizes) await copyFile(thumbFiles[size]!, path.join(process.env.VIDEO_COPY_DIR, `${name}-${size}.jpg`));
     }
 
     // Remember where each clip came from (credits).
@@ -366,7 +403,9 @@ const render: Step = async (data) => {
         prisma.scene.update({ where: { id: s.id }, data: { assetId: assets[i]?.id ?? null } }),
       ),
       prisma.thumbnail.deleteMany({ where: { variantId: variant.id } }),
-      prisma.thumbnail.create({ data: { variantId: variant.id, storageKey: thumbKey, headline: variant.thumbnailHeadline } }),
+      prisma.thumbnail.create({
+        data: { variantId: variant.id, storageKey: thumbKey, headline: variant.thumbnailHeadline, sizes: [...extraSizes] },
+      }),
       prisma.renderJob.update({ where: { id: renderJob.id }, data: { status: "DONE", outputKey: videoKey } }),
       prisma.variant.update({ where: { id: variant.id }, data: { status: "READY", outputKey: videoKey, lastError: null } }),
     ]);
