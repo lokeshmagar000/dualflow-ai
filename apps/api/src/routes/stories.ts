@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "@dualflow/db";
 import { createStorySchema, JOB_NAMES, LANGUAGES } from "@dualflow/shared";
 import { buildCues, type WordTiming } from "@dualflow/voice";
-import { contentTypeFor, fileExists, readFile } from "@dualflow/storage";
+import { contentTypeFor, deleteFile, fileExists, listFiles, readFile } from "@dualflow/storage";
 import { enqueue } from "../queue";
 import { triggerQuietly } from "../github";
 import { getDefaultWorkspace } from "../workspace";
@@ -86,6 +86,35 @@ export async function storyRoutes(app: FastifyInstance) {
       .header("content-type", contentTypeFor(key))
       .header("content-disposition", `inline; filename="${name}"`)
       .send(await readFile(key));
+  });
+
+  /**
+   * The "Delete" button: removes a story for good, with BOTH languages.
+   *   1. its files in storage (videos, voices, subtitles, thumbnails),
+   *   2. its jobs still waiting in the queue,
+   *   3. the story itself (the database then removes its variants, scenes and uploads too).
+   * The topic stays (marked "used"), so the AI does not pick the same topic again.
+   */
+  app.delete<{ Params: { id: string } }>("/stories/:id", async (req, reply) => {
+    const ws = await getDefaultWorkspace();
+    const story = await prisma.story.findFirst({
+      where: { id: req.params.id, workspaceId: ws.id },
+      select: { id: true, topic: { select: { title: true } } },
+    });
+    if (!story) return reply.code(404).send({ error: "Story not found" });
+
+    // All files of a story live under "stories/<storyId>/".
+    let files = 0;
+    for (const file of await listFiles(`stories/${story.id}/`)) {
+      await deleteFile(file.key);
+      files++;
+    }
+    await prisma.pipelineJob.deleteMany({ where: { storyId: story.id } });
+    await prisma.story.delete({ where: { id: story.id } });
+    await prisma.auditLog.create({
+      data: { workspaceId: ws.id, actor: "owner", action: "story.deleted", target: `${story.id} ${story.topic.title}`.slice(0, 250) },
+    });
+    return { ok: true, deletedFiles: files };
   });
 
   /** Run the whole pipeline again for a failed story. */

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { api, type ReadyStory, type ReadyVariant } from "@/lib/api";
+import { api, type ReadyPage as ReadyData, type ReadyVariant } from "@/lib/api";
 import { ApiError, Card, PageHeader } from "@/components/ui";
 import { CopyButton } from "@/components/CopyButton";
 import { nepalTime } from "@/components/UploadStatus";
+import { DeleteStoryButton } from "@/components/DeleteStoryButton";
 import { setUploaded } from "./actions";
 
 /**
@@ -21,37 +22,54 @@ const LANG = {
   en: { name: "English", where: "Upload to your ENGLISH channels", color: "bg-sky-100 text-sky-800" },
 };
 
-export default async function ReadyPage({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
-  const { show: rawShow } = await searchParams;
+export default async function ReadyPage({ searchParams }: { searchParams: Promise<{ show?: string; page?: string }> }) {
+  const { show: rawShow, page: rawPage } = await searchParams;
   const show = TABS.some((t) => t.key === rawShow) ? rawShow! : "waiting";
-  let stories: ReadyStory[] = [];
+  const page = Math.max(1, Number(rawPage) || 1);
+  let data: ReadyData;
   try {
-    stories = await api<ReadyStory[]>(`/ready?show=${show}`);
+    // Only 10 stories at a time (one "page"), so the page loads fast.
+    data = await api<ReadyData>(`/ready?show=${show}&page=${page}`);
   } catch (e) {
     return (<><PageHeader title="Ready to upload" /><ApiError error={e} /></>);
   }
+  const { stories, total, pageSize, videoCount } = data;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <>
       <PageHeader
         title="Ready to upload"
-        subtitle="New videos are made by themselves every few hours. Download, upload to your channels, then mark as uploaded."
+        subtitle="New videos (Nepali + English) are made by themselves every night at 2 AM and 4 AM Nepal time. Download, upload to your channels, then mark as uploaded."
       />
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         {TABS.map((t) => (
           <Link key={t.key} href={`/ready?show=${t.key}`}
             className={`rounded-full px-3 py-1 text-sm ${show === t.key ? "bg-zinc-900 text-white" : "bg-white text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-100"}`}>
             {t.label}
           </Link>
         ))}
+        {/* One .zip with every video of this tab (a plain link: the browser shows the download progress). */}
+        {videoCount > 0 && (
+          <a href={`/download/all?show=${show}`}
+            className="ml-auto rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700">
+            ⬇ Download all ({videoCount} video{videoCount === 1 ? "" : "s"}) as .zip
+          </a>
+        )}
       </div>
+      {videoCount > 0 && (
+        <p className="-mt-2 mb-4 text-right text-xs text-zinc-500">
+          The zip has a Nepali and an English folder: each video with its thumbnail and a text file (title, description, hashtags).
+          A big zip takes a few minutes.
+        </p>
+      )}
 
       {stories.length === 0 && (
         <Card>
           <p className="text-sm text-zinc-600">
             {show === "waiting"
-              ? "Nothing waiting. The next automatic video is made in the next run (every 3 hours). Want one now? Add an idea on Ideas & Chat, or press Run now on Costs & Automation."
+              ? "Nothing waiting. New videos are made at 2 AM and 4 AM Nepal time. Want one now? Add an idea on Ideas & Chat, or press Run now on Costs & Automation."
               : "No videos here yet."}
           </p>
         </Card>
@@ -62,8 +80,9 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
           <Card key={s.id}>
             <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
               <Link href={`/content/${s.id}`} className="font-semibold hover:text-brand-600">{s.topic.title} →</Link>
-              <span className="text-xs text-zinc-500">
+              <span className="flex items-center gap-3 text-xs text-zinc-500">
                 Made {nepalTime(s.createdAt)} · {s.topic.source === "DIRECTOR" ? "topic picked by AI" : "your idea"}
+                <DeleteStoryButton storyId={s.id} title={s.topic.title} />
               </span>
             </div>
             {/* Nepali first, then English. */}
@@ -75,6 +94,15 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
           </Card>
         ))}
       </div>
+
+      {/* Page buttons: only shown when there are more than 10 stories. */}
+      {pages > 1 && (
+        <nav className="mt-6 flex items-center justify-center gap-3 text-sm">
+          {page > 1 && <Link href={`/ready?show=${show}&page=${page - 1}`} className="rounded-lg px-3 py-1 ring-1 ring-zinc-200 hover:bg-zinc-100">← Newer</Link>}
+          <span className="text-zinc-500">Page {page} of {pages}</span>
+          {page < pages && <Link href={`/ready?show=${show}&page=${page + 1}`} className="rounded-lg px-3 py-1 ring-1 ring-zinc-200 hover:bg-zinc-100">Older →</Link>}
+        </nav>
+      )}
 
       <p className="mt-6 text-xs text-zinc-500">
         To save free storage, videos are deleted 7 days after you mark both languages as uploaded,
@@ -90,6 +118,8 @@ function VideoCard({ v }: { v: ReadyVariant }) {
   const fullText = [v.description, hashtags].filter(Boolean).join("\n\n");
   const hasVideo = Boolean(v.outputKey);
   const hasThumb = v.thumbnails.length > 0 && hasVideo;
+  // Direct R2 address when there is one (fast); otherwise through the dashboard.
+  const poster = v.thumbnailUrl ?? (hasThumb ? `/download/${v.id}/thumbnail?inline=1` : undefined);
 
   return (
     <div className={`rounded-xl border p-4 ${v.manualUploadedAt ? "border-emerald-300 bg-emerald-50/40" : "border-zinc-200"}`}>
@@ -105,7 +135,7 @@ function VideoCard({ v }: { v: ReadyVariant }) {
             <video
               controls
               preload="none"
-              poster={hasThumb ? `/download/${v.id}/thumbnail?inline=1` : undefined}
+              poster={poster}
               src={`/download/${v.id}/video?inline=1`}
               className="aspect-[9/16] w-full rounded-lg bg-zinc-900 object-cover"
             />

@@ -12,10 +12,13 @@
  *
  * A "key" is the file's name inside storage, e.g. "stories/abc/ne/voice.wav".
  */
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { mkdir, readdir, readFile as fsReadFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { r2Delete, r2Exists, r2Get, r2List, r2PresignGet, r2PresignPut, r2Put, r2Size } from "./r2";
+import { r2Delete, r2Exists, r2Get, r2List, r2PresignGet, r2PresignPut, r2Put, r2Size, r2Stream } from "./r2";
 
 /** The project's top folder: this file is at packages/storage/src/index.ts. */
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -61,6 +64,12 @@ export async function saveFile(key: string, data: Buffer | string): Promise<void
 export async function readFile(key: string): Promise<Buffer> {
   if (storageDriver() === "r2") return r2Get(checkKey(key));
   return fsReadFile(pathForKey(key));
+}
+
+/** Open a file as a stream (used for the "Download all" zip, so big videos are not loaded whole). */
+export async function readStream(key: string): Promise<Readable> {
+  if (storageDriver() === "r2") return Readable.fromWeb((await r2Stream(checkKey(key))) as WebReadableStream<Uint8Array>);
+  return createReadStream(pathForKey(key));
 }
 
 export async function fileExists(key: string): Promise<boolean> {

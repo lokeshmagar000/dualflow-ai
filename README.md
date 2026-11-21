@@ -77,7 +77,7 @@ The free plan runs without any server that is on all day:
 | --- | --- | --- |
 | Dashboard + API | Render free web services (`render.yaml`) | |
 | Database + job queue | Neon free Postgres | `DATABASE_URL` |
-| Making the videos | GitHub Actions (`.github/workflows/pipeline.yml`), every 3 hours or "Run now" | `WORKER_MODE=once` |
+| Making the videos | GitHub Actions (`.github/workflows/pipeline.yml`), 2 AM + 4 AM Nepal time, or "Run now" | `WORKER_MODE=once` |
 | Research + scripts | Gemini free tier | `AI_PROVIDER=gemini`, `GEMINI_API_KEY` |
 | Voice | Edge TTS (no key) or Azure F0 | `VOICE_PROVIDER=edge` or `azure` |
 | Files | Cloudflare R2 (10 GB free) | `STORAGE=r2`, `R2_*` |
@@ -100,7 +100,8 @@ free limit is used, the waiting jobs, a **Run now** button and the kill switch.
 5. **Render** (render.com → New → Blueprint → this repo). Fill in the values it asks for. Beginner steps: [docs/put-dashboard-online.md](docs/put-dashboard-online.md). For **Run now**, make a
    fine-grained GitHub token for only this repo with *Actions: Read and write* and set it as `GITHUB_DISPATCH_TOKEN`
    (and `GITHUB_REPO=lokeshmagar000/dualflow-ai`) on `dualflow-api`.
-6. Open the dashboard, add an idea, and press **Run now** (or wait for the next 3-hour run).
+   **Faster dashboard:** run the API inside the dashboard server and keep it awake for free: [docs/faster-dashboard.md](docs/faster-dashboard.md).
+6. Open the dashboard, add an idea, and press **Run now** (or wait for the next automatic run at 2 AM / 4 AM Nepal time).
 
 To hear the free voices first, run **Actions → Voice sample → Run workflow** and download the MP3 files.
 
@@ -109,7 +110,7 @@ To hear the free voices first, run **Actions → Voice sample → Run workflow**
 
 ## Automatic videos and "Ready to upload"
 
-Every pipeline run (every 3 hours) adds the next story by itself: first your unused ideas from
+Every automatic pipeline run (2:00 AM and 4:00 AM Nepal time) adds the next story by itself: first your unused ideas from
 **Ideas & Chat**, otherwise the AI Content Director picks a fresh topic (`apps/worker/src/auto-ideas.ts`,
 `packages/ai/src/topic.ts`). It stops at `AUTO_STORIES_PER_DAY` a day (default 2, Nepal time; `0` = off).
 Finished videos appear on the dashboard's **Ready to upload** page: play, download (straight from R2),

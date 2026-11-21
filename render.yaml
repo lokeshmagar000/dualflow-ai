@@ -2,6 +2,8 @@
 # Beginner steps: docs/put-dashboard-online.md
 # Two free web services: the API and the dashboard. Free services sleep after
 # 15 minutes without visits; the first visit after that takes about a minute.
+# FASTER: give dualflow-web the keys marked "one server mode" below and the API runs
+# inside the dashboard server; then dualflow-api can be suspended (docs/faster-dashboard.md).
 # Values marked "sync: false" are asked for once in Render's screen. Never put keys in this file.
 services:
   - type: web
@@ -41,10 +43,31 @@ services:
     runtime: node
     plan: free
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm db:generate && pnpm --filter @dualflow/web build
-    startCommand: pnpm --filter @dualflow/web start
+    # Starts the dashboard, plus the API inside it when DATABASE_URL is set (one server mode).
+    startCommand: sh scripts/start-dashboard.sh
     envVars:
       - key: NODE_VERSION
         value: "22"
+      # ---- One server mode (faster): copy these values from dualflow-api -> Environment. ----
+      - key: DATABASE_URL
+        sync: false
+      - key: STORAGE
+        value: r2
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        value: dualflow
+      - key: GITHUB_REPO
+        sync: false
+      - key: GITHUB_DISPATCH_TOKEN
+        sync: false
+      - key: GEMINI_DAILY_REQUESTS
+        value: "20"
+      # ---- end of one server mode ----
       - key: API_URL
         sync: false # the dualflow-api address, e.g. https://dualflow-api.onrender.com (check it after the first deploy)
       - key: INTERNAL_API_KEY

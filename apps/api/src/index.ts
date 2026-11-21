@@ -43,5 +43,6 @@ await app.register(publishingRoutes);
 await app.register(bulkRoutes);
 await app.register(readyRoutes);
 
-const port = Number(process.env.PORT ?? 4000);
+// API_PORT is used when the API runs inside the dashboard's server (scripts/start-dashboard.sh).
+const port = Number(process.env.API_PORT ?? process.env.PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });

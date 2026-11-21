@@ -15,8 +15,26 @@ function apiBaseUrl() {
 }
 const API_URL = apiBaseUrl();
 
+/**
+ * fetch(), but if the API cannot be reached at all (for example it is still
+ * starting after the server woke up) we wait a moment and try again,
+ * instead of showing an error straight away.
+ */
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  const waits = [1000, 2000, 4000, 8000]; // up to 15 seconds in total
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      // Only "could not connect" errors land here; a 404 or 500 answer does not.
+      if (attempt >= waits.length || init.method === "POST" || init.method === "DELETE") throw err;
+      await new Promise((r) => setTimeout(r, waits[attempt]));
+    }
+  }
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetchWithRetry(`${API_URL}${path}`, {
     ...init,
     headers: {
       "content-type": "application/json",
@@ -31,7 +49,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** Like api(), but returns the raw response (for files such as audio). */
 export async function apiRaw(path: string): Promise<Response> {
-  return fetch(`${API_URL}${path}`, {
+  return fetchWithRetry(`${API_URL}${path}`, {
     headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "" },
     cache: "no-store",
   });
@@ -162,6 +180,7 @@ export interface ReadyVariant {
   outputKey: string | null; // null = the video file was deleted (cleanup)
   manualUploadedAt: string | null;
   thumbnails: { id: string }[];
+  thumbnailUrl: string | null; // direct address of the preview picture (fast), or null
   subtitles: { id: string }[];
 }
 export interface ReadyStory {
@@ -170,4 +189,11 @@ export interface ReadyStory {
   createdAt: string;
   topic: { title: string; source: string };
   variants: ReadyVariant[];
+}
+export interface ReadyPage {
+  stories: ReadyStory[];
+  total: number; // stories on this tab, all pages together
+  page: number;
+  pageSize: number;
+  videoCount: number; // video files "Download all" puts in the zip
 }

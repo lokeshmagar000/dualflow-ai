@@ -4,6 +4,7 @@ import { api, type StoryDetail } from "@/lib/api";
 import { ApiError, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { VoicePlayer } from "@/components/VoicePlayer";
 import { retryStory } from "../actions";
+import { DeleteStoryButton } from "@/components/DeleteStoryButton";
 import { approveStory, retryUpload, uploadNow } from "../publish-actions";
 import { UploadStatus, nepalTime } from "@/components/UploadStatus";
 
@@ -26,7 +27,10 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
 
   return (
     <>
-      <Link href="/content" className="text-sm text-zinc-500 hover:text-zinc-800">← All content</Link>
+      <div className="flex items-center justify-between gap-2">
+        <Link href="/content" className="text-sm text-zinc-500 hover:text-zinc-800">← All content</Link>
+        <DeleteStoryButton storyId={story.id} title={story.topic.title} goTo="/content" />
+      </div>
       <PageHeader title={story.topic.title} subtitle={`${story.format.toLowerCase()} · cost so far $${story.costUsd.toFixed(2)}`} />
 
       {story.status === "FAILED" && (

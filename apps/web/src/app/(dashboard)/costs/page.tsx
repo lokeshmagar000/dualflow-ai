@@ -23,7 +23,7 @@ export default async function CostsPage({ searchParams }: { searchParams: Promis
         <Card>
           <h2 className="font-semibold">Video making</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            GitHub Actions makes videos every 3 hours. Press Run now to start at once.
+            GitHub Actions makes videos every night at 2 AM and 4 AM Nepal time. Press Run now to start at once.
           </p>
           <ul className="mt-3 space-y-1 text-sm">
             <li>Ready to make now: <b>{status.queue.readyNow}</b></li>
