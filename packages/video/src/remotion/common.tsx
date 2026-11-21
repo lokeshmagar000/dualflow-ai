@@ -12,9 +12,13 @@ import {
   useCurrentFrame,
 } from "remotion";
 import type { Media } from "../types";
+import { LOGO, Logo } from "./Logo";
 
 /** Noto Sans Devanagari draws Nepali AND English letters correctly (joined letters too). */
 export const FONT = '"Noto Sans Devanagari", sans-serif';
+
+/** The logo font (Baloo 2): Latin and Devanagari letters, so both channel names match the logo. */
+export const BRAND_FONT = '"Baloo 2", "Noto Sans Devanagari", sans-serif';
 
 /** Wait until the font has loaded, so no frame is drawn with the wrong letters. */
 export function useFonts() {
@@ -25,6 +29,8 @@ export function useFonts() {
       document.fonts.load(`500 64px "Noto Sans Devanagari"`, "नमस्ते Hello"),
       document.fonts.load(`800 64px "Poppins"`, "Hello"),
       document.fonts.load(`800 64px "Mukta"`, "नमस्ते क्षेत्र"),
+      document.fonts.load(`800 64px "Baloo 2"`, "नमस्ते फ्याक्ट्स Namaste Facts"),
+      document.fonts.load(`600 64px "Baloo 2"`, "सानो तथ्य, ठूलो अचम्म Small facts"),
     ])
       .catch(() => undefined) // still draw, with the fallback font
       .then(() => continueRender(handle));
@@ -82,24 +88,47 @@ export function Shade() {
   );
 }
 
-/** Small channel name in the corner. */
-export function Brand({ name, scale }: { name: string; scale: number }) {
+/**
+ * The channel name in logo colours: the last word in marigold,
+ * like the logo ("Namaste Facts" / "नमस्ते फ्याक्ट्स").
+ */
+export function BrandName({ name, color = "white" }: { name: string; color?: string }) {
+  const words = name.trim().split(/\s+/);
+  const last = words.length > 1 ? words.pop()! : null;
+  return (
+    <span style={{ color, whiteSpace: "nowrap" }}>
+      {words.join(" ")}
+      {last ? <span style={{ color: LOGO.marigold }}> {last}</span> : null}
+    </span>
+  );
+}
+
+/**
+ * The channel badge in the top-left corner: logo + channel name on a dark pill.
+ * Always on screen, so a clip shared anywhere still shows where it came from.
+ */
+export function Brand({ name, scale, opacity = 0.95 }: { name: string; scale: number; opacity?: number }) {
   return (
     <div
       style={{
         position: "absolute",
-        top: 48 * scale,
-        left: 48 * scale,
-        fontFamily: FONT,
-        fontWeight: 800,
-        fontSize: 34 * scale,
-        color: "white",
-        letterSpacing: 1,
-        opacity: 0.9,
-        textShadow: "0 2px 8px rgba(0,0,0,0.6)",
+        top: 44 * scale,
+        left: 40 * scale,
+        display: "flex",
+        alignItems: "center",
+        gap: 10 * scale,
+        padding: `${6 * scale}px ${26 * scale}px ${6 * scale}px ${10 * scale}px`,
+        borderRadius: 999,
+        background: "rgba(19,32,63,0.72)",
+        border: `${2 * scale}px solid rgba(245,166,35,0.55)`,
+        boxShadow: `0 ${6 * scale}px ${24 * scale}px rgba(0,0,0,0.35), 0 0 ${18 * scale}px rgba(200,16,46,0.35)`,
+        opacity,
       }}
     >
-      {name}
+      <Logo size={64 * scale} glow={0.6} />
+      <div style={{ fontFamily: BRAND_FONT, fontWeight: 800, fontSize: 38 * scale, lineHeight: 1.1, paddingTop: 4 * scale }}>
+        <BrandName name={name} />
+      </div>
     </div>
   );
 }

@@ -4,15 +4,19 @@ import { introSettings, introSoundWav } from "./intro";
 import { buildPages, wordsFromCues } from "./remotion/WordPop";
 import { introFrames, storyStartFrame } from "./types";
 
-test("intro is on by default and uses the channel name", () => {
-  const s = introSettings("ne", { CHANNEL_NAME: "Mero Channel" });
-  assert.equal(s?.text, "Mero Channel");
-  assert.equal(s?.seconds, 2);
-  assert.equal(s?.sound, "on");
+test("intro is on by default and shows the brand in the video's language", () => {
+  const ne = introSettings("ne", {});
+  assert.equal(ne?.text, "नमस्ते फ्याक्ट्स");
+  assert.equal(ne?.tagline, "सानो तथ्य, ठूलो अचम्म");
+  assert.equal(ne?.seconds, 2);
+  assert.equal(ne?.sound, "on");
+  const en = introSettings("en", { CHANNEL_NAME: "Old name is ignored" });
+  assert.equal(en?.text, "Namaste Facts");
+  assert.equal(en?.tagline, "Small facts, big wonder");
 });
 
 test("intro text and tagline can differ per language", () => {
-  const env = { CHANNEL_NAME: "X", INTRO_TEXT_NE: "मेरो च्यानल", INTRO_TAGLINE_EN: "Daily facts" };
+  const env = { BRAND_NAME_EN: "X", INTRO_TEXT_NE: "मेरो च्यानल", INTRO_TAGLINE_EN: "Daily facts" };
   assert.equal(introSettings("ne", env)?.text, "मेरो च्यानल");
   assert.equal(introSettings("en", env)?.text, "X");
   assert.equal(introSettings("en", env)?.tagline, "Daily facts");

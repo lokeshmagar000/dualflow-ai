@@ -84,6 +84,14 @@ jobs:
       INTRO_TEXT_EN: ${{ vars.INTRO_TEXT_EN }}
       INTRO_TAGLINE_NE: ${{ vars.INTRO_TAGLINE_NE }}
       INTRO_TAGLINE_EN: ${{ vars.INTRO_TAGLINE_EN }}
+      # Brand: "Namaste Facts" / "नमस्ते फ्याक्ट्स" in the videos and thumbnails (defaults in packages/shared/src/brand.ts).
+      BRAND_NAME_NE: ${{ vars.BRAND_NAME_NE }}
+      BRAND_NAME_EN: ${{ vars.BRAND_NAME_EN }}
+      BRAND_TAGLINE_NE: ${{ vars.BRAND_TAGLINE_NE }}
+      BRAND_TAGLINE_EN: ${{ vars.BRAND_TAGLINE_EN }}
+      BRAND_HASHTAGS_NE: ${{ vars.BRAND_HASHTAGS_NE }}
+      BRAND_HASHTAGS_EN: ${{ vars.BRAND_HASHTAGS_EN }}
+      HASHTAG_SEARCH: ${{ vars.HASHTAG_SEARCH || 'on' }}
       RENDER_CONCURRENCY: 2
       EDGE_VOICE_NE: ${{ vars.EDGE_VOICE_NE }}
       AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}

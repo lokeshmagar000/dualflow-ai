@@ -10,8 +10,8 @@
  * Phase 1C: render makes the real .mp4 and thumbnail (Remotion + free Pexels clips).
  */
 import { prisma, type Prisma } from "@dualflow/db";
-import { researchTopic, writeScript, type Research } from "@dualflow/ai";
-import { JOB_NAMES, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
+import { findHashtags, researchTopic, writeScript, type Research } from "@dualflow/ai";
+import { BRAND_COLORS, brandFor, JOB_NAMES, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
 import { AIQuotaError, nextQuotaReset } from "@dualflow/ai";
 import {
   buildCues,
@@ -111,6 +111,19 @@ const script: Step = async (data) => {
   });
   await recordCosts(story.workspaceId, story.id, costs);
 
+  // Trending hashtags for this language (Google search through Gemini, 1 more free request).
+  // If today's free limit is nearly used up, skip the search: the script's own hashtags are used.
+  const searchAllowed = await assertGeminiQuota(story.workspaceId, 1).then(() => true, () => false);
+  const tags = await findHashtags({
+    language: variant.language as Language,
+    format: story.format,
+    title: script.title || story.topic.title,
+    summary: saved.summary,
+    scriptHashtags: script.hashtags,
+    allowSearch: searchAllowed,
+  });
+  await recordCosts(story.workspaceId, story.id, tags.costs);
+
   // Replace the scenes (safe to run twice) and save title, description, hashtags.
   await prisma.$transaction([
     prisma.scene.deleteMany({ where: { variantId: variant.id } }),
@@ -127,7 +140,7 @@ const script: Step = async (data) => {
       data: {
         title: script.title,
         description: script.description,
-        hashtags: script.hashtags,
+        hashtags: tags.hashtags,
         thumbnailHeadline: script.thumbnailHeadline,
       },
     }),
@@ -270,8 +283,9 @@ const render: Step = async (data) => {
 
     const words = (voiceover.wordTimings as unknown as WordTiming[] | null) ?? [];
     const durationMs = Math.round(variant.durationSec * 1000);
-    const brand = process.env.CHANNEL_NAME || "DualFlow";
-    const accent = process.env.VIDEO_ACCENT || "#FFC83D";
+    // "Namaste Facts" in English videos, "नमस्ते फ्याक्ट्स" in Nepali videos (BRAND_NAME_* settings).
+    const brand = brandFor(language).name;
+    const accent = process.env.VIDEO_ACCENT || BRAND_COLORS.marigold;
     const toMedia = (m: FoundMedia | null | undefined) => (m ? { src: job.url(m.file), kind: m.kind } : null);
 
     const videoFile = path.join(job.dir, "video.mp4");

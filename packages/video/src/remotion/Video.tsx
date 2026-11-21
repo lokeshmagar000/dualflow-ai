@@ -24,7 +24,7 @@ export function Video(props: VideoProps) {
       </Sequence>
       {props.intro && intro > 0 ? (
         <Sequence durationInFrames={intro} name="Intro">
-          <Intro intro={props.intro} language={props.language} accent={props.accent} frames={intro} />
+          <Intro intro={props.intro} language={props.language} frames={intro} />
         </Sequence>
       ) : null}
     </AbsoluteFill>
@@ -57,7 +57,7 @@ function Story({ props, frames }: { props: VideoProps; frames: number }) {
       })}
       <Shade />
       {props.audioFile ? <Audio src={props.audioFile} /> : null}
-      <Brand name={props.brand} scale={scale} />
+      <Brand name={props.brand} scale={scale * 1.2} />
       <Title text={props.title} accent={props.accent} scale={scale} tall={tall} />
       {props.subtitleStyle === "classic" ? (
         <Subtitles props={props} scale={tall ? scale : scale * 0.9} tall={tall} />

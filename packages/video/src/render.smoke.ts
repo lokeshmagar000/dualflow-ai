@@ -5,6 +5,7 @@
  */
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { BRAND_COLORS, brandFor } from "@dualflow/shared";
 import { prepareIntro } from "./intro";
 import { makeJobFolder, renderThumbnail, renderVideo } from "./render";
 import type { VideoWord } from "./types";
@@ -54,20 +55,15 @@ for (const language of ["ne", "en"] as const) {
       title: SAMPLES[language].title,
       audioFile: job.url("voice.wav"),
       durationMs,
-      brand: "DualFlow",
-      accent: "#FFC83D",
+      brand: brandFor(language).name,
+      accent: BRAND_COLORS.marigold,
       scenes: [
         { startMs: 0, endMs: durationMs / 2, text: "" },
         { startMs: durationMs / 2, endMs: durationMs, text: "" },
       ],
       cues: [],
       words,
-      intro: await prepareIntro(language, job, {
-        CHANNEL_NAME: "DualFlow",
-        INTRO_TEXT_NE: "DualFlow नेपाली",
-        INTRO_TAGLINE_NE: "हरेक दिन नयाँ कुरा",
-        INTRO_TAGLINE_EN: "New facts every day",
-      }),
+      intro: await prepareIntro(language, job, {}),
     },
     path.join(out, `test-video-${language}.mp4`),
     (p) => console.log(`${language} render ${Math.round(p * 100)}%`),
@@ -75,9 +71,15 @@ for (const language of ["ne", "en"] as const) {
   console.log(`${language} video took ${((Date.now() - started) / 1000).toFixed(1)} s`);
   await job.remove();
 }
-await renderThumbnail(
-  { format: "LONG", language: "ne", headline: "सगरमाथाका ३ रहस्य", brand: "DualFlow", accent: "#FFC83D" },
-  path.join(out, "test-thumbnail.jpg"),
-);
+// One thumbnail per language and size.
+const HEADLINES = { ne: "सगरमाथाका ३ रहस्य", en: "Everest grows 4 mm a year" } as const;
+for (const language of ["ne", "en"] as const) {
+  for (const format of ["SHORT", "LONG"] as const) {
+    await renderThumbnail(
+      { format, language, headline: HEADLINES[language], brand: brandFor(language).name, accent: BRAND_COLORS.marigold },
+      path.join(out, `test-thumbnail-${language}-${format.toLowerCase()}.jpg`),
+    );
+  }
+}
 console.log("done");
 process.exit(0);

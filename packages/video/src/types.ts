@@ -65,9 +65,9 @@ export type VideoProps = {
   subtitleStyle?: SubtitleStyle;
   /** The animated intro, or null/missing for no intro. */
   intro?: IntroProps | null;
-  /** Small name in the corner, e.g. the channel name. */
+  /** Channel name in the video's language ("Namaste Facts" / "नमस्ते फ्याक्ट्स"), shown with the logo in the corner. */
   brand: string;
-  /** Highlight colour for the title and progress bar. */
+  /** Highlight colour for the title and progress bar (the logo's marigold by default). */
   accent: string;
 };
 
@@ -76,6 +76,7 @@ export type ThumbnailProps = {
   language: "ne" | "en";
   headline: string;
   media?: Media | null;
+  /** Channel name in the thumbnail's language. */
   brand: string;
   accent: string;
 };

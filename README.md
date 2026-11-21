@@ -118,8 +118,10 @@ copy title / description / hashtags, and **Mark as uploaded**. Beginner guide: *
 
 ## Video look: Word Pop subtitles and the intro
 
-Every video starts with a **2-second animated intro** (channel name, a coloured bar, an optional
-tagline) with a short "whoosh + hit + chime" sound. Our code makes the sound itself, so there is no
+Every video carries the **Namaste Facts** brand: the Palm Bulb logo and the channel name in the
+video's language ("Namaste Facts" in English videos, "नमस्ते फ्याक्ट्स" in Nepali videos, logo font Baloo 2).
+It starts with a **2-second animated intro** (the logo pops in with red sparks, then the name and the
+tagline "Small facts, big wonder" / "सानो तथ्य, ठूलो अचम्म") with a short "whoosh + hit + chime" sound. Our code makes the sound itself, so there is no
 licence to worry about, even on monetised channels. Then the story plays with **Word Pop** subtitles:
 up to 3 big words at a time, the spoken word turns yellow and pops (Poppins for English, Mukta for Nepali).
 
@@ -127,13 +129,27 @@ Change it with GitHub **Variables** (Settings → Secrets and variables → Acti
 
 | Variable | What it does | Default |
 | --- | --- | --- |
-| `INTRO_TEXT_NE` / `INTRO_TEXT_EN` | Big intro text in Nepali / English videos | `CHANNEL_NAME` |
-| `INTRO_TAGLINE_NE` / `INTRO_TAGLINE_EN` | Small line under it | none |
+| `BRAND_NAME_NE` / `BRAND_NAME_EN` | Channel name in videos and thumbnails | `नमस्ते फ्याक्ट्स` / `Namaste Facts` |
+| `BRAND_TAGLINE_NE` / `BRAND_TAGLINE_EN` | Tagline in the intro | `सानो तथ्य, ठूलो अचम्म` / `Small facts, big wonder` |
+| `BRAND_HASHTAGS_NE` / `BRAND_HASHTAGS_EN` | Your own hashtags on every video (comma separated) | `NamasteFacts` (+ `नमस्तेफ्याक्ट्स` for Nepali) |
+| `HASHTAG_SEARCH` | `off` stops the Google search for trending hashtags (saves 1 Gemini request per video) | `on` |
+| `INTRO_TEXT_NE` / `INTRO_TEXT_EN` | Different big intro text (leave empty to use the brand name) | brand name |
+| `INTRO_TAGLINE_NE` / `INTRO_TAGLINE_EN` | Different small line under it | brand tagline |
 | `INTRO_SECONDS` | Intro length; `0` turns the intro off | `2` |
 | `INTRO_SOUND` | `on`, `off` | `on` |
 | `SUBTITLE_STYLE` | `word-pop`, or `classic` (one full line) | `word-pop` |
 
-Try it on your computer: `pnpm --filter @dualflow/video smoke` (makes `test-video-ne.mp4` and `test-video-en.mp4`).
+**Thumbnails**: one per language, made for small phone screens: a picture from the video, a huge
+headline with one key word in a coloured box, and the logo badge. English thumbnails are gold,
+Nepali thumbnails are red with a "नेपाली" tag, so the two channels never look like copies.
+
+**Hashtags**: for every video Gemini searches Google for hashtags that are trending now for its
+topic (per language), mixed with the brand tags, 15 at most, strongest first (YouTube shows the
+first 3 above the title). See them on the dashboard's **Ready to upload** page with Copy buttons.
+
+The logo files are in `assets/brand/` (made by `make_final.py`).
+
+Try it on your computer: `pnpm --filter @dualflow/video smoke` (makes `test-video-ne.mp4`, `test-video-en.mp4` and 4 thumbnails).
 
 ## Upload to social channels (Phase 2)
 

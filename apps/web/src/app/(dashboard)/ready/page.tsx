@@ -127,7 +127,8 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
 }
 
 function VideoCard({ v }: { v: ReadyVariant }) {
-  const hashtags = (v.hashtags ?? []).map((h) => `#${h.replace(/^#/, "")}`).join(" ");
+  const tags = (v.hashtags ?? []).map((h) => `#${h.replace(/^#/, "")}`);
+  const hashtags = tags.join(" ");
   const fullText = [v.description, hashtags].filter(Boolean).join("\n\n");
   const hasVideo = Boolean(v.outputKey);
   const hasThumb = (v.thumbnails?.length ?? 0) > 0 && hasVideo;
@@ -143,21 +144,45 @@ function VideoCard({ v }: { v: ReadyVariant }) {
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row">
-        {/* Preview: the thumbnail; press play to watch. Nothing downloads until you press play. */}
-        <div className="mx-auto w-36 shrink-0 sm:mx-0">
-          {hasVideo ? (
-            <video controls preload="none" poster={poster} src={`/download/${v.id}/video?inline=1`}
-              className="aspect-[9/16] w-full rounded-md bg-[#1f1f1f] object-cover" />
-          ) : (
-            <div className="flex aspect-[9/16] w-full items-center justify-center rounded-md bg-subtle p-2 text-center text-xs text-fg3">
-              Video file deleted to save storage
+        {/* Preview: the video (press play; nothing downloads until then) and its own thumbnail. */}
+        <div className="mx-auto flex shrink-0 gap-2 sm:mx-0">
+          <div className="w-32">
+            <p className="mb-1 text-xs font-semibold text-fg3">Video</p>
+            {hasVideo ? (
+              <video controls preload="none" poster={poster} src={`/download/${v.id}/video?inline=1`}
+                className="aspect-[9/16] w-full rounded-md bg-[#1f1f1f] object-cover" />
+            ) : (
+              <div className="flex aspect-[9/16] w-full items-center justify-center rounded-md bg-subtle p-2 text-center text-xs text-fg3">
+                Video file deleted to save storage
+              </div>
+            )}
+          </div>
+          {hasThumb && poster && (
+            <div className="w-32">
+              <p className="mb-1 text-xs font-semibold text-fg3">{langName} thumbnail</p>
+              {/* A plain link: opens the full-size picture. */}
+              <a href={`/download/${v.id}/thumbnail?inline=1`} target="_blank" rel="noreferrer" title="Open full size">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={poster} alt={`${langName} thumbnail`} loading="lazy"
+                  className="aspect-[9/16] w-full rounded-md bg-subtle object-cover ring-1 ring-stroke" />
+              </a>
+              <a href={`/download/${v.id}/thumbnail`} className="btn btn-sm mt-2 w-full justify-center">
+                <IconDownload className="h-4 w-4" /> Thumbnail
+              </a>
             </div>
           )}
         </div>
 
         <div className="min-w-0 flex-1 space-y-3">
           <Field label="Title" text={v.title ?? ""} lang={v.language} big />
-          <Field label="Description and hashtags" text={fullText} lang={v.language} />
+          <Field label="Description" text={v.description ?? ""} lang={v.language} />
+          <Hashtags tags={tags} lang={v.language} />
+          {fullText && (
+            <div className="flex items-center justify-between gap-2 rounded-md bg-subtle px-3 py-2">
+              <span className="text-xs text-fg3">Description + hashtags in one go</span>
+              <CopyButton text={fullText} label="Copy both" />
+            </div>
+          )}
           {v.durationSec != null && <p className="text-xs text-fg3">{Math.round(v.durationSec)} seconds, vertical 9:16</p>}
         </div>
       </div>
@@ -168,7 +193,6 @@ function VideoCard({ v }: { v: ReadyVariant }) {
             <IconDownload className="h-4 w-4" /> Download video
           </a>
         )}
-        {hasThumb && <a href={`/download/${v.id}/thumbnail`} className="btn">Thumbnail</a>}
         {hasVideo && (v.subtitles?.length ?? 0) > 0 && <a href={`/download/${v.id}/srt`} className="btn">Subtitles (.srt)</a>}
         <div className="ml-auto">
           {v.manualUploadedAt ? (
@@ -195,6 +219,33 @@ function Field({ label, text, lang, big }: { label: string; text: string; lang: 
       <p lang={lang} className={`whitespace-pre-line break-words ${big ? "font-semibold" : "max-h-32 overflow-y-auto text-fg2"}`}>
         {text || "Not written"}
       </p>
+    </div>
+  );
+}
+
+/**
+ * Trending hashtags for this video, as chips. The first 3 are marked "Top":
+ * YouTube shows the first 3 hashtags above the video title.
+ */
+function Hashtags({ tags, lang }: { tags: string[]; lang: string }) {
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-fg3">Trending hashtags ({tags.length})</span>
+        {tags.length > 0 && <CopyButton text={tags.join(" ")} label="Copy hashtags" />}
+      </div>
+      {tags.length === 0 ? (
+        <p className="text-fg3">Not written</p>
+      ) : (
+        <ul lang={lang} className="flex flex-wrap gap-1.5">
+          {tags.map((t, i) => (
+            <li key={t} className={`rounded-full px-2.5 py-0.5 text-sm ${i < 3 ? "bg-brand text-white" : "bg-subtle text-fg2"}`}
+              title={i < 3 ? "Top hashtag: YouTube shows the first 3 above the title" : undefined}>
+              {t}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
