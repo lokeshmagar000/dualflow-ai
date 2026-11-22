@@ -282,13 +282,17 @@ function batches(texts: string[]): number[][] {
 const DEFAULT_VOICES = "Aoede,Charon";
 
 /**
- * Pick one voice from a list for a story. The same story always gets the same
- * voice (so a retry does not change it), and different stories get different ones.
+ * Pick one voice from a list. `seed` "#N" (the video's number) takes the voices in
+ * turn, so each video sounds different from the one before. Any other seed (a story
+ * id) always gives the same voice for the same story, so a retry does not change it.
  */
 export function pickVoice(list: string, seed?: string): string {
   const voices = list.split(",").map((v) => v.trim()).filter(Boolean);
   if (voices.length === 0) return "Kore";
   if (!seed) return voices[0]!;
+  // "#7" = the 7th video: take the voices in turn, so the voice changes on every video.
+  const turn = /^#(\d+)$/.exec(seed);
+  if (turn) return voices[Number(turn[1]) % voices.length]!;
   let hash = 0;
   for (const ch of seed) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
   return voices[hash % voices.length]!;

@@ -111,3 +111,9 @@ test("trimSilence keeps a little quiet at both ends but drops long silences", ()
 test("speaking weight grows with the number of words", () => {
   assert.ok(speakingWeight("one two three four five six", "en") > speakingWeight("one two", "en"));
 });
+
+test("'#N' takes the voices in turn, so every video changes voice", () => {
+  assert.equal(pickVoice("Aoede,Charon", "#0"), "Aoede");
+  assert.equal(pickVoice("Aoede,Charon", "#1"), "Charon");
+  assert.equal(pickVoice("Aoede,Charon", "#2"), "Aoede");
+});

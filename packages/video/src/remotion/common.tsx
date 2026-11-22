@@ -6,6 +6,7 @@ import {
   AbsoluteFill,
   Img,
   OffthreadVideo,
+  Easing,
   continueRender,
   delayRender,
   interpolate,
@@ -61,9 +62,19 @@ const GRADIENTS: [string, string][] = [
  */
 export function Background({ media, index, frames }: { media?: Media | null; index: number; frames: number }) {
   const frame = useCurrentFrame();
-  // Slow zoom ("Ken Burns" effect) makes still pictures feel alive.
-  const zoom = interpolate(frame, [0, Math.max(1, frames)], [1, 1.12], { extrapolateRight: "clamp" });
-  const fill = { width: "100%", height: "100%", objectFit: "cover" as const, transform: `scale(${zoom})` };
+  // Slow, smooth camera move ("Ken Burns" effect) on photos AND clips, so nothing feels frozen.
+  // Even scenes zoom in, odd scenes zoom out, and each drifts a little sideways.
+  const t = Easing.inOut(Easing.sin)(Math.min(1, frame / Math.max(1, frames)));
+  const zoomIn = index % 2 === 0;
+  const amount = media?.kind === "video" ? 0.06 : 0.14;
+  const zoom = zoomIn ? 1.02 + amount * t : 1.02 + amount * (1 - t);
+  const drift = (index % 3 === 0 ? 1 : index % 3 === 1 ? -1 : 0) * 2.5 * t; // percent
+  const fill = {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover" as const,
+    transform: `scale(${zoom}) translateX(${drift}%)`,
+  };
 
   if (media?.kind === "video") {
     return (

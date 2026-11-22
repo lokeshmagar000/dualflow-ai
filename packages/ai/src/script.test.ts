@@ -36,7 +36,34 @@ test("alignScenes falls back to position when numbers are broken, and drops extr
     3,
   );
   assert.deepEqual(out, [
-    { order: 1, text: "A" },
-    { order: 3, text: "C" },
+    { order: 1, text: "A", parts: [] },
+    { order: 3, text: "C", parts: [] },
   ]);
+});
+
+test("parts: the spoken text is the parts joined, each part keeps its own picture", () => {
+  const [scene] = alignScenes(
+    [
+      {
+        order: 1,
+        text: "ignored when parts are good",
+        parts: [
+          { text: "Yaks live in the high Himalaya,", visualQuery: "yak himalaya" },
+          { text: "above the forests and jungles.", visualQuery: "himalayan forest" },
+        ],
+      },
+    ],
+    1,
+  );
+  assert.equal(scene!.text, "Yaks live in the high Himalaya, above the forests and jungles.");
+  assert.deepEqual(scene!.parts.map((p) => p.visualQuery), ["yak himalaya", "himalayan forest"]);
+});
+
+test("parts with a missing picture are dropped and the plain text is used", () => {
+  const [scene] = alignScenes(
+    [{ order: 1, text: "Plain line.", parts: [{ text: "Plain", visualQuery: "" }, { text: "line.", visualQuery: "x" }] }],
+    1,
+  );
+  assert.equal(scene!.text, "Plain line.");
+  assert.deepEqual(scene!.parts, []);
 });

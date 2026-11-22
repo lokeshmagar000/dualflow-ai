@@ -30,3 +30,39 @@ test("no sentence end in a long line: one picture (never cut mid-sentence)", () 
   const words = [word("one", 0, 3000), word("long", 3100, 6000), word("sentence", 6100, 9000)];
   assert.equal(planShots([{ order: 1, text: "x", startMs: 0, endMs: 9000 }], words).length, 1);
 });
+
+test("parts: the picture changes at the word where the next part starts", () => {
+  const words = [
+    word("Yaks", 0, 400), word("live", 500, 800), word("in", 900, 1000), word("the", 1100, 1200),
+    word("high", 1300, 1600), word("Himalaya,", 1700, 2400),
+    word("above", 2600, 3000), word("the", 3100, 3200), word("forests", 3300, 3800),
+    word("and", 3900, 4000), word("jungles.", 4100, 4800),
+  ];
+  const shots = planShots(
+    [{
+      order: 2, text: "x", startMs: 0, endMs: 5000,
+      parts: [
+        { text: "Yaks live in the high Himalaya,", visualQuery: "yak himalaya" },
+        { text: "above the forests and jungles.", visualQuery: "himalayan forest" },
+      ],
+    }],
+    words,
+  );
+  assert.equal(shots.length, 2);
+  assert.equal(shots[0]!.visualQuery, "yak himalaya");
+  assert.equal(shots[1]!.visualQuery, "himalayan forest");
+  assert.equal(shots[1]!.startMs, 2500); // between "Himalaya," (ends 2400) and "above" (starts 2600)
+});
+
+test("parts: a part shorter than 1.5 s joins the one before (no flicker)", () => {
+  const words = [word("Big", 0, 1000), word("yaks", 1100, 2400), word("eat", 2500, 2800), word("grass.", 2900, 3300)];
+  const shots = planShots(
+    [{ order: 1, text: "x", startMs: 0, endMs: 3400, parts: [
+      { text: "Big yaks", visualQuery: "yak" },
+      { text: "eat grass.", visualQuery: "grass" },
+    ] }],
+    words,
+  );
+  assert.equal(shots.length, 1);
+  assert.equal(shots[0]!.visualQuery, "yak");
+});

@@ -30,6 +30,7 @@ const sample: VideoProps = {
   // No brandTag here on purpose: Remotion fills missing props from these examples,
   // so a Nepali label here once showed up in English videos.
   accent: "#F5A623",
+  ctaStartMs: 6000,
   intro: { text: "Namaste Facts", tag: "नेपाली", tagline: "सानो तथ्य, ठूलो अचम्म", durationMs: 2000, soundFile: null },
   scenes: [
     { startMs: 0, endMs: 3000, text: "नमस्ते साथीहरू!" },

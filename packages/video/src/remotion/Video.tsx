@@ -3,13 +3,14 @@
  * background for each scene, the voice, the title, Word Pop subtitles and a progress bar.
  */
 import { useMemo } from "react";
-import { AbsoluteFill, Audio, Sequence, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, Easing, Sequence, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { FPS, introFrames, storyFrames, storyStartFrame, type VideoProps } from "../types";
 import { Background, Brand, FONT, Shade, useFonts } from "./common";
 import { Intro } from "./Intro";
 import { WordPop, buildPages, wordsFromCues } from "./WordPop";
+import { FollowCard } from "./FollowCard";
 
-const FADE = 8; // frames of cross-fade between scenes
+const FADE = 14; // frames of the smooth change from one picture to the next (about half a second)
 const ms = (t: number) => Math.round((t / 1000) * FPS);
 
 export function Video(props: VideoProps) {
@@ -52,9 +53,9 @@ function Story({ props, frames }: { props: VideoProps; frames: number }) {
         const length = Math.max(1, to - from);
         return (
           <Sequence key={i} from={from} durationInFrames={length}>
-            <SceneFade fadeIn={i > 0}>
+            <SceneIn index={i}>
               <Background media={scene.media} index={i} frames={length} />
-            </SceneFade>
+            </SceneIn>
           </Sequence>
         );
       })}
@@ -67,15 +68,45 @@ function Story({ props, frames }: { props: VideoProps; frames: number }) {
       ) : (
         <WordPop pages={pages} language={props.language} tall={tall} />
       )}
+      {props.ctaStartMs != null && ms(props.ctaStartMs) < frames ? (
+        <Sequence from={ms(props.ctaStartMs)} durationInFrames={Math.max(1, frames - ms(props.ctaStartMs))} name="Like and follow">
+          <FollowCard
+            language={props.language}
+            frames={Math.max(1, frames - ms(props.ctaStartMs))}
+            scale={tall ? scale : scale * 0.7}
+            tall={tall}
+          />
+        </Sequence>
+      ) : null}
       <Progress accent={props.accent} frames={frames} />
     </AbsoluteFill>
   );
 }
 
-function SceneFade({ fadeIn, children }: { fadeIn: boolean; children: React.ReactNode }) {
+/**
+ * How a new picture comes in. The styles take turns, so the video feels edited by hand:
+ *   0 soft cross-fade with a gentle zoom
+ *   1 slide in from the right
+ *   2 circle reveal from the middle
+ *   3 blur to sharp
+ *   4 slide up from below
+ * All of them use an "ease out" curve: fast at first, then gently settling (fluid, not robotic).
+ */
+function SceneIn({ index, children }: { index: number; children: React.ReactNode }) {
   const frame = useCurrentFrame();
-  const opacity = fadeIn ? interpolate(frame, [0, FADE], [0, 1], { extrapolateRight: "clamp" }) : 1;
-  return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
+  if (index === 0) return <AbsoluteFill>{children}</AbsoluteFill>;
+  const p = interpolate(frame, [0, FADE], [0, 1], {
+    extrapolateRight: "clamp",
+    easing: Easing.bezier(0.22, 1, 0.36, 1),
+  });
+  const style = (index - 1) % 5;
+  let css: React.CSSProperties = {};
+  if (style === 0) css = { opacity: p, transform: `scale(${1.08 - 0.08 * p})` };
+  if (style === 1) css = { transform: `translateX(${(1 - p) * 100}%)`, boxShadow: "-30px 0 60px rgba(0,0,0,0.5)" };
+  if (style === 2) css = { clipPath: `circle(${p * 75}% at 50% 50%)` };
+  if (style === 3) css = { opacity: Math.min(1, p * 1.6), filter: `blur(${(1 - p) * 24}px)`, transform: `scale(${1.05 - 0.05 * p})` };
+  if (style === 4) css = { transform: `translateY(${(1 - p) * 100}%)`, boxShadow: "0 -30px 60px rgba(0,0,0,0.5)" };
+  return <AbsoluteFill style={css}>{children}</AbsoluteFill>;
 }
 
 /** The title pops in at the start and fades out after about 3 seconds. */

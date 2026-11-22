@@ -69,6 +69,7 @@ export function mockScript(input: { language: Language; title: string; research:
     scenes: input.research.visualPlan.map((_, i) => ({
       order: i + 1,
       text: (lines[i] ?? lines[lines.length - 1]!).normalize("NFC"),
+      parts: [],
     })),
   };
 }

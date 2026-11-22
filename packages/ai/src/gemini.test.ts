@@ -53,8 +53,8 @@ test("writes a Nepali script with Gemini and normalises the Unicode", async () =
     hashtags: ["नेपाल"],
     thumbnailHeadline: "सगरमाथा",
     scenes: [
-      { order: 1, text: "नमस्ते" },
-      { order: 2, text: "फलो गर्नुहोस्" },
+      { order: 1, text: "नमस्ते", parts: [] },
+      { order: 2, text: "फलो गर्नुहोस्", parts: [] },
     ],
   };
   const calls = fakeFetch([{ body: answer(JSON.stringify(script)) }]);
@@ -93,7 +93,7 @@ test("a busy model (503) falls back to Flash-Lite", async () => {
   useGemini();
   const calls = fakeFetch([
     { status: 503, body: { error: { message: "high demand" } } },
-    { body: answer(JSON.stringify({ title: "t", description: "d", hashtags: [], thumbnailHeadline: "h", scenes: [{ order: 1, text: "x" }] })) },
+    { body: answer(JSON.stringify({ title: "t", description: "d", hashtags: [], thumbnailHeadline: "h", scenes: [{ order: 1, text: "x", parts: [] }] })) },
   ]);
   const out = await writeScript({ language: "en", title: "Everest", format: "SHORT", research });
   assert.match(calls[1]!.url, /gemini-flash-lite-latest/);

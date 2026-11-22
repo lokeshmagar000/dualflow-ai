@@ -25,6 +25,16 @@ export const ScriptSchema = z.object({
       z.object({
         order: z.number().int().describe("Same number as the scene in the list (1, 2, 3...)"),
         text: z.string().describe("What the narrator says in this scene, target language"),
+        parts: z
+          .array(
+            z.object({
+              text: z.string().describe("A piece of `text`, word for word, in order. All parts together = the whole `text`"),
+              visualQuery: z
+                .string()
+                .describe("2-4 ENGLISH words for stock footage of the thing named in THIS piece, e.g. 'yak grazing', 'himalaya forest'"),
+            }),
+          )
+          .describe("The line cut into 1-3 pieces: start a new piece where the line names a new thing to show"),
       }),
     )
     .describe("Exactly one entry per visual plan scene, same order"),
@@ -80,6 +90,16 @@ Rules (the picture changes with every scene, so the words must fit the picture):
 - Each fact only once. The last scene is a short call to action (follow for more).
 - Plain spoken words only: no emojis, hashtags, brackets, stage directions or "Scene 1:" labels.
 
+Pictures inside a line ("parts"):
+- Cut each line into 1-3 parts, word for word, so that the picture can change the moment
+  the narrator names a new thing. Example: "Yaks live in the high Himalaya, | above the forests and jungles."
+  -> part 1 "Yaks live in the high Himalaya," = "yak himalaya mountain", part 2 "above the forests and jungles." = "himalayan forest valley".
+- Each part has at least 4 words. Do not cut in the middle of a name.
+- This works for ANY topic: whenever the line names something a viewer could see (an animal, a place,
+  a food, a building, a vehicle, a body part, a kind of person, a natural thing, an action), start a part there.
+- visualQuery is always in ENGLISH, and shows exactly the thing that part names.
+- The call to action is one part, visualQuery "smartphone like button".
+
 Summary:
 ${research.summary}
 
@@ -117,16 +137,30 @@ export function cleanLine(text: string): string {
  * plan's order, drop empty or extra lines, and store the plan's scene number
  * in `order` so the video uses the right picture for each line.
  */
-export function alignScenes(scenes: Script["scenes"], planLength: number): Script["scenes"] {
-  const byOrder = new Map<number, string>();
+export function alignScenes(scenes: SceneInput[], planLength: number): Script["scenes"] {
+  const byOrder = new Map<number, Script["scenes"][number]>();
   const orders = scenes.map((s) => s.order);
   const numbersOk = new Set(orders).size === orders.length && orders.every((o) => o >= 1 && o <= planLength);
   scenes.forEach((s, i) => {
     const order = numbersOk ? s.order : i + 1;
-    const text = cleanLine(s.text);
-    if (order >= 1 && order <= planLength && text) byOrder.set(order, text);
+    const parts = cleanParts(s.parts ?? []);
+    // The spoken text is the parts joined together (so word times and pictures line up);
+    // when the parts are missing or broken, the plain text is used with one picture.
+    const text = parts.length ? parts.map((p) => p.text).join(" ") : cleanLine(s.text);
+    if (order >= 1 && order <= planLength && text) byOrder.set(order, { order, text, parts });
   });
-  return [...byOrder.entries()].sort((a, b) => a[0] - b[0]).map(([order, text]) => ({ order, text }));
+  return [...byOrder.values()].sort((a, b) => a.order - b.order);
+}
+
+type SceneInput = { order: number; text: string; parts?: { text: string; visualQuery: string }[] };
+
+/** Clean the parts; drop the parts if fewer than 2 remain (one part = one picture anyway). */
+function cleanParts(parts: { text: string; visualQuery: string }[]): { text: string; visualQuery: string }[] {
+  const clean = parts
+    .map((p) => ({ text: cleanLine(p.text), visualQuery: p.visualQuery.replace(/\s+/g, " ").trim() }))
+    .filter((p) => p.text);
+  if (clean.length < 2 || clean.some((p) => !p.visualQuery)) return clean.length === 1 && clean[0]!.visualQuery ? clean : [];
+  return clean.slice(0, 4);
 }
 
 /** Normalise Unicode (NFC) so the same word is always stored the same way. */

@@ -75,6 +75,11 @@ export type VideoProps = {
   brandTag?: string;
   /** Highlight colour for the title and progress bar (the logo's marigold by default). */
   accent: string;
+  /**
+   * When the "like and follow" card appears (ms from the start of the story), or null for none.
+   * It stays until the end of the video. Always send it (null = no card), see Root.tsx.
+   */
+  ctaStartMs?: number | null;
 };
 
 /**
