@@ -1,5 +1,9 @@
 # Make your channels and get your tokens (beginner guide)
 
+> ✨ **New, easier way:** connect your channels with buttons on the dashboard's **Channels** page, no tokens to copy.
+> Follow [easy-auto-upload.md](easy-auto-upload.md). This page is still useful for making the accounts (Part 1) and the TikTok app (Part 2C).
+
+
 This guide takes you from **zero** to **your first video uploaded by DualFlow**.
 Everything is **free**. Do the parts in order. Each step is short.
 

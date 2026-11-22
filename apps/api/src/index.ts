@@ -14,6 +14,7 @@ import { publishingRoutes } from "./routes/publishing";
 import { bulkRoutes } from "./routes/bulk";
 import { readyRoutes } from "./routes/ready";
 import { autoRoutes } from "./routes/auto";
+import { connectRoutes } from "./routes/connect";
 
 const app = Fastify({ logger: true });
 
@@ -46,6 +47,7 @@ await app.register(publishingRoutes);
 await app.register(bulkRoutes);
 await app.register(readyRoutes);
 await app.register(autoRoutes);
+await app.register(connectRoutes);
 
 // API_PORT is used when the API runs inside the dashboard's server (scripts/start-dashboard.sh).
 const port = Number(process.env.API_PORT ?? process.env.PORT ?? 4000);

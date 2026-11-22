@@ -1,5 +1,9 @@
 # Connect your social channels (free)
 
+> ✨ **New, easier way:** connect your channels with buttons on the dashboard's **Channels** page, no tokens to copy.
+> Follow [easy-auto-upload.md](easy-auto-upload.md). This page is still useful for making the accounts (Part 1) and the TikTok app (Part 2C).
+
+
 > 👉 **New to this?** Follow the beginner step-by-step guide first:
 > **[channel-and-token-guide.md](channel-and-token-guide.md)** (make the 8 accounts, get every token, test one video).
 

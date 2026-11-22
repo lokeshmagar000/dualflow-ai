@@ -7,8 +7,10 @@
 import { prisma } from "@dualflow/db";
 import { chosenPlatforms, getUploader, LANGS, missingSettings, modeFor, platformLabel } from "@dualflow/publish";
 import { syncChannels } from "./publishing";
+import { applyDashboardConnections } from "./dashboard-connections";
 
 async function main() {
+  await applyDashboardConnections(); // channels connected with the dashboard's Connect buttons
   let ok = 0;
   let problems = 0;
   for (const platform of chosenPlatforms()) {

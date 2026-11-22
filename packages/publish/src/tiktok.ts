@@ -15,6 +15,7 @@
  * Settings: TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, TIKTOK_REFRESH_TOKEN_NE / _EN,
  *           TIKTOK_PRIVACY (default SELF_ONLY), TIKTOK_AI_LABEL (default true).
  */
+import { saveNewRefreshToken } from "./connections";
 import { PublishConfigError, PublishQuotaError } from "./errors";
 import { cut, http, readJson } from "./http";
 import type { ChannelCheck, Lang, UploadInput, UploadResult, Uploader } from "./types";
@@ -47,7 +48,7 @@ export function tiktokUploader(language: Lang, env: Env = process.env): Uploader
   const L = language.toUpperCase();
   const clientKey = env.TIKTOK_CLIENT_KEY?.trim();
   const clientSecret = env.TIKTOK_CLIENT_SECRET?.trim();
-  const refreshToken = env[`TIKTOK_REFRESH_TOKEN_${L}`]?.trim();
+  let refreshToken = env[`TIKTOK_REFRESH_TOKEN_${L}`]?.trim();
 
   async function accessToken(): Promise<string> {
     if (!clientKey || !clientSecret || !refreshToken) {
@@ -60,11 +61,18 @@ export function tiktokUploader(language: Lang, env: Env = process.env): Uploader
     });
     const json = await readJson(res);
     if (!res.ok || !json.access_token) {
-      throw new PublishConfigError(`TikTok ${L}: TikTok refused the refresh token (${json.error ?? res.status}). Make a new one (docs/social-setup.md).`);
+      throw new PublishConfigError(`TikTok ${L}: TikTok refused the refresh token (${json.error ?? res.status}). Press Reconnect on the dashboard's Channels page.`);
     }
     if (json.refresh_token && json.refresh_token !== refreshToken) {
-      // We cannot print the new token (it is secret). The old one keeps working until it expires.
-      console.log(`::warning::TikTok ${L} gave a new refresh token. When uploads start failing, make a new token and update TIKTOK_REFRESH_TOKEN_${L}.`);
+      // TikTok sometimes swaps the refresh token for a new one. Channels connected with the
+      // dashboard's Connect button get the new one saved by themselves.
+      // We never print it (it is secret). The old one keeps working until it expires.
+      if (await saveNewRefreshToken("tiktok", language, json.refresh_token)) {
+        refreshToken = json.refresh_token;
+        console.log(`TikTok ${L} gave a new refresh token; it was saved for next time.`);
+      } else {
+        console.log(`::warning::TikTok ${L} gave a new refresh token. When uploads start failing, press Connect TikTok again on the Channels page.`);
+      }
     }
     return json.access_token as string;
   }

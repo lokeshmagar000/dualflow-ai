@@ -110,6 +110,8 @@ jobs:
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      # Optional: the key that unlocks channels connected on the dashboard (default: R2_SECRET_ACCESS_KEY).
+      TOKEN_KEY: ${{ secrets.TOKEN_KEY }}
       R2_BUCKET: ${{ secrets.R2_BUCKET || vars.R2_BUCKET || 'dualflow' }}
       # Automatic videos (README "Automatic videos"). 0 turns them off.
       AUTO_STORIES_PER_DAY: ${{ vars.AUTO_STORIES_PER_DAY || '2' }}
@@ -192,7 +194,7 @@ jobs:
         run: pnpm --filter @dualflow/worker once
         env:
           VIDEO_COPY_DIR: ${{ github.workspace }}/videos
-      # Upload finished videos whose time has come (does nothing until PUBLISH_ENABLED=true).
+      # Upload finished videos whose time has come (does nothing until Auto upload is on: dashboard, Channels page).
       # A problem here never stops the cleanup or the video download below.
       - name: Upload to social channels
         if: always()
