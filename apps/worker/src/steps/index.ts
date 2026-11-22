@@ -45,6 +45,7 @@ import {
   voiceFallback,
 } from "../budget";
 import { planStory } from "../publishing";
+import { planShots } from "./shots";
 
 type Step = (data: PipelineJobData) => Promise<void>;
 
@@ -142,10 +143,12 @@ const script: Step = async (data) => {
   await prisma.$transaction([
     prisma.scene.deleteMany({ where: { variantId: variant.id } }),
     prisma.scene.createMany({
-      data: script.scenes.map((s, i) => ({
+      // `order` is the visual plan's scene number (writeScript matched each line to its
+      // picture), so the render step shows the right picture for every line.
+      data: script.scenes.map((s) => ({
         variantId: variant.id,
-        order: i + 1,
-        purpose: visualPlan[i]?.purpose ?? null,
+        order: s.order,
+        purpose: visualPlan[s.order - 1]?.purpose ?? null,
         text: s.text,
       })),
     }),
@@ -287,16 +290,29 @@ const render: Step = async (data) => {
   try {
     await writeFile(path.join(job.dir, "voice.wav"), await readFile(voiceover.storageKey));
 
-    // One picture per scene, using the search words from the research step.
-    const plan = (story.visualPlan as unknown as Research["visualPlan"] | null) ?? [];
-    const used = new Set<number>();
-    const media: (FoundMedia | null)[] = [];
-    for (const [i, scene] of variant.scenes.entries()) {
-      media.push(await findMedia(plan[i]?.visualQuery ?? story.topic.title, format, job.dir, `scene-${scene.order}`, used));
-    }
-
     const words = (voiceover.wordTimings as unknown as WordTiming[] | null) ?? [];
     const durationMs = Math.round(variant.durationSec * 1000);
+
+    // Pictures that follow the voice: every scene gets the picture planned for ITS line
+    // (scene.order = number in the visual plan), shown exactly while that line is spoken.
+    // A long line is split at a sentence end into two shots with two different clips,
+    // so one picture never has to stay on screen for too long.
+    const plan = (story.visualPlan as unknown as Research["visualPlan"] | null) ?? [];
+    const shots = planShots(
+      variant.scenes.map((s) => ({ order: s.order, text: s.text, startMs: s.startMs ?? 0, endMs: s.endMs ?? durationMs })),
+      words,
+    );
+    const used = new Set<number>();
+    const media: (FoundMedia | null)[] = [];
+    for (const [i, shot] of shots.entries()) {
+      const p = plan[shot.order - 1];
+      // The second shot of a long line uses the simpler backup words first, for variety.
+      const queries = shot.part === 0 ? [p?.visualQuery, p?.backupQuery] : [p?.backupQuery, p?.visualQuery];
+      queries.push(story.topic.title);
+      const seconds = (shot.endMs - shot.startMs) / 1000;
+      media.push(await findMedia(queries, format, job.dir, `shot-${i + 1}`, used, seconds));
+    }
+
     // "Namaste Facts" in English videos, "नमस्ते फ्याक्ट्स" in Nepali videos (BRAND_NAME_* settings).
     const brandInfo = brandFor(language);
     const brand = brandInfo.name;
@@ -315,12 +331,7 @@ const render: Step = async (data) => {
         brand,
         brandTag: brandInfo.tag, // always a string: "" = no label (see Root.tsx)
         accent,
-        scenes: variant.scenes.map((s, i) => ({
-          startMs: s.startMs ?? 0,
-          endMs: s.endMs ?? durationMs,
-          text: s.text,
-          media: toMedia(media[i]),
-        })),
+        scenes: shots.map((s, i) => ({ startMs: s.startMs, endMs: s.endMs, text: s.text, media: toMedia(media[i]) })),
         cues: buildCues(words),
         // Word Pop subtitles need the time of every word.
         words,
@@ -399,9 +410,10 @@ const render: Step = async (data) => {
     );
 
     await prisma.$transaction([
-      ...variant.scenes.map((s, i) =>
-        prisma.scene.update({ where: { id: s.id }, data: { assetId: assets[i]?.id ?? null } }),
-      ),
+      ...variant.scenes.map((s) => {
+        const first = shots.findIndex((shot) => shot.order === s.order);
+        return prisma.scene.update({ where: { id: s.id }, data: { assetId: (first >= 0 ? assets[first]?.id : null) ?? null } });
+      }),
       prisma.thumbnail.deleteMany({ where: { variantId: variant.id } }),
       prisma.thumbnail.create({
         data: { variantId: variant.id, storageKey: thumbKey, headline: variant.thumbnailHeadline, sizes: [...extraSizes] },

@@ -44,8 +44,11 @@ function Story({ props, frames }: { props: VideoProps; frames: number }) {
     <AbsoluteFill style={{ backgroundColor: "black" }}>
       {props.scenes.map((scene, i) => {
         // The first scene starts at 0; the last one lasts until the end.
-        const from = i === 0 ? 0 : ms(scene.startMs);
-        const to = i === props.scenes.length - 1 ? frames : ms(props.scenes[i + 1]!.startMs) + FADE;
+        // Each new picture starts fading in a moment BEFORE its words, in the short
+        // pause between lines, so it is fully there when the voice starts talking about it.
+        const changeAt = (t: number) => Math.max(0, ms(t) - Math.round(FADE / 2));
+        const from = i === 0 ? 0 : changeAt(scene.startMs);
+        const to = i === props.scenes.length - 1 ? frames : changeAt(props.scenes[i + 1]!.startMs) + FADE;
         const length = Math.max(1, to - from);
         return (
           <Sequence key={i} from={from} durationInFrames={length}>

@@ -48,7 +48,7 @@ async function requestAudio(text: string, language: Language, voice: string): Pr
   if (!key) throw new VoiceConfigError("VOICE_PROVIDER=gemini needs GEMINI_API_KEY (free from Google AI Studio).");
   const style =
     process.env.GEMINI_TTS_STYLE ||
-    `Read this aloud in natural, warm ${LANGUAGE_NAME[language]}, like a friendly YouTube storyteller. Read only the text`;
+    `Read this aloud in natural, warm ${LANGUAGE_NAME[language]}, like a friendly YouTube storyteller. Pause clearly (about half a second) at every blank line. Read only the text`;
   const models = process.env.GEMINI_TTS_MODEL ? [process.env.GEMINI_TTS_MODEL] : DEFAULT_MODELS;
 
   let last = "";
@@ -127,52 +127,137 @@ function loudness(pcm: Buffer, frameMs = 20): number[] {
 
 /**
  * Cut one long recording into pieces at the pauses between scenes.
- * `weights` = length of each scene's text. We expect each cut near the place
- * the text says (by character count) and choose the longest pause close to it.
+ * This decides when each picture appears, so it must be right.
+ *
+ * `weights` = how long each scene should take to say (estimated speaking time,
+ * or just the text length). From the weights we know roughly WHERE each cut
+ * should be. Then we look at every pause in the audio and choose the best set
+ * of pauses, in order, with "dynamic programming" (try every sensible
+ * combination, keep the best score): long pauses close to the expected place win.
+ * A short comma pause in the right place loses to the long scene pause nearby.
  */
 export function splitAtPauses(pcm: Buffer, weights: number[]): Buffer[] {
   if (weights.length <= 1) return [pcm];
   const FRAME_MS = 20;
   const levels = loudness(pcm, FRAME_MS);
+  const frames = levels.length;
+  const cutsNeeded = weights.length - 1;
+
+  const total = weights.reduce((a, b) => a + b, 0) || 1;
+  const expected: number[] = [];
+  let done = 0;
+  for (let i = 0; i < cutsNeeded; i++) {
+    done += weights[i]!;
+    expected.push((done / total) * frames);
+  }
+
+  // Quiet stretches (pauses). If the voice ran sentences together, accept shorter ones.
+  let pauses = findPauses(levels, 5);
+  if (pauses.length < cutsNeeded) pauses = findPauses(levels, 3);
+
+  const frameBytes = Math.round((SAMPLE_RATE * FRAME_MS) / 1000) * BYTES_PER_SAMPLE;
+  const cuts = pauses.length >= cutsNeeded ? choosePauses(pauses, expected, frames / weights.length) : expected;
+  const bounds = [0, ...cuts.map((c) => Math.min(pcm.length, Math.round(c) * frameBytes)), pcm.length];
+  for (let i = 1; i < bounds.length; i++) bounds[i] = Math.max(bounds[i]!, bounds[i - 1]!); // never go backwards
+  return weights.map((_, i) => pcm.subarray(bounds[i]!, bounds[i + 1]!));
+}
+
+type Pause = { center: number; length: number };
+
+/** All quiet stretches of at least `minFrames` frames (1 frame = 20 ms). */
+function findPauses(levels: number[], minFrames: number): Pause[] {
   const sorted = [...levels].sort((a, b) => a - b);
   const loud = sorted[Math.floor(sorted.length * 0.95)] ?? 0;
   const quiet = Math.max(200, loud * 0.06);
-
-  // Find the quiet stretches (pauses) of at least 100 ms.
-  const pauses: { center: number; length: number }[] = [];
+  const pauses: Pause[] = [];
   let runStart = -1;
   levels.forEach((level, i) => {
     const silent = level < quiet;
     if (silent && runStart < 0) runStart = i;
     if ((!silent || i === levels.length - 1) && runStart >= 0) {
       const runEnd = silent ? i + 1 : i;
-      if (runEnd - runStart >= 5) pauses.push({ center: (runStart + runEnd) / 2, length: runEnd - runStart });
+      // Silence at the very start or end of the audio is not a pause between scenes.
+      if (runEnd - runStart >= minFrames && runStart > 0 && runEnd < levels.length) {
+        pauses.push({ center: (runStart + runEnd) / 2, length: runEnd - runStart });
+      }
       runStart = -1;
     }
   });
+  return pauses;
+}
 
-  const total = weights.reduce((a, b) => a + b, 0);
-  const frames = levels.length;
-  const window = frames * 0.15; // look this far around the expected place
-  const cuts: number[] = [];
-  let done = 0;
-  let previous = 0;
-  for (let i = 0; i < weights.length - 1; i++) {
-    done += weights[i]!;
-    const expected = (done / total) * frames;
-    const near = pauses.filter((p) => p.center > previous + 5 && Math.abs(p.center - expected) <= window);
-    // Prefer long pauses, but not far from where we expect the cut.
-    const best = near.sort(
-      (a, b) => b.length - Math.abs(b.center - expected) / 10 - (a.length - Math.abs(a.center - expected) / 10),
-    )[0];
-    const cut = best ? best.center : Math.max(expected, previous + 5);
-    cuts.push(cut);
-    previous = cut;
+/**
+ * Choose one pause per cut, in time order, with the best total score.
+ * score = pause length (long = probably between scenes) minus distance from
+ * the expected place (measured in "average scene lengths").
+ */
+function choosePauses(pauses: Pause[], expected: number[], sceneFrames: number): number[] {
+  const K = expected.length;
+  const P = pauses.length;
+  const score = (k: number, j: number) => {
+    const p = pauses[j]!;
+    const distance = Math.abs(p.center - expected[k]!) / Math.max(1, sceneFrames);
+    return Math.min(p.length, 50) / 10 - 4 * distance;
+  };
+  // best[k][j] = best total score when cut k uses pause j.
+  const best: number[][] = Array.from({ length: K }, () => new Array<number>(P).fill(-Infinity));
+  const from: number[][] = Array.from({ length: K }, () => new Array<number>(P).fill(-1));
+  for (let j = 0; j < P; j++) best[0]![j] = score(0, j);
+  for (let k = 1; k < K; k++) {
+    let runBest = -Infinity;
+    let runIdx = -1;
+    for (let j = k; j < P; j++) {
+      // the previous cut must use an earlier pause
+      if (best[k - 1]![j - 1]! > runBest) {
+        runBest = best[k - 1]![j - 1]!;
+        runIdx = j - 1;
+      }
+      if (runIdx >= 0) {
+        best[k]![j] = runBest + score(k, j);
+        from[k]![j] = runIdx;
+      }
+    }
   }
+  let j = -1;
+  let top = -Infinity;
+  for (let i = 0; i < P; i++) {
+    if (best[K - 1]![i]! > top) {
+      top = best[K - 1]![i]!;
+      j = i;
+    }
+  }
+  const cuts = new Array<number>(K);
+  for (let k = K - 1; k >= 0; k--) {
+    cuts[k] = pauses[j]!.center;
+    j = from[k]![j]!;
+  }
+  return cuts;
+}
 
+/**
+ * Remove quiet audio at the start and end of a piece, keeping `keepMs` of it
+ * so words are never clipped.
+ */
+export function trimSilence(pcm: Buffer, keepMs = 120): Buffer {
+  const FRAME_MS = 20;
+  const levels = loudness(pcm, FRAME_MS);
+  if (levels.length === 0) return pcm;
+  const sorted = [...levels].sort((a, b) => a - b);
+  const quiet = Math.max(200, (sorted[Math.floor(sorted.length * 0.95)] ?? 0) * 0.06);
+  const first = levels.findIndex((l) => l >= quiet);
+  if (first < 0) return pcm; // all quiet: leave it alone
+  let last = levels.length - 1;
+  while (last > first && levels[last]! < quiet) last--;
+  const keep = Math.round(keepMs / FRAME_MS);
   const frameBytes = Math.round((SAMPLE_RATE * FRAME_MS) / 1000) * BYTES_PER_SAMPLE;
-  const bounds = [0, ...cuts.map((c) => Math.min(pcm.length, Math.round(c) * frameBytes)), pcm.length];
-  return weights.map((_, i) => pcm.subarray(bounds[i]!, bounds[i + 1]!));
+  const start = Math.max(0, first - keep) * frameBytes;
+  const end = Math.min(pcm.length, (last + 1 + keep) * frameBytes);
+  return pcm.subarray(start, end);
+}
+
+/** Roughly how long `text` takes to say (used to guess where each scene ends). */
+export function speakingWeight(text: string, language: Language): number {
+  return Math.max(1, estimateWords(text, language).at(-1)?.endMs ?? text.length);
 }
 
 /** Put scenes into groups that each fit in one request. */
@@ -237,10 +322,13 @@ export function geminiVoice(
         const pcm = await requestAudio(joined, language, voiceFor(language));
         const parts = splitAtPauses(
           pcm,
-          group.map((i) => texts[i]!.length),
+          group.map((i) => speakingWeight(texts[i]!, language)),
         );
         group.forEach((sceneIndex, k) => {
-          const part = parts[k]!;
+          // Cut away the long quiet bits at both ends: the voiceover adds the same short
+          // gap between every scene, so the pacing is even and each picture
+          // appears right when its words start.
+          const part = trimSilence(parts[k]!);
           const durationMs = pcmDurationMs(part);
           pieces[sceneIndex] = { pcm: part, words: fitWords(texts[sceneIndex]!, language, durationMs), durationMs };
         });

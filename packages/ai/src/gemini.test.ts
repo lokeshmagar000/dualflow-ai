@@ -32,8 +32,8 @@ const research = {
   summary: "Everest facts",
   facts: [{ claim: "Everest is 8,849 m tall", sourceUrl: "https://example.com" }],
   visualPlan: [
-    { purpose: "hook" as const, idea: "Hook", visualQuery: "everest" },
-    { purpose: "call_to_action" as const, idea: "Follow", visualQuery: "phone" },
+    { purpose: "hook" as const, idea: "Hook", visualQuery: "everest", backupQuery: "mountain" },
+    { purpose: "call_to_action" as const, idea: "Follow", visualQuery: "phone", backupQuery: "phone" },
   ],
   thumbnailQuery: "mount everest",
 };

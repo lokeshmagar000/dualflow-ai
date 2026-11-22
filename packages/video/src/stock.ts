@@ -44,7 +44,7 @@ type PexelsVideo = {
   duration: number;
   video_files: { link: string; width: number | null; height: number | null; file_type: string }[];
 };
-type PexelsPhoto = { id: number; url: string; src: Record<string, string> };
+type PexelsPhoto = { id: number; url: string; alt?: string; src: Record<string, string> };
 
 async function pexels<T>(url: string, key: string): Promise<T> {
   const res = await fetch(url, { headers: { Authorization: key }, signal: AbortSignal.timeout(30_000) });
@@ -58,58 +58,163 @@ async function download(url: string, file: string) {
   await writeFile(file, Buffer.from(await res.arrayBuffer()));
 }
 
+/** One search result from any stock site, before we download it. */
+export type Candidate = {
+  id: number;
+  kind: "video" | "image";
+  /** Words that describe the clip (Pixabay tags, or the words in a Pexels page address). */
+  tags: string;
+  /** Clip length in seconds (0 for photos). */
+  duration: number;
+  /** True when the clip has the video's shape (tall for Shorts, wide for long videos). */
+  rightShape: boolean;
+  downloadUrl: string;
+  sourceUrl: string;
+};
+
+const STOP_WORDS = new Set(["a", "an", "the", "of", "in", "on", "at", "with", "and", "or", "to", "for", "from", "by"]);
+
+/** The meaningful words of a search phrase: "yaks on a snowy hill" -> ["yak", "snowy", "hill"]. */
+function keywords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 1 && !STOP_WORDS.has(w))
+    .map((w) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w));
+}
+
+/** How much of the search phrase the clip's tags really mention (0 = nothing, 1 = every word). */
+export function tagMatch(query: string, tags: string): number {
+  const want = keywords(query);
+  if (want.length === 0) return 0;
+  const have = new Set(keywords(tags));
+  // "mountain" also matches the tag "mountains" (and "climber" matches "climbers") through the plural cut above.
+  return want.filter((w) => have.has(w)).length / want.length;
+}
+
 /**
- * Find a clip (or else a photo) for `query` and save it in `dir` as `name`.mp4/.jpg.
- * `used` = Pexels ids already used in this video, so scenes do not repeat.
- * Returns null when there is no key or nothing was found (the scene then gets a gradient).
+ * Put the results in the best order for this scene:
+ * clips whose tags match the scene's words first, then the right shape,
+ * then long enough to cover the whole scene without stopping.
  */
-async function findPexels(
+export function rankCandidates(query: string, candidates: Candidate[], minSeconds = 0): (Candidate & { score: number; match: number })[] {
+  return candidates
+    .map((c, position) => {
+      const match = tagMatch(query, c.tags);
+      const longEnough = c.kind === "image" || c.duration >= Math.max(4, minSeconds) ? 1 : 0;
+      // The site's own order counts a little too (its first results are usually the best).
+      const score = match * 4 + (c.rightShape ? 1.5 : 0) + longEnough - position * 0.05;
+      return { ...c, score, match };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+/** Search one site for clips (or photos, when `photos` is true). */
+async function search(
+  provider: "pixabay" | "pexels",
   query: string,
   format: VideoFormat,
-  dir: string,
-  name: string,
-  used: Set<number>,
-): Promise<FoundMedia | null> {
-  const key = process.env.PEXELS_API_KEY!;
-  const orientation = format === "SHORT" ? "portrait" : "landscape";
-  const targetWidth = format === "SHORT" ? 1080 : 1920;
-  const q = encodeURIComponent(query.trim());
-  const { videos } = await pexels<{ videos: PexelsVideo[] }>(
-    `https://api.pexels.com/videos/search?query=${q}&orientation=${orientation}&per_page=10`,
-    key,
-  );
-  for (const v of videos ?? []) {
-    if (used.has(v.id) || v.duration < 4) continue;
-    // The MP4 closest to our video size (not a huge 4K file).
-    const files = v.video_files
-      .filter((f) => f.file_type === "video/mp4" && f.width)
-      .sort((a, b) => Math.abs(a.width! - targetWidth) - Math.abs(b.width! - targetWidth));
-    const best = files[0];
-    if (!best) continue;
-    const file = `${name}.mp4`;
-    await download(best.link, path.join(dir, file));
-    used.add(v.id);
-    return { file, kind: "video", sourceUrl: v.url, provider: "pexels", id: v.id };
+  photos: boolean,
+): Promise<Candidate[]> {
+  const tall = format === "SHORT";
+  const targetWidth = tall ? 1080 : 1920;
+  if (provider === "pixabay") {
+    const key = encodeURIComponent(process.env.PIXABAY_API_KEY!);
+    const q = encodeURIComponent(query.trim().slice(0, 100));
+    if (photos) {
+      const { hits } = await pixabay<{ hits: PixabayImage[] }>(
+        `https://pixabay.com/api/?key=${key}&q=${q}&image_type=photo&orientation=${tall ? "vertical" : "horizontal"}&safesearch=true&per_page=20`,
+      );
+      return (hits ?? []).map((i) => ({
+        id: i.id,
+        kind: "image" as const,
+        tags: i.tags ?? "",
+        duration: 0,
+        rightShape: true,
+        downloadUrl: i.largeImageURL,
+        sourceUrl: i.pageURL,
+      }));
+    }
+    const { hits } = await pixabay<{ hits: PixabayVideo[] }>(
+      `https://pixabay.com/api/videos/?key=${key}&q=${q}&safesearch=true&per_page=20`,
+    );
+    return (hits ?? []).flatMap((v) => {
+      // The file closest to our video size (not a huge 4K file).
+      const sizes = Object.values(v.videos ?? {}).filter((f) => f?.url && f.width > 0);
+      const best = sizes.sort((a, b) => Math.abs(a.width - targetWidth) - Math.abs(b.width - targetWidth))[0];
+      if (!best) return [];
+      return [
+        {
+          id: v.id,
+          kind: "video" as const,
+          tags: v.tags ?? "",
+          duration: v.duration,
+          rightShape: best.height > best.width === tall,
+          downloadUrl: best.url,
+          sourceUrl: v.pageURL,
+        },
+      ];
+    });
   }
-  const { photos } = await pexels<{ photos: PexelsPhoto[] }>(
-    `https://api.pexels.com/v1/search?query=${q}&orientation=${orientation}&per_page=10`,
+
+  const key = process.env.PEXELS_API_KEY!;
+  const orientation = tall ? "portrait" : "landscape";
+  const q = encodeURIComponent(query.trim());
+  // Pexels has no tags, but its page address describes the clip: /video/yak-walking-in-snow-12345/
+  const slugWords = (url: string) => url.split("/").filter(Boolean).pop()?.replace(/-?\d+$/, "").replace(/-/g, " ") ?? "";
+  if (photos) {
+    const { photos: list } = await pexels<{ photos: PexelsPhoto[] }>(
+      `https://api.pexels.com/v1/search?query=${q}&orientation=${orientation}&per_page=15`,
+      key,
+    );
+    return (list ?? []).map((p) => ({
+      id: p.id,
+      kind: "image" as const,
+      tags: `${p.alt ?? ""} ${slugWords(p.url)}`,
+      duration: 0,
+      rightShape: true,
+      downloadUrl: p.src[orientation] ?? p.src.large2x ?? p.src.original!,
+      sourceUrl: p.url,
+    }));
+  }
+  const { videos } = await pexels<{ videos: PexelsVideo[] }>(
+    `https://api.pexels.com/videos/search?query=${q}&orientation=${orientation}&per_page=15`,
     key,
   );
-  const photo = (photos ?? []).find((p) => !used.has(p.id));
-  if (!photo) return null;
-  const file = `${name}.jpg`;
-  await download(photo.src[orientation] ?? photo.src.large2x ?? photo.src.original!, path.join(dir, file));
-  used.add(photo.id);
-  return { file, kind: "image", sourceUrl: photo.url, provider: "pexels", id: photo.id };
+  return (videos ?? []).flatMap((v) => {
+    const best = v.video_files
+      .filter((f) => f.file_type === "video/mp4" && f.width)
+      .sort((a, b) => Math.abs(a.width! - targetWidth) - Math.abs(b.width! - targetWidth))[0];
+    if (!best) return [];
+    return [
+      {
+        id: v.id,
+        kind: "video" as const,
+        tags: slugWords(v.url),
+        duration: v.duration,
+        rightShape: (best.height ?? 0) > (best.width ?? 0) === tall,
+        downloadUrl: best.link,
+        sourceUrl: v.url,
+      },
+    ];
+  });
 }
 
 type PixabayVideo = {
   id: number;
   pageURL: string;
+  tags?: string;
   duration: number;
   videos: Record<string, { url: string; width: number; height: number; size: number }>;
 };
-type PixabayImage = { id: number; pageURL: string; largeImageURL: string; imageWidth: number; imageHeight: number };
+type PixabayImage = {
+  id: number;
+  pageURL: string;
+  tags?: string;
+  largeImageURL: string;
+  imageWidth: number;
+  imageHeight: number;
+};
 
 async function pixabay<T>(url: string): Promise<T> {
   const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
@@ -117,71 +222,64 @@ async function pixabay<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-async function findPixabay(
-  query: string,
-  format: VideoFormat,
-  dir: string,
-  name: string,
-  used: Set<number>,
-): Promise<FoundMedia | null> {
-  const key = encodeURIComponent(process.env.PIXABAY_API_KEY!);
-  const q = encodeURIComponent(query.trim().slice(0, 100));
-  const tall = format === "SHORT";
-  const targetWidth = tall ? 1080 : 1920;
-
-  const { hits: videos } = await pixabay<{ hits: PixabayVideo[] }>(
-    `https://pixabay.com/api/videos/?key=${key}&q=${q}&safesearch=true&per_page=20`,
-  );
-  // Pixabay has no "tall only" filter, so we prefer clips with the right shape.
-  const ranked = (videos ?? [])
-    .filter((v) => !used.has(v.id) && v.duration >= 4)
-    .map((v) => {
-      const sizes = Object.values(v.videos ?? {}).filter((f) => f?.url && f.width > 0);
-      const best = sizes.sort((a, b) => Math.abs(a.width - targetWidth) - Math.abs(b.width - targetWidth))[0];
-      const rightShape = best ? best.height > best.width === tall : false;
-      return { v, best, rightShape };
-    })
-    .filter((x) => x.best)
-    .sort((a, b) => Number(b.rightShape) - Number(a.rightShape));
-  const pick = ranked[0];
-  if (pick?.best) {
-    const file = `${name}.mp4`;
-    await download(pick.best.url, path.join(dir, file));
-    used.add(pick.v.id);
-    return { file, kind: "video", sourceUrl: pick.v.pageURL, provider: "pixabay", id: pick.v.id };
-  }
-
-  const { hits: images } = await pixabay<{ hits: PixabayImage[] }>(
-    `https://pixabay.com/api/?key=${key}&q=${q}&image_type=photo&orientation=${tall ? "vertical" : "horizontal"}&safesearch=true&per_page=20`,
-  );
-  const image = (images ?? []).find((i) => !used.has(i.id));
-  if (!image) return null;
-  const file = `${name}.jpg`;
-  await download(image.largeImageURL, path.join(dir, file));
-  used.add(image.id);
-  return { file, kind: "image", sourceUrl: image.pageURL, provider: "pixabay", id: image.id };
-}
-
 /**
- * Find a clip (or else a photo) for `query` and save it in `dir` as `name`.mp4/.jpg.
+ * Find the clip (or else a photo) that best SHOWS what a scene says, and save it
+ * in `dir` as `name`.mp4/.jpg.
+ *
+ * `queries` = search phrases, best first (the scene's picture words, then simpler
+ * backup words). We try them in order and stop as soon as a clip's tags clearly
+ * match. A clip whose tags match nothing is only used when nothing better exists.
  * `used` = clip ids already used in this video, so scenes do not repeat.
+ * `minSeconds` = how long the scene lasts (longer clips are preferred, so the picture never freezes).
  * Returns null when there is no key or nothing was found (the scene then gets a colour background).
  */
 export async function findMedia(
-  query: string,
+  queries: string | (string | null | undefined)[],
   format: VideoFormat,
   dir: string,
   name: string,
   used: Set<number>,
+  minSeconds = 0,
 ): Promise<FoundMedia | null> {
   const provider = stockProvider();
-  if (!provider || !query.trim()) return null;
+  const list = [...new Set((Array.isArray(queries) ? queries : [queries]).map((q) => q?.trim() ?? "").filter(Boolean))];
+  if (!provider || list.length === 0) return null;
+
+  const take = async (c: Candidate): Promise<FoundMedia> => {
+    const file = `${name}.${c.kind === "video" ? "mp4" : "jpg"}`;
+    await download(c.downloadUrl, path.join(dir, file));
+    used.add(c.id);
+    return { file, kind: c.kind, sourceUrl: c.sourceUrl, provider, id: c.id };
+  };
+
   try {
-    const find = provider === "pixabay" ? findPixabay : findPexels;
-    return await find(query, format, dir, name, used);
+    // Moving clips first, then photos (a photo that matches beats a clip that does not).
+    const weak: (Candidate & { score: number })[] = [];
+    let problem: string | undefined;
+    for (const photos of [false, true]) {
+      for (const query of list) {
+        let found: Candidate[];
+        try {
+          found = (await search(provider, query, format, photos)).filter((c) => !used.has(c.id));
+        } catch (err) {
+          problem ??= (err as Error).message; // one failed search must not lose a good result from another
+          continue;
+        }
+        const best = rankCandidates(query, found, minSeconds)[0];
+        if (!best) continue;
+        // Good match (at least half of the words are in the tags): use it now.
+        if (best.match >= 0.5) return await take(best);
+        weak.push(best);
+      }
+    }
+    // Nothing clearly matches: use the best weak result, a clip if there is one.
+    const pick = weak.sort((a, b) => Number(b.kind === "video") - Number(a.kind === "video") || b.score - a.score)[0];
+    if (pick) return await take(pick);
+    if (problem) console.warn(`${provider}: no picture for "${list[0]}" (${problem}). Using a colour background.`);
+    return null;
   } catch (err) {
     // Never print the URL: it contains the Pixabay key.
-    console.warn(`${provider}: no picture for "${query}" (${(err as Error).message}). Using a colour background.`);
+    console.warn(`${provider}: no picture for "${list[0]}" (${(err as Error).message}). Using a colour background.`);
     return null;
   }
 }
