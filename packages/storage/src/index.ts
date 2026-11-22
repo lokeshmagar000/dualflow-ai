@@ -18,7 +18,7 @@ import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { mkdir, readdir, readFile as fsReadFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { r2Delete, r2Exists, r2Get, r2List, r2PresignGet, r2PresignPut, r2Put, r2Size, r2Stream } from "./r2";
+import { r2BucketName, r2Delete, r2Exists, r2Get, r2List, r2PresignGet, r2PresignPut, r2Problem, r2Put, r2Size, r2Stream } from "./r2";
 
 /** The project's top folder: this file is at packages/storage/src/index.ts. */
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -163,4 +163,18 @@ export function contentTypeFor(key: string): string {
   if (key.endsWith(".png")) return "image/png";
   if (key.endsWith(".jpg")) return "image/jpeg";
   return "application/octet-stream";
+}
+
+/**
+ * Can this server really reach the video storage? (Used by Settings and before a download.)
+ * Local storage is always "fine" here; R2 asks Cloudflare.
+ */
+export async function storageProblem(): Promise<string | null> {
+  if (storageDriver() !== "r2") return null;
+  return r2Problem();
+}
+
+/** Where the files are, in a few words, e.g. `Cloudflare R2, bucket "dualflow"`. */
+export function storageLabel(): string {
+  return storageDriver() === "r2" ? `Cloudflare R2, bucket "${r2BucketName()}"` : "this server's own disk";
 }

@@ -316,6 +316,14 @@ export interface ReadyPage {
 }
 
 /* ---------- Automatic videos (Ideas page) ---------- */
+/** GET /storage/check: can the server really reach Cloudflare R2? */
+export interface StorageCheck {
+  driver: "r2" | "local";
+  where: string;
+  ok: boolean;
+  problem: string | null;
+}
+
 export interface AutoStatus {
   enabled: boolean; // the Auto mode switch
   paused: boolean; // kill switch on the Costs page

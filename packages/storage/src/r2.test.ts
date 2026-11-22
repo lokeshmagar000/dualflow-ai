@@ -123,3 +123,34 @@ test("R2 is picked by itself when the R2 keys are set but STORAGE is not (Render
     process.env = keep;
   }
 });
+
+test("R2: storageProblem explains a wrong bucket, wrong keys, and retries a 500 hiccup", async () => {
+  const { storageProblem, fileSize: size } = await import("./index");
+  let answer = 200;
+  let hiccups = 0;
+  const server = createServer((req, res) => {
+    if (hiccups > 0) {
+      hiccups--;
+      res.statusCode = 500;
+      return res.end("<Error><Code>InternalError</Code></Error>");
+    }
+    res.statusCode = answer;
+    if (req.method === "HEAD" && answer === 200) res.setHeader("content-length", "5");
+    res.end();
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as AddressInfo).port;
+  Object.assign(process.env, { STORAGE: "r2", R2_ENDPOINT: `http://127.0.0.1:${port}`, R2_BUCKET: "real-bucket", R2_ACCESS_KEY_ID: "id", R2_SECRET_ACCESS_KEY: "secret" });
+  try {
+    assert.equal(await storageProblem(), null);
+    answer = 404;
+    assert.match((await storageProblem())!, /no bucket called "real-bucket"/);
+    answer = 403;
+    assert.match((await storageProblem())!, /did not accept the keys/);
+    answer = 200;
+    hiccups = 2; // two "500 InternalError" answers, then OK
+    assert.equal(await size("stories/a/video.mp4"), 5);
+  } finally {
+    server.close();
+  }
+});

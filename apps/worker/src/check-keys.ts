@@ -75,7 +75,10 @@ else {
     const get = await r2.fetch(url);
     if (!get.ok || (await get.text()) !== "नमस्ते") throw new Error(`download HTTP ${get.status}`);
     await r2.fetch(url, { method: "DELETE" });
-    report("Cloudflare R2", "PASS", `bucket "${bucket}" write/read/delete OK`);
+    // GitHub hides the bucket name in logs, so say whether it is the default one: when it is not,
+    // the dashboard on Render needs R2_BUCKET too (without it, it looks in "dualflow").
+    const isDefault = bucket === "dualflow" ? "it is the default name" : 'NOT the default "dualflow": Render needs R2_BUCKET too';
+    report("Cloudflare R2", "PASS", `bucket "${bucket}" write/read/delete OK (${isDefault})`);
   } catch (e) {
     report("Cloudflare R2", "FAIL", `${clean((e as Error).message)} (bucket "${bucket}")`);
   }

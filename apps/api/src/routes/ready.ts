@@ -10,7 +10,7 @@
 import type { FastifyInstance } from "fastify";
 import archiver from "archiver";
 import { prisma, type Prisma } from "@dualflow/db";
-import { contentTypeFor, downloadUrlFor, fileExists, readFile, readStream } from "@dualflow/storage";
+import { contentTypeFor, downloadUrlFor, fileExists, fileSize, readFile, readStream, storageDriver, storageLabel, storageProblem } from "@dualflow/storage";
 import { THUMBNAIL_SIZE_NAMES, thumbnailKeyFor, type ThumbnailSizeName } from "@dualflow/shared";
 import { getDefaultWorkspace } from "../workspace";
 
@@ -189,6 +189,12 @@ export async function readyRoutes(app: FastifyInstance) {
     return reply;
   });
 
+  /** Settings page: can this server really reach the video storage? */
+  app.get("/storage/check", async () => {
+    const problem = await storageProblem().catch((e: Error) => e.message);
+    return { driver: storageDriver(), where: storageLabel(), ok: !problem, problem };
+  });
+
   app.get<{ Params: { id: string; kind: string }; Querystring: { inline?: string; size?: string } }>(
     "/variants/:id/download/:kind",
     async (req, reply) => {
@@ -220,7 +226,23 @@ export async function readyRoutes(app: FastifyInstance) {
       const fileName = downloadName({ createdAt: variant.story.createdAt, language: variant.language, englishTitle, kind, size });
       const inline = req.query.inline === "1";
 
-      // Cloudflare R2: send a short-lived download address; the browser gets the file straight from R2.
+      // Cloudflare R2: first ask R2 if the file is really there (a quick "HEAD" request), so a
+      // wrong bucket name or wrong keys on Render show a clear message instead of an R2 error page.
+      if (storageDriver() === "r2") {
+        let size: number | null;
+        try {
+          size = await fileSize(key);
+        } catch {
+          // 422 (not 502), so the dashboard does not keep retrying a settings problem.
+          return reply.code(422).send({ error: (await storageProblem()) ?? "Cloudflare R2 did not answer. Try again in a minute." });
+        }
+        if (size === null) {
+          const problem = await storageProblem();
+          if (problem) return reply.code(422).send({ error: problem });
+          return reply.code(404).send({ error: "This file is not in your video storage any more (it may have been deleted after upload)." });
+        }
+      }
+      // Send a short-lived download address; the browser gets the file straight from R2.
       const url = await downloadUrlFor(key, { fileName, inline });
       if (url) return { url };
 

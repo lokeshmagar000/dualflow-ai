@@ -11,7 +11,32 @@ import { AwsClient } from "aws4fetch";
 import type { StoredFile } from "./index";
 
 let client: AwsClient | null = null;
+
+/**
+ * Cloudflare sometimes answers "500 InternalError, please try again" for a moment.
+ * So every request is tried up to 3 times (waiting 1 s, then 3 s) when that happens.
+ * All our requests are safe to repeat (reading, listing, uploading the same file again, deleting).
+ */
 function r2() {
+  const aws = rawClient();
+  return {
+    sign: aws.sign.bind(aws),
+    async fetch(url: string, init?: RequestInit): Promise<Response> {
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const res = await aws.fetch(url, init);
+          if (res.status < 500 || attempt >= 3) return res;
+          await res.text().catch(() => "");
+        } catch (err) {
+          if (attempt >= 3) throw err;
+        }
+        await new Promise((r) => setTimeout(r, attempt === 1 ? 1000 : 3000));
+      }
+    },
+  };
+}
+
+function rawClient() {
   const accessKeyId = process.env.R2_ACCESS_KEY_ID;
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
   if (!accessKeyId || !secretAccessKey || !(process.env.R2_ACCOUNT_ID || process.env.R2_ENDPOINT)) {
@@ -133,4 +158,33 @@ export async function r2PresignGet(key: string, opts: { fileName?: string; inlin
   }
   const signed = await r2().sign(url.toString(), { method: "GET", aws: { signQuery: true } });
   return signed.url;
+}
+
+/** The bucket's name as this server sees it (R2_BUCKET, default "dualflow"). */
+export function r2BucketName(): string {
+  return process.env.R2_BUCKET?.trim() || "dualflow";
+}
+
+/**
+ * Asks Cloudflare whether this server can reach the bucket with its keys ("HeadBucket").
+ * Returns null when everything is fine, otherwise a plain-words reason and what to fix.
+ */
+export async function r2Problem(): Promise<string | null> {
+  const bucket = r2BucketName();
+  let res: Response;
+  try {
+    res = await r2().fetch(bucketUrl(), { method: "HEAD" });
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (/needs R2_/.test(msg)) return msg;
+    return `Could not reach Cloudflare R2 (${msg.slice(0, 120)}). Check that R2_ACCOUNT_ID is right (the same value as in GitHub).`;
+  }
+  if (res.ok) return null;
+  if (res.status === 404) {
+    return `Cloudflare R2 says there is no bucket called "${bucket}". Add R2_BUCKET with your real bucket name (the same value as the R2_BUCKET secret in GitHub).`;
+  }
+  if (res.status === 401 || res.status === 403) {
+    return `Cloudflare R2 did not accept the keys (error ${res.status}). Copy R2_ACCOUNT_ID, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY again, exactly as in GitHub (no spaces), and check R2_BUCKET is "${bucket}".`;
+  }
+  return `Cloudflare R2 answered with error ${res.status}. It is often a short hiccup: try again in a minute.`;
 }
