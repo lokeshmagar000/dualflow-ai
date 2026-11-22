@@ -81,6 +81,30 @@ else {
   }
 }
 
+// 3b) Download test: the same short-lived download address the dashboard's Download button
+//     makes, for the newest finished video. Shows whether a browser could really get the file.
+if (!r2Missing.length && env.DATABASE_URL) {
+  const db = new PrismaClient({ datasources: { db: { url: env.DATABASE_URL } } });
+  try {
+    const { downloadUrlFor } = await import("@dualflow/storage");
+    const newest = await db.variant.findFirst({ where: { outputKey: { not: null } }, orderBy: { updatedAt: "desc" }, select: { outputKey: true } });
+    if (!newest?.outputKey) report("Download test", "SKIP", "no finished video in the database");
+    else {
+      const url = await downloadUrlFor(newest.outputKey, { fileName: "test.mp4" });
+      if (!url) report("Download test", "FAIL", "storage is not R2 here");
+      else {
+        const res = await fetch(url, { headers: { range: "bytes=0-99" } });
+        const body = res.ok ? "" : clean((await res.text()).match(/<Code>([^<]+)<\/Code>/)?.[1] ?? "");
+        report("Download test", res.ok ? "PASS" : "FAIL", `HTTP ${res.status} ${res.headers.get("content-type") ?? ""} ${body}`.trim());
+      }
+    }
+  } catch (e) {
+    report("Download test", "FAIL", clean((e as Error).message));
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 // 4) Optional keys (only reported as set / not set)
 for (const name of ["AZURE_SPEECH_KEY", "ANTHROPIC_API_KEY"]) report(`${name} (optional)`, env[name] ? "SET" : "not set");
 
