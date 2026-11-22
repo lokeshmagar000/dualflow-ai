@@ -3,9 +3,18 @@
 # so your video is on the channels in a few minutes instead of waiting for the
 # next Pipeline run. It takes about 2-5 minutes and uses free GitHub minutes.
 # You can also start it by hand: Actions tab -> "Upload now" -> "Run workflow".
+#
+# It ALSO runs by itself at the upload times (7:00 AM, 12:30 PM and 7:00 PM Nepal), so videos
+# in the queue go up on time when Auto upload is on (dashboard, Channels page). When Auto upload
+# is off it finishes in about a minute and uploads nothing.
+# If you change PUBLISH_TIMES, change these times too (GitHub uses UTC = Nepal time minus 5:45).
 name: Upload now
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "20 1 * * *" # 7:05 AM Nepal
+    - cron: "50 6 * * *" # 12:35 PM Nepal
+    - cron: "20 13 * * *" # 7:05 PM Nepal
 # One upload run at a time. (A Pipeline run at the same moment is safe too:
 # each upload is "claimed" in the database first, so nothing is posted twice.)
 concurrency:
@@ -25,6 +34,8 @@ jobs:
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       R2_BUCKET: ${{ secrets.R2_BUCKET || vars.R2_BUCKET || 'dualflow' }}
+      # Optional: the key that unlocks channels connected on the dashboard (default: R2_SECRET_ACCESS_KEY).
+      TOKEN_KEY: ${{ secrets.TOKEN_KEY }}
       # Uploads to social channels (see docs/social-setup.md). Off until PUBLISH_ENABLED=true.
       PUBLISH_ENABLED: ${{ vars.PUBLISH_ENABLED || 'false' }}
       PUBLISH_DRY_RUN: ${{ vars.PUBLISH_DRY_RUN || 'true' }}

@@ -121,6 +121,7 @@ model Workspace {
   costEvents      CostEvent[]
   budgets         Budget[]
   auditLogs       AuditLog[]
+  settings        AppSetting[]
 }
 
 model Membership {
@@ -449,6 +450,20 @@ model AuditLog {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, createdAt])
+}
+
+// Settings saved from the dashboard (Channels page): your app keys for Google, Meta and
+// TikTok (ENCRYPTED, like channel tokens) and the "Auto upload" switch.
+// key examples: "app.youtube", "app.meta", "app.tiktok", "publish.switch".
+model AppSetting {
+  id          String    @id @default(cuid())
+  workspaceId String
+  key         String
+  value       String
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, key])
 }
 
 // ---------- Job queue (free plan: lives in Postgres, no Redis) ----------

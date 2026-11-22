@@ -13,6 +13,9 @@ jobs:
     timeout-minutes: 10
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Unlocks the channels you connected on the dashboard (Channels page, Connect buttons).
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      TOKEN_KEY: ${{ secrets.TOKEN_KEY }}
       # Uploads to social channels (see docs/social-setup.md). Off until PUBLISH_ENABLED=true.
       PUBLISH_ENABLED: ${{ vars.PUBLISH_ENABLED || 'false' }}
       PUBLISH_DRY_RUN: ${{ vars.PUBLISH_DRY_RUN || 'true' }}

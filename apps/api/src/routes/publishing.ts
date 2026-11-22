@@ -67,7 +67,7 @@ export async function publishingRoutes(app: FastifyInstance) {
     const story = await prisma.story.findFirst({ where: { id: req.params.id, workspaceId: ws.id }, include: { variants: true } });
     if (!story) return reply.code(404).send({ error: "Story not found" });
     const channels = await prisma.channel.findMany({ where: { workspaceId: ws.id } });
-    if (channels.length === 0) return reply.code(409).send({ error: "No channels yet. Add the channel secrets in GitHub and run 'Test my channels' first." });
+    if (channels.length === 0) return reply.code(409).send({ error: "No channels yet. Open Channels in the dashboard and press Connect first." });
     const now = new Date();
     let queued = 0;
     for (const v of story.variants.filter((v) => v.outputKey)) {

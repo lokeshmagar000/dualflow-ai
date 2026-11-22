@@ -2,7 +2,8 @@
  * Publishing: decides WHEN each finished video goes to WHICH channel, and uploads it.
  *
  *   1. syncChannels()   makes one Channel row per configured platform + language
- *                       (so the dashboard can show them). Tokens stay in GitHub Secrets.
+ *                       (so the dashboard can show them). Tokens come from GitHub Secrets or
+ *                       from the dashboard's Connect buttons (see dashboard-connections.ts).
  *   2. planStory()      when both videos of a story are ready:
  *                         auto     -> an upload is added to the queue (status SCHEDULED)
  *                         approval -> an upload waits for your "Approve" (status READY)
@@ -35,7 +36,7 @@ import { contentTypeFor, readFile } from "@dualflow/storage";
 
 const MINUTE = 60_000;
 /** Shown on an upload while PUBLISH_DRY_RUN=true. */
-export const PRACTICE_NOTE = "Practice mode (GitHub variable PUBLISH_DRY_RUN=true): nothing was uploaded. Set it to false for real uploads.";
+export const PRACTICE_NOTE = "Practice mode: nothing was uploaded. For real uploads, set Auto upload on the Channels page to \"Ask me first\" or \"Fully automatic\".";
 const toPlatform = (p: PlatformName) => p.toUpperCase() as Platform;
 const toName = (p: Platform) => p.toLowerCase() as PlatformName;
 const toMode = (m: ChannelConfig["mode"]) => m.toUpperCase() as PublishMode;
@@ -48,7 +49,11 @@ export async function syncChannels(workspaceId: string) {
     const existing = await prisma.channel.findFirst({ where });
     rows.push(
       existing
-        ? await prisma.channel.update({ where: { id: existing.id }, data: { name: c.label, mode: toMode(c.mode) } })
+        ? await prisma.channel.update({
+            where: { id: existing.id },
+            // A channel connected on the dashboard keeps its real name (e.g. "Namaste Facts").
+            data: { name: existing.accessTokenEnc || existing.refreshTokenEnc ? existing.name : c.label, mode: toMode(c.mode) },
+          })
         : await prisma.channel.create({ data: { ...where, name: c.label, mode: toMode(c.mode) } }),
     );
   }

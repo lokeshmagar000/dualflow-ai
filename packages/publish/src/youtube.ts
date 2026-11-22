@@ -40,7 +40,7 @@ export function youtubeUploader(language: Lang, env: Env = process.env): Uploade
       // invalid_grant = the token was removed, expired (7 days in "Testing" mode) or is wrong.
       throw new PublishConfigError(
         `YouTube ${L}: Google refused the refresh token (${json.error ?? res.status}). ` +
-          `Make a new one (see docs/social-setup.md) and make sure the Google app is "In production", not "Testing".`,
+          `Press Reconnect on the dashboard's Channels page, and make sure the Google app is "In production", not "Testing".`,
       );
     }
     return json.access_token as string;
