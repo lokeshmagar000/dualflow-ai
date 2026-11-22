@@ -259,6 +259,8 @@ model Scene {
   order     Int
   purpose   String? // hook, point, call to action...
   text      String
+  /// Parts of the line, each with its own picture: [{ text, visualQuery }] (null = one picture)
+  parts     Json?
   startMs   Int?
   endMs     Int?
   assetId   String?

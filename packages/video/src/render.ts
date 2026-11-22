@@ -108,7 +108,9 @@ const browserExecutable = () => process.env.REMOTION_BROWSER || null;
  * So optional props always get a value here ("" = none), never "left out".
  */
 function withDefaults<T extends { brandTag?: string }>(props: T): Record<string, unknown> {
-  return { ...props, brandTag: props.brandTag ?? "" } as unknown as Record<string, unknown>;
+  // Remotion fills missing props from Root.tsx's examples, so send every optional prop.
+  const extra = "scenes" in props ? { ctaStartMs: (props as { ctaStartMs?: number | null }).ctaStartMs ?? null } : {};
+  return { ...props, brandTag: props.brandTag ?? "", ...extra } as unknown as Record<string, unknown>;
 }
 
 export async function renderVideo(props: VideoProps, outFile: string, onProgress?: (p: number) => void) {

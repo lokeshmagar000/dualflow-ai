@@ -3,7 +3,7 @@
  */
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { geminiVoice, pickVoice, splitAtPauses, fitWords, VoiceQuotaError } from "./gemini";
+import { geminiVoice, pickVoice, splitAtPauses, fitWords, speakingWeight, trimSilence, VoiceQuotaError } from "./gemini";
 import { makeVoiceover } from "./voiceover";
 import { pcmDurationMs, SAMPLE_RATE, silence } from "./wav";
 
@@ -86,4 +86,34 @@ test("each story gets one of the chosen voices, and always the same one", () => 
   }
   assert.deepEqual([...picks].sort(), ["Aoede", "Charon"]); // both voices are used
   assert.equal(pickVoice("Charon"), "Charon");
+});
+
+test("picks the long scene pauses, not the short comma pauses near them", () => {
+  // Scene 1 has a comma pause (120 ms) right where a cut by text length would land;
+  // the real scene pauses are long (700 ms).
+  const pcm = Buffer.concat([
+    tone(800), silence(120), tone(1500), silence(700), // scene 1 (with a comma pause)
+    tone(1200), silence(700), // scene 2
+    tone(1000), // scene 3
+  ]);
+  const parts = splitAtPauses(pcm, [10, 10, 10]); // equal weights: expected cuts are in the wrong places
+  const lengths = parts.map(pcmDurationMs);
+  assert.ok(Math.abs(lengths[0]! - (800 + 120 + 1500 + 350)) <= 40, `first ${lengths[0]}`);
+  assert.ok(Math.abs(lengths[1]! - (350 + 1200 + 350)) <= 40, `second ${lengths[1]}`);
+});
+
+test("trimSilence keeps a little quiet at both ends but drops long silences", () => {
+  const pcm = Buffer.concat([silence(900), tone(1000), silence(800)]);
+  const trimmed = pcmDurationMs(trimSilence(pcm, 120));
+  assert.ok(trimmed >= 1200 && trimmed <= 1300, `trimmed ${trimmed}`);
+});
+
+test("speaking weight grows with the number of words", () => {
+  assert.ok(speakingWeight("one two three four five six", "en") > speakingWeight("one two", "en"));
+});
+
+test("'#N' takes the voices in turn, so every video changes voice", () => {
+  assert.equal(pickVoice("Aoede,Charon", "#0"), "Aoede");
+  assert.equal(pickVoice("Aoede,Charon", "#1"), "Charon");
+  assert.equal(pickVoice("Aoede,Charon", "#2"), "Aoede");
 });

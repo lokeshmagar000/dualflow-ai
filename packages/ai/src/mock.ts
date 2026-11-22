@@ -27,11 +27,11 @@ export function mockResearch(input: { title: string; format: "SHORT" | "LONG" })
     ],
     // The same 5 scenes are used by BOTH languages, like the real pipeline.
     visualPlan: [
-      { purpose: "hook", idea: `Grab attention with a question about ${t}`, visualQuery: "curious person looking up" },
-      { purpose: "point", idea: `First main point about ${t}`, visualQuery: "nepal landscape" },
-      { purpose: "point", idea: `Second main point about ${t}`, visualQuery: "city street kathmandu" },
-      { purpose: "example", idea: `A simple real-life example`, visualQuery: "people talking" },
-      { purpose: "call_to_action", idea: "Ask viewers to like and follow", visualQuery: "phone like button" },
+      { purpose: "hook", idea: `Grab attention with a question about ${t}`, visualQuery: "curious person looking up", backupQuery: "curious person" },
+      { purpose: "point", idea: `First main point about ${t}`, visualQuery: "nepal landscape", backupQuery: "nepal" },
+      { purpose: "point", idea: `Second main point about ${t}`, visualQuery: "city street kathmandu", backupQuery: "kathmandu" },
+      { purpose: "example", idea: `A simple real-life example`, visualQuery: "people talking", backupQuery: "people" },
+      { purpose: "call_to_action", idea: "Ask viewers to like and follow", visualQuery: "phone like button", backupQuery: "smartphone" },
     ],
     thumbnailQuery: "nepal mountains",
   };
@@ -69,6 +69,7 @@ export function mockScript(input: { language: Language; title: string; research:
     scenes: input.research.visualPlan.map((_, i) => ({
       order: i + 1,
       text: (lines[i] ?? lines[lines.length - 1]!).normalize("NFC"),
+      parts: [],
     })),
   };
 }

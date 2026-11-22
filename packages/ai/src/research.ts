@@ -26,11 +26,20 @@ export const ResearchSchema = z.object({
     .array(
       z.object({
         purpose: z.enum(["hook", "point", "example", "call_to_action"]),
-        idea: z.string().describe("What this scene says, in one English sentence"),
-        visualQuery: z.string().describe("Short English search phrase for stock footage, e.g. 'tea garden Ilam morning'"),
+        idea: z
+          .string()
+          .describe("The ONE thing the narrator says in this scene, as one short English sentence with the real fact or number"),
+        visualQuery: z
+          .string()
+          .describe(
+            "2-4 English words for stock footage that SHOWS what this scene says: a concrete thing a camera can film, e.g. 'yak walking snow', 'climbers on ice ridge'. Never abstract words, text, maps, charts or famous people",
+          ),
+        backupQuery: z
+          .string()
+          .describe("1-2 simpler English words for the same picture, used if nothing is found, e.g. 'yak', 'mountain climber'"),
       }),
     )
-    .describe("Ordered scenes. Shorts: 5-7 scenes. Long videos: 12-20 scenes."),
+    .describe("Ordered scenes, one spoken idea each. Shorts: 7-9 scenes. Long videos: 15-25 scenes."),
   thumbnailQuery: z
     .string()
     .describe(
@@ -53,6 +62,18 @@ Write research notes: key facts (each with its source URL), useful numbers, and 
 function planPrompt(input: ResearchInput, notes: string) {
   return `Topic: "${input.title}". Video format: ${input.format === "SHORT" ? "vertical short, about 60 seconds" : "long video, 8-12 minutes"}.
 Using ONLY these research notes, produce the facts list and the visual plan.
+
+How to build the visual plan (the pictures must match the words):
+- Each scene is ONE spoken idea: one or two short sentences, about 4-7 seconds of speech.
+- Scene 1 is the hook: the most surprising fact or a question. No greeting, no "in this video".
+- Then the facts, one per scene, in an order that tells a little story. The last fact is the best "wow".
+- The last scene is a short call to action (follow for more facts).
+- "idea" must say the actual fact (with its number), not just "talk about the history".
+- "visualQuery" must show exactly what that scene talks about, as something a camera can film.
+  If the fact is abstract (a number, a date, a record), show the thing it is about:
+  "Everest grows 4 mm a year" -> "snowy mountain peak", not "growth" or "number".
+- Stock sites have no famous people, logos, maps or charts: never ask for them.
+- Use different pictures for different scenes (no two scenes with the same visualQuery).
 
 <research_notes>
 ${notes}

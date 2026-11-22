@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { findMedia, stockProvider } from "./stock";
+import { findMedia, rankCandidates, stockProvider, tagMatch } from "./stock";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -64,4 +64,32 @@ test("Pixabay errors fall back to a colour background, without showing the key",
     console.warn = warn;
   }
   assert.ok(warnings.length === 1 && !warnings[0]!.includes("secret-key"));
+});
+
+test("tags decide: a clip that shows the scene's thing beats the first result", async () => {
+  process.env.PIXABAY_API_KEY = "test-key";
+  const tagged = (id: number, tags: string) => ({ ...clip(id, 1080, 1920), tags });
+  globalThis.fetch = (async (url: string) => {
+    if (url.includes("/api/videos/")) {
+      return new Response(JSON.stringify({ hits: [tagged(1, "city, traffic, night"), tagged(2, "yaks, animal, snow, himalaya")] }));
+    }
+    return new Response(`video bytes of ${url}`);
+  }) as typeof fetch;
+  const dir = mkdtempSync(path.join(tmpdir(), "stock-"));
+  const found = await findMedia(["yak walking snow", "yak"], "SHORT", dir, "shot-1", new Set());
+  assert.equal(found?.id, 2);
+});
+
+test("tagMatch counts the scene words found in the tags (plurals too)", () => {
+  assert.equal(tagMatch("climbers on ice ridge", "climber, ice, mountain"), 2 / 3);
+  assert.equal(tagMatch("yak", "city, car"), 0);
+});
+
+test("rankCandidates prefers clips long enough for the scene", () => {
+  const base = { kind: "video" as const, tags: "tea garden", rightShape: true, downloadUrl: "", sourceUrl: "" };
+  const ranked = rankCandidates("tea garden", [
+    { ...base, id: 1, duration: 5 },
+    { ...base, id: 2, duration: 15 },
+  ], 9);
+  assert.equal(ranked[0]!.id, 2);
 });
