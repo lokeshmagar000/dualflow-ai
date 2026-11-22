@@ -1,4 +1,4 @@
-import { ApiProblem, api, oneServerMode, problemText, storageSetup, type AutoStatus, type BulkSetup } from "@/lib/api";
+import { ApiProblem, api, oneServerMode, problemText, storageSetup, type AutoStatus, type BulkSetup, type StorageCheck } from "@/lib/api";
 import { Card, Notice, PageHeader, STATE_TEXT } from "@/components/ui";
 import { insideApiStatus } from "@/lib/inside-api";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
@@ -18,10 +18,13 @@ export default async function SettingsPage() {
   let blocked = false;
   let auto: AutoStatus | null = null;
   let bulk: BulkSetup | null = null;
+  let storageCheck: StorageCheck | null = null;
   try {
-    [auto, bulk] = await Promise.all([
+    [auto, bulk, storageCheck] = await Promise.all([
       api<AutoStatus>("/auto"),
       api<BulkSetup>("/bulk-uploads/setup").catch(() => null),
+      // A real test: the server that makes the download links asks Cloudflare R2 (older APIs: null).
+      api<StorageCheck>("/storage/check").catch(() => null),
     ]);
   } catch (e) {
     apiOk = false;
@@ -68,8 +71,14 @@ export default async function SettingsPage() {
             )}
             <Row ok={apiOk} label="API answers" text={apiOk ? `Yes, in ${ms} ms.` : apiProblem} />
             {auto && <Row ok={auto.generateNowAvailable} label="Generate now and Run now" text={auto.generateNowAvailable ? "Ready (GitHub key found)." : "Needs GITHUB_REPO and GITHUB_DISPATCH_TOKEN on Render."} warnOnly />}
-            {oneServer && <Row ok={storageOk} label="Video storage" text={storageText} />}
-            {!oneServer && bulk && <Row ok={bulk.storage === "r2"} label="Video storage" text={bulk.storage === "r2" ? "Cloudflare R2 (downloads work)." : "Local files only. Add the R2 keys on Render."} warnOnly />}
+            {storageCheck && (
+              <Row ok={storageCheck.ok && storageCheck.driver === "r2"} label="Video storage (live test)"
+                text={storageCheck.driver !== "r2"
+                  ? oneServer && storage.missing.length > 0 ? storageText : "STORAGE is set to local files. Remove STORAGE on Render (or set it to r2), so your videos in Cloudflare R2 are used."
+                  : storageCheck.ok ? `${storageCheck.where}: connected, Download works.` : `${storageCheck.problem} (Render -> ${oneServer ? "dualflow-web" : "dualflow-api"} -> Environment)`} />
+            )}
+            {!storageCheck && oneServer && <Row ok={storageOk} label="Video storage" text={storageText} />}
+            {!storageCheck && !oneServer && bulk && <Row ok={bulk.storage === "r2"} label="Video storage" text={bulk.storage === "r2" ? "Cloudflare R2 (downloads work)." : "Local files only. Add the R2 keys on Render."} warnOnly />}
             {auto && <Row ok={!auto.paused} label="Automation" text={auto.paused ? "Paused by the kill switch (Costs & limits)." : "Running."} warnOnly />}
           </ul>
         </Card>

@@ -5,7 +5,12 @@
 #     one AUTOMATIC story = one Nepali video + one English video (your unused ideas
 #     first, otherwise the AI picks a topic), up to AUTO_STORIES_PER_DAY a day (default 2).
 #     Finished videos wait on the dashboard's "Ready to upload" page for you to download.
-#   - when you press "Run now" in the dashboard (or "Run workflow" in the Actions tab).
+#     GitHub sometimes skips a scheduled run when it is busy, so there are two backup
+#     runs (3:00 AM and 5:00 AM). They only add a story when today still has fewer than
+#     AUTO_STORIES_PER_DAY, so you never get extra videos.
+#     A catch-up run at 2:15 PM Nepal (just after the free Gemini limit resets) finishes
+#     videos that had to wait for the limit. It adds no new story.
+#   - when you press "Run now" / "Generate now" in the dashboard (or "Run workflow" in the Actions tab).
 #
 # Your keys are stored in GitHub: Settings -> Secrets and variables -> Actions.
 # They are never written in the code. See README "Free plan setup".
@@ -18,9 +23,13 @@ on:
   #   4:00 AM Nepal = 22:15 UTC (the evening before)
   # GitHub sometimes starts scheduled runs 5-30 minutes late when it is busy.
   # To change the times: edit these lines (minute hour * * *, in UTC).
+  # Keep apps/api/src/routes/auto.ts (SCHEDULE_UTC) the same when you change these.
   schedule:
     - cron: "15 20 * * *" # 2:00 AM Nepal
+    - cron: "15 21 * * *" # 3:00 AM Nepal (backup, in case GitHub skipped the 2 AM run)
     - cron: "15 22 * * *" # 4:00 AM Nepal
+    - cron: "15 23 * * *" # 5:00 AM Nepal (backup, in case GitHub skipped the 4 AM run)
+    - cron: "30 8 * * *" # 2:15 PM Nepal: catch-up (finishes waiting videos, adds no new story)
   workflow_dispatch:
     inputs:
       topic:
@@ -39,10 +48,9 @@ on:
         description: "Remake the newest video (same script and voice, no Gemini needed)"
         type: boolean
         default: false
-  # Test runs: changing this file on a claude/ branch makes one practice story.
-  push:
-    branches: ["claude/**"]
-    paths: [.github/workflows/pipeline.yml]
+  # No "push" test runs any more: each one made a practice story that used up the free
+  # Gemini requests meant for your night videos (and then blocked them). To test a branch,
+  # use "Run workflow" on that branch with "Add a practice story" ticked.
 
 # Only one run at a time; a new request waits for the current run to finish.
 concurrency:
@@ -163,17 +171,20 @@ jobs:
         run: pnpm db:generate && pnpm --filter @dualflow/db run deploy
       # Your own idea (from the Mac app or "Run workflow"), or the practice story.
       - name: Add your idea or a practice story
-        if: inputs.topic || inputs.demo_story || github.event_name == 'push'
+        if: inputs.topic || inputs.demo_story
         run: pnpm --filter @dualflow/worker demo-story
         env:
           DEMO_TOPIC: ${{ inputs.topic }}
       # Automatic videos: add today's next story (does nothing if today already has enough).
       - name: Pick the next topic automatically
-        if: github.event_name != 'push' && !inputs.remake_latest
+        if: "!inputs.remake_latest && github.event.schedule != '30 8 * * *'"
         run: pnpm --filter @dualflow/worker auto-ideas
         env:
           # "Generate now" button: make one even if Auto mode is off or today already has enough.
           AUTO_FORCE: ${{ inputs.auto_now && 'true' || 'false' }}
+          # Which video of the day this scheduled run is for: the 2 AM run (and its 3 AM backup)
+          # makes video 1, the 4 AM run (and its 5 AM backup) makes video 2.
+          AUTO_SLOT: ${{ (github.event.schedule == '15 20 * * *' || github.event.schedule == '15 21 * * *') && '1' || (github.event.schedule == '15 22 * * *' || github.event.schedule == '15 23 * * *') && '2' || '' }}
       - name: Remake the newest video
         if: inputs.remake_latest
         run: pnpm --filter @dualflow/worker remake-video
@@ -196,4 +207,6 @@ jobs:
           retention-days: 7
       - name: Delete old files (keeps storage under 10 GB)
         if: always()
+        # A short Cloudflare hiccup here must not turn a good video run red.
+        continue-on-error: true
         run: pnpm --filter @dualflow/worker cleanup

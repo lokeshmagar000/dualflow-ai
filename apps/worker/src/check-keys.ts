@@ -75,9 +75,36 @@ else {
     const get = await r2.fetch(url);
     if (!get.ok || (await get.text()) !== "नमस्ते") throw new Error(`download HTTP ${get.status}`);
     await r2.fetch(url, { method: "DELETE" });
-    report("Cloudflare R2", "PASS", `bucket "${bucket}" write/read/delete OK`);
+    // GitHub hides the bucket name in logs, so say whether it is the default one: when it is not,
+    // the dashboard on Render needs R2_BUCKET too (without it, it looks in "dualflow").
+    const isDefault = bucket === "dualflow" ? "it is the default name" : 'NOT the default "dualflow": Render needs R2_BUCKET too';
+    report("Cloudflare R2", "PASS", `bucket "${bucket}" write/read/delete OK (${isDefault})`);
   } catch (e) {
     report("Cloudflare R2", "FAIL", `${clean((e as Error).message)} (bucket "${bucket}")`);
+  }
+}
+
+// 3b) Download test: the same short-lived download address the dashboard's Download button
+//     makes, for the newest finished video. Shows whether a browser could really get the file.
+if (!r2Missing.length && env.DATABASE_URL) {
+  const db = new PrismaClient({ datasources: { db: { url: env.DATABASE_URL } } });
+  try {
+    const { downloadUrlFor } = await import("@dualflow/storage");
+    const newest = await db.variant.findFirst({ where: { outputKey: { not: null } }, orderBy: { updatedAt: "desc" }, select: { outputKey: true } });
+    if (!newest?.outputKey) report("Download test", "SKIP", "no finished video in the database");
+    else {
+      const url = await downloadUrlFor(newest.outputKey, { fileName: "test.mp4" });
+      if (!url) report("Download test", "FAIL", "storage is not R2 here");
+      else {
+        const res = await fetch(url, { headers: { range: "bytes=0-99" } });
+        const body = res.ok ? "" : clean((await res.text()).match(/<Code>([^<]+)<\/Code>/)?.[1] ?? "");
+        report("Download test", res.ok ? "PASS" : "FAIL", `HTTP ${res.status} ${res.headers.get("content-type") ?? ""} ${body}`.trim());
+      }
+    }
+  } catch (e) {
+    report("Download test", "FAIL", clean((e as Error).message));
+  } finally {
+    await db.$disconnect();
   }
 }
 

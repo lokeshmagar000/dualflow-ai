@@ -15,9 +15,15 @@
  * The "Generate now" button sets AUTO_FORCE=true: it adds one story even when Auto mode
  * is off or today already has enough.
  *
+ * Scheduled runs pass AUTO_SLOT: "1" for the 2 AM run and its 3 AM backup, "2" for the
+ * 4 AM run and its 5 AM backup. A run only adds a story while today has fewer than its
+ * slot number, so a backup run adds one only when GitHub skipped the main run.
+ *
  * It waits (adds nothing) while another story is still being made, while the
  * kill switch is on, or when today's free Gemini requests would not be enough
  * for a whole story. Then the next run tries again.
+ * A story that says "being made" but has no step left in the queue is stuck
+ * (it can never finish): it is marked as failed so it stops blocking new videos.
  */
 import { prisma } from "@dualflow/db";
 import { enqueue } from "@dualflow/queue";
@@ -46,6 +52,16 @@ export function startOfLocalDay(timeZone: string, now = new Date()): Date {
   const offsetMs = localAsUtc - Math.floor(now.getTime() / 1000) * 1000;
   const localMidnightAsUtc = Date.UTC(get("year"), get("month") - 1, get("day"));
   return new Date(localMidnightAsUtc - offsetMs);
+}
+
+/**
+ * How many stories this run may add.
+ * `slot` (from AUTO_SLOT) caps the day's total for this run: slot 1 = only the day's first video.
+ */
+export function roomForRun(opts: { force: boolean; perDay: number; perRun: number; today: number; slot?: number }): number {
+  if (opts.force) return 1;
+  const cap = opts.slot && opts.slot > 0 ? Math.min(opts.perDay, opts.slot) : opts.perDay;
+  return Math.max(0, Math.min(opts.perRun, cap - opts.today));
 }
 
 async function main() {
@@ -78,16 +94,45 @@ async function main() {
 
   // Bulk uploads (your own finished videos) are stories too, but they are not counted.
   const made = { workspaceId: workspace.id, topic: { source: { not: "UPLOAD" as const } } };
-  const busy = await prisma.story.count({ where: { ...made, status: "GENERATING" } });
+  const generating = await prisma.story.findMany({ where: { ...made, status: "GENERATING" }, select: { id: true, run: true } });
+  let busy = 0;
+  let waitingUntil: Date | null = null;
+  for (const s of generating) {
+    const next = await prisma.pipelineJob.findFirst({
+      where: { storyId: s.id, run: s.run, status: { in: ["QUEUED", "RUNNING"] } },
+      orderBy: { runAfter: "asc" },
+      select: { runAfter: true },
+    });
+    if (!next) {
+      // Nothing left in the queue for it: it can never finish. Stop it blocking new videos.
+      await prisma.story.update({
+        where: { id: s.id },
+        data: { status: "FAILED", lastError: "Stopped: no step was left to run. Press Retry on the story to make it again." },
+      });
+      await prisma.variant.updateMany({ where: { storyId: s.id, status: "GENERATING" }, data: { status: "FAILED" } });
+      console.log(`Story ${s.id} was stuck (no step left in the queue). Marked as failed.`);
+      continue;
+    }
+    busy++;
+    if (next.runAfter > new Date() && (!waitingUntil || next.runAfter > waitingUntil)) waitingUntil = next.runAfter;
+  }
   if (busy > 0) {
-    console.log(`${busy} story(s) still being made. The new one waits for the next run.`);
+    const why = waitingUntil
+      ? ` It waits for the free Gemini limit until ${waitingUntil.toISOString()} (UTC).`
+      : "";
+    console.log(`${busy} story(s) still being made.${why} The new one waits for the next run.`);
     return;
   }
 
   const today = await prisma.story.count({ where: { ...made, createdAt: { gte: startOfLocalDay(timeZone) } } });
-  const room = force ? 1 : Math.min(perRun, perDay - today);
+  const slot = Number(process.env.AUTO_SLOT || 0) || undefined;
+  const room = roomForRun({ force, perDay, perRun, today, slot });
   if (room <= 0) {
-    console.log(`Today already has ${today} of ${perDay} automatic stories. Next one tomorrow.`);
+    console.log(
+      slot && slot < perDay && today >= slot
+        ? `Today already has ${today} automatic story(s); this run was for video ${slot}. Nothing to add.`
+        : `Today already has ${today} of ${perDay} automatic stories. Next one tomorrow.`,
+    );
     return;
   }
 

@@ -9,7 +9,7 @@
  *  - Files on this computer: we pass the file through.
  * middleware.ts checks the login first, so only you can download.
  */
-import { apiRaw, oneServerMode, storageSetup } from "@/lib/api";
+import { apiRaw, oneServerMode, problemText, storageSetup } from "@/lib/api";
 
 const KINDS = new Set(["video", "thumbnail", "srt"]);
 
@@ -25,8 +25,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ variantI
   if (size) forward.set("size", size);
   const qs = forward.toString();
 
-  const res = await apiRaw(`/variants/${variantId}/download/${kind}${qs ? `?${qs}` : ""}`);
+  let res: Response;
+  try {
+    res = await apiRaw(`/variants/${variantId}/download/${kind}${qs ? `?${qs}` : ""}`);
+  } catch (e) {
+    return text(`Could not get the file: ${problemText(e)}`, 502);
+  }
   if (!res.ok) {
+    // The API explains settings problems (wrong bucket name, wrong keys) in plain words.
+    const explained = await res
+      .json()
+      .then((j: { error?: unknown }) => (typeof j.error === "string" ? j.error : ""))
+      .catch(() => "");
+    if (res.status === 422 && explained) {
+      return text(`Download is not working yet: ${explained}\n\nWhere: Render -> dualflow-web -> Environment. After saving, wait until Render says "Live", then try again. Settings in the dashboard shows the same check.`, 502);
+    }
     // Video storage not connected? Then the file is in Cloudflare R2 but this server looks on its own disk.
     const notConnected = oneServerMode() && storageSetup().driver === "local";
     const message = notConnected
@@ -34,7 +47,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ variantI
       : res.status === 404
         ? "This file is not there any more (it may have been deleted after upload)."
         : `Could not get the file (error ${res.status}). Try again in a minute.`;
-    return new Response(message, { status: res.status === 404 ? 404 : 502 });
+    return text(message, res.status === 404 ? 404 : 502);
   }
 
   if ((res.headers.get("content-type") ?? "").includes("application/json")) {
@@ -50,4 +63,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ variantI
       "cache-control": "private, no-store",
     },
   });
+}
+
+/** A plain text answer the browser shows as a page (with Nepali letters shown correctly). */
+function text(message: string, status: number) {
+  return new Response(message, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
 }

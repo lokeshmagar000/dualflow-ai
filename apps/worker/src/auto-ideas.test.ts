@@ -12,3 +12,16 @@ test("Nepal day starts at 18:15 UTC the day before", () => {
 test("UTC day starts at midnight", () => {
   assert.equal(startOfLocalDay("UTC", new Date("2026-11-20T15:41:05.123Z")).toISOString(), "2026-11-20T00:00:00.000Z");
 });
+
+test("backup runs add a video only when the main run was skipped", async () => {
+  const { roomForRun } = await import("./auto-ideas");
+  const base = { force: false, perDay: 2, perRun: 1 };
+  assert.equal(roomForRun({ ...base, today: 0, slot: 1 }), 1); // 2 AM run (or 3 AM backup after a skipped 2 AM)
+  assert.equal(roomForRun({ ...base, today: 1, slot: 1 }), 0); // 3 AM backup when 2 AM worked
+  assert.equal(roomForRun({ ...base, today: 1, slot: 2 }), 1); // 4 AM run
+  assert.equal(roomForRun({ ...base, today: 2, slot: 2 }), 0); // 5 AM backup when 4 AM worked
+  assert.equal(roomForRun({ ...base, today: 0, slot: 2 }), 1); // both skipped: still one per run
+  assert.equal(roomForRun({ ...base, today: 2 }), 0); // "Run now" without slot
+  assert.equal(roomForRun({ ...base, today: 5, force: true }), 1); // Generate now
+  assert.equal(roomForRun({ ...base, perDay: 0, today: 0, slot: 1 }), 0); // automatic videos off
+});

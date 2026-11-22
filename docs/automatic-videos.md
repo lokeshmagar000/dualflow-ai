@@ -17,7 +17,18 @@ You download them and upload them to YouTube, Facebook, Instagram and TikTok **y
 
 By default it makes **2 stories a day** (= 4 videos: 2 Nepali + 2 English), ready when you wake up.
 
-**Change the times:** open `.github/workflows/pipeline.yml` and edit the two `cron:` lines.
+**Backup runs (so a night is never empty):** GitHub sometimes *skips* a scheduled run when it is busy.
+So there are backup runs at **3:00 AM** (for the 2 AM video) and **5:00 AM** (for the 4 AM video).
+A backup run only makes a video when its main run did not, so you never get extra videos.
+A **catch-up run at 2:15 PM** finishes videos that had to wait for the free Gemini limit
+(it resets at 1:45 PM Nepal time). It never starts a new topic.
+
+**Free Gemini limit:** Gemini's free plan allows about **20 requests a day**, which is enough for about
+**2 stories**. The day resets at **1:45 PM Nepal time**. So if you press **Generate now** in the afternoon or
+evening, that uses the requests the night videos need, and the night videos wait for the next reset.
+
+**Change the times:** open `.github/workflows/pipeline.yml` and edit the `cron:` lines
+(and `SCHEDULE_UTC` in `apps/api/src/routes/auto.ts`, so the dashboard shows the right times).
 GitHub's clock is UTC, which is 5 hours 45 minutes *behind* Nepal:
 
 | Nepal time | cron line (UTC) |
