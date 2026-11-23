@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { api, type ChannelInfo } from "@/lib/api";
+import { api, envPlace, hostName, type ChannelInfo } from "@/lib/api";
 import { callbackUrl, type ConnectPlatform } from "@/lib/connect";
 import { ApiError, Card, LangBadge, Notice, PageHeader, SectionTitle } from "@/components/ui";
 import { ActionButton } from "@/components/ActionButton";
@@ -43,8 +43,8 @@ export default async function ChannelsPage({ searchParams }: { searchParams: Pro
       {q.connect === "ok" && <Notice tone="ok" title="Connected 🎉">{q.msg}</Notice>}
       {q.connect === "error" && <Notice tone="bad" title="Not connected">{q.msg}</Notice>}
       {!status.keyReady && (
-        <Notice tone="warn" title="One setting is missing on Render">
-          To keep tokens safe, the dashboard locks them with your <code>R2_SECRET_ACCESS_KEY</code>. Add it on Render (dualflow-web, Environment)
+        <Notice tone="warn" title={`One setting is missing on ${hostName()}`}>
+          To keep tokens safe, the dashboard locks them with your <code>R2_SECRET_ACCESS_KEY</code>. Add it on {envPlace()}
           with the same value as in GitHub Secrets, then come back.
         </Notice>
       )}

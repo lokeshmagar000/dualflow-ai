@@ -38,7 +38,7 @@ export function GenerateNowButton({ available }: { available: boolean }) {
       <div className="text-fg2">
         <button className="btn" disabled aria-disabled="true"><IconBolt className="h-4 w-4" /> Generate now</button>
         <p className="mt-2 text-xs text-fg3">
-          Needs the GitHub key on Render (<code>GITHUB_REPO</code> + <code>GITHUB_DISPATCH_TOKEN</code>). Until then: GitHub,
+          Needs the GitHub key on your dashboard host, Render or Vercel (<code>GITHUB_REPO</code> + <code>GITHUB_DISPATCH_TOKEN</code>). Until then: GitHub,
           then <b>Actions</b>, <b>Pipeline</b>, <b>Run workflow</b>, tick <b>Make one automatic video now</b>, and press <b>Run workflow</b>.
         </p>
       </div>

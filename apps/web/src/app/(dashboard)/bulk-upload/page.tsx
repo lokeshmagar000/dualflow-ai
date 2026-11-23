@@ -3,7 +3,7 @@
  * Instagram and TikTok in one click. Protected by the dashboard login (src/middleware.ts).
  */
 import Link from "next/link";
-import { api, type BulkSetup, type BulkUploadItem } from "@/lib/api";
+import { api, hostName, type BulkSetup, type BulkUploadItem } from "@/lib/api";
 import { ApiError, EmptyState, LangBadge, Notice, PageHeader, SectionTitle } from "@/components/ui";
 import { ActionButton } from "@/components/ActionButton";
 import { UploadStatus, nepalTime } from "@/components/UploadStatus";
@@ -37,7 +37,7 @@ export default async function BulkUploadPage() {
         </SectionTitle>
         {!setup.uploadRunReady && (
           <Notice tone="warn">
-            Quick uploads are off (<code>GITHUB_REPO</code> and <code>GITHUB_DISPATCH_TOKEN</code> on Render), so videos go up with the next Pipeline run (2 AM or 4 AM Nepal time).
+            Quick uploads are off (<code>GITHUB_REPO</code> and <code>GITHUB_DISPATCH_TOKEN</code> on {hostName()}), so videos go up with the next Pipeline run (2 AM or 4 AM Nepal time).
           </Notice>
         )}
         {recent.length === 0 && <EmptyState title="Nothing sent yet">Videos you send with the form above show here, with the result for each platform.</EmptyState>}

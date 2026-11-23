@@ -5,6 +5,8 @@
 
 generator client {
   provider = "prisma-client-js"
+  // "native" = this computer. rhel-openssl-3.0.x = Vercel's servers (the dashboard can run there).
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {

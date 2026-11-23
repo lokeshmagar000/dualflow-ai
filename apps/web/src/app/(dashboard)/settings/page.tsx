@@ -1,4 +1,4 @@
-import { ApiProblem, api, oneServerMode, problemText, storageSetup, type AutoStatus, type BulkSetup, type StorageCheck } from "@/lib/api";
+import { ApiProblem, api, envPlace, hostName, oneServerMode, problemText, storageSetup, type AutoStatus, type BulkSetup, type StorageCheck } from "@/lib/api";
 import { Card, Notice, PageHeader, STATE_TEXT } from "@/components/ui";
 import { insideApiStatus } from "@/lib/inside-api";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
@@ -38,8 +38,8 @@ export default async function SettingsPage() {
   const storageText = storageOk
     ? "Cloudflare R2 (Download and Delete work)."
     : storage.missing.length > 0
-      ? `Not connected, so Download cannot find your videos. Add these on Render (dualflow-web, Environment): ${storage.missing.join(", ")}.`
-      : "STORAGE is set to local files. Remove STORAGE on Render (or set it to r2), so your videos in Cloudflare R2 are used.";
+      ? `Not connected, so Download cannot find your videos. Add these on ${envPlace()}: ${storage.missing.join(", ")}.`
+      : `STORAGE is set to local files. Remove STORAGE on ${hostName()} (or set it to r2), so your videos in Cloudflare R2 are used.`;
 
   return (
     <>
@@ -70,12 +70,12 @@ export default async function SettingsPage() {
               </li>
             )}
             <Row ok={apiOk} label="API answers" text={apiOk ? `Yes, in ${ms} ms.` : apiProblem} />
-            {auto && <Row ok={auto.generateNowAvailable} label="Generate now and Run now" text={auto.generateNowAvailable ? "Ready (GitHub key found)." : "Needs GITHUB_REPO and GITHUB_DISPATCH_TOKEN on Render."} warnOnly />}
+            {auto && <Row ok={auto.generateNowAvailable} label="Generate now and Run now" text={auto.generateNowAvailable ? "Ready (GitHub key found)." : `Needs GITHUB_REPO and GITHUB_DISPATCH_TOKEN on ${hostName()}.`} warnOnly />}
             {storageCheck && (
               <Row ok={storageCheck.ok && storageCheck.driver === "r2"} label="Video storage (live test)"
                 text={storageCheck.driver !== "r2"
-                  ? oneServer && storage.missing.length > 0 ? storageText : "STORAGE is set to local files. Remove STORAGE on Render (or set it to r2), so your videos in Cloudflare R2 are used."
-                  : storageCheck.ok ? `${storageCheck.where}: connected, Download works.` : `${storageCheck.problem} (Render -> ${oneServer ? "dualflow-web" : "dualflow-api"} -> Environment)`} />
+                  ? oneServer && storage.missing.length > 0 ? storageText : `STORAGE is set to local files. Remove STORAGE on ${hostName()} (or set it to r2), so your videos in Cloudflare R2 are used.`
+                  : storageCheck.ok ? `${storageCheck.where}: connected, Download works.` : `${storageCheck.problem} (${oneServer ? envPlace() : "Render, dualflow-api, Environment"})`} />
             )}
             {!storageCheck && oneServer && <Row ok={storageOk} label="Video storage" text={storageText} />}
             {!storageCheck && !oneServer && bulk && <Row ok={bulk.storage === "r2"} label="Video storage" text={bulk.storage === "r2" ? "Cloudflare R2 (downloads work)." : "Local files only. Add the R2 keys on Render."} warnOnly />}
@@ -97,6 +97,7 @@ export default async function SettingsPage() {
               ["channel-and-token-guide.md", "Make channels and get upload tokens"],
               ["bulk-upload.md", "Bulk upload setup"],
               ["put-dashboard-online.md", "Put the dashboard online on Render"],
+              ["move-to-vercel.md", "Move the dashboard to Vercel (fast, never sleeps)"],
             ].map(([file, label]) => (
               <li key={file}>
                 <a href={`${REPO}/${file}`} target="_blank" rel="noopener noreferrer"
