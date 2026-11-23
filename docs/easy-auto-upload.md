@@ -161,6 +161,24 @@ when a channel is connected on the dashboard too, the dashboard one is used.
 
 ---
 
+## Part 6. Upload one video by hand (the Upload buttons)
+
+Don't want to wait for Auto upload? Open **Ready to upload**:
+
+- **Upload to my Nepali channels** / **Upload to my English channels** under each video sends that video
+  only to the connected channels of **its** language (Nepali video → Namaste Facts नेपाली).
+- **Upload all to my channels** (top of the page) sends every waiting video.
+- Under each video, **Sent to your channels** shows *in the queue*, *uploading…*, *uploaded ✓* (with an **open** link) or *failed* (with the reason).
+
+The buttons work even when Auto upload is **Off** (Off only means "nothing uploads by itself").
+In **Practice** they post nothing.
+
+**Right away, or at the next upload time?**
+If Render has `GITHUB_REPO` and `GITHUB_DISPATCH_TOKEN` (see [automatic-videos.md](automatic-videos.md)), the upload starts
+right away and takes 2-5 minutes. Without them it goes up at the next upload time (about 7:05 AM, 12:35 PM or 7:05 PM).
+
+---
+
 ## Common problems
 
 | What you see | Why | Fix |

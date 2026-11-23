@@ -64,7 +64,7 @@ test("a token locked with another key is skipped and explained, the rest still w
 });
 
 test("switch positions", () => {
-  assert.deepEqual(switchToEnv("off"), { PUBLISH_ENABLED: "false" });
+  assert.equal(switchToEnv("off").PUBLISH_MODE, "manual"); // buttons still work, nothing by itself
   assert.equal(switchToEnv("practice").PUBLISH_DRY_RUN, "true");
   assert.equal(switchToEnv("approval").PUBLISH_MODE, "approval");
 });

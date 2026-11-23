@@ -5,8 +5,8 @@ import { CopyButton } from "@/components/CopyButton";
 import { nepalTime } from "@/components/UploadStatus";
 import { DeleteStoryButton } from "@/components/DeleteStoryButton";
 import { ActionButton } from "@/components/ActionButton";
-import { IconCheck, IconChevronLeft, IconChevronRight, IconDownload } from "@/components/icons";
-import { setUploaded } from "./actions";
+import { IconCheck, IconChevronLeft, IconChevronRight, IconDownload, IconUpload } from "@/components/icons";
+import { setUploaded, uploadAll, uploadVideo } from "./actions";
 
 /**
  * Ready to upload: every finished video, Nepali and English side by side.
@@ -24,9 +24,15 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
   const show = TABS.some((t) => t.key === rawShow) ? rawShow! : "waiting";
   const page = Math.max(1, Number(rawPage) || 1);
   let data: ReadyData;
+  let canUpload = false; // true when at least one channel is connected (Channels page)
   try {
     // Only 10 stories at a time (one "page"), so the page loads fast.
-    data = await api<ReadyData>(`/ready?show=${show}&page=${page}`);
+    const [ready, connect] = await Promise.all([
+      api<ReadyData>(`/ready?show=${show}&page=${page}`),
+      api<{ channels?: { connected: boolean }[] }>("/connect").catch(() => null),
+    ]);
+    data = ready;
+    canUpload = Boolean(connect?.channels?.some((c) => c.connected));
   } catch (e) {
     return (<><PageHeader title="Ready to upload" /><ApiError error={e} /></>);
   }
@@ -47,14 +53,29 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="Ready to upload"
-        subtitle="Download each video, upload it to the channel of its language, then press Mark as uploaded."
+        subtitle={canUpload
+          ? "Press Upload to send a video to your connected channels of its language. Or download it and post it yourself."
+          : "Download each video, upload it to the channel of its language, then press Mark as uploaded."}
         actions={videoCount > 0 ? (
-          // A plain link: the browser shows the download progress.
-          <a href={`/download/all?show=${show}`} className="btn btn-primary">
-            <IconDownload className="h-4 w-4" /> Download all ({videoCount}) as .zip
-          </a>
+          <>
+            {/* A plain link: the browser shows the download progress. */}
+            <a href={`/download/all?show=${show}`} className="btn">
+              <IconDownload className="h-4 w-4" /> Download all ({videoCount}) as .zip
+            </a>
+            {canUpload && show === "waiting" && (
+              <ActionButton action={uploadAll} label={<><IconUpload className="h-4 w-4" /> Upload all to my channels</>}
+                pendingLabel="Adding…" className="btn btn-primary" showOk align="end" />
+            )}
+          </>
         ) : undefined}
       />
+
+      {!canUpload && stories.length > 0 && (
+        <Notice tone="info" title="Want an Upload button here?">
+          Connect your channels once on <Link href="/channels" className="underline">Channels</Link>. Then each video gets an
+          <b> Upload to my channels</b> button, and Auto upload can post them by itself.
+        </Notice>
+      )}
 
       {oldApi && (
         <Notice tone="warn" title="The API server runs an older version">
@@ -102,7 +123,7 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
             {/* Nepali first, then English. */}
             <div className="grid gap-px bg-stroke xl:grid-cols-2">
               {[...(s.variants ?? [])].sort((a, b) => (a.language === "ne" ? -1 : b.language === "ne" ? 1 : 0)).map((v) => (
-                <VideoCard key={v.id} v={v} />
+                <VideoCard key={v.id} v={v} canUpload={canUpload} />
               ))}
             </div>
           </section>
@@ -133,7 +154,7 @@ const SIZE_LABELS: Record<string, { short: string; title: string }> = {
   feed: { short: "FB / Insta post", title: "1080x1350: Facebook and Instagram feed posts" },
 };
 
-function VideoCard({ v }: { v: ReadyVariant }) {
+function VideoCard({ v, canUpload }: { v: ReadyVariant; canUpload: boolean }) {
   const tags = (v.hashtags ?? []).map((h) => `#${h.replace(/^#/, "")}`);
   const hashtags = tags.join(" ");
   const fullText = [v.description, hashtags].filter(Boolean).join("\n\n");
@@ -205,9 +226,16 @@ function VideoCard({ v }: { v: ReadyVariant }) {
         </div>
       </div>
 
+      {(v.publications?.length ?? 0) > 0 && <SentTo pubs={v.publications!} />}
+
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        {hasVideo && canUpload && (
+          <ActionButton action={uploadVideo} fields={{ variantId: v.id }} showOk
+            label={<><IconUpload className="h-4 w-4" /> Upload to my {langName} channels</>}
+            pendingLabel="Adding…" className="btn btn-primary" />
+        )}
         {hasVideo && (
-          <a href={`/download/${v.id}/video`} className="btn btn-primary">
+          <a href={`/download/${v.id}/video`} className={`btn ${canUpload ? "" : "btn-primary"}`}>
             <IconDownload className="h-4 w-4" /> Download video
           </a>
         )}
@@ -264,6 +292,38 @@ function Hashtags({ tags, lang }: { tags: string[]; lang: string }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+const PLATFORM: Record<string, string> = { YOUTUBE: "YouTube", FACEBOOK: "Facebook", INSTAGRAM: "Instagram", TIKTOK: "TikTok" };
+const SENT: Record<string, { text: string; cls: string }> = {
+  READY: { text: "waits for Approve", cls: "bg-subtle2 text-fg2" },
+  SCHEDULED: { text: "in the queue", cls: "bg-info-tint text-info" },
+  GENERATING: { text: "uploading…", cls: "bg-warn-tint text-warn" },
+  PUBLISHED: { text: "uploaded ✓", cls: "bg-ok-tint text-ok" },
+  FAILED: { text: "failed", cls: "bg-bad-tint text-bad" },
+};
+
+/** Where this video was sent: one chip per channel, a link when it is up, the reason when it failed. */
+function SentTo({ pubs }: { pubs: NonNullable<ReadyVariant["publications"]> }) {
+  return (
+    <div className="mt-4 rounded-md bg-subtle p-3">
+      <p className="mb-2 text-xs font-semibold text-fg3">Sent to your channels</p>
+      <ul className="space-y-1.5">
+        {pubs.map((p, i) => {
+          const s = SENT[p.status] ?? { text: p.status.toLowerCase(), cls: "bg-subtle2 text-fg2" };
+          return (
+            <li key={i} className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-semibold">{PLATFORM[p.channel.platform] ?? p.channel.platform}</span>
+              <span className="text-fg3">{p.channel.name}</span>
+              <span className={`badge ${s.cls}`}>{s.text}</span>
+              {p.postUrl && <a href={p.postUrl} target="_blank" rel="noreferrer" className="text-brand-fg underline">open</a>}
+              {p.error && <span className="w-full break-words text-xs text-fg3">{p.error}</span>}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

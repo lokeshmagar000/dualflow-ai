@@ -299,6 +299,8 @@ export interface ReadyVariant {
   thumbnailUrl: string | null; // direct address of the preview picture (fast), or null
   thumbnailSizes?: string[]; // extra sizes: "shorts" | "youtube" | "feed"
   subtitles: { id: string }[];
+  /** Where this video was sent (Upload buttons or Auto upload). */
+  publications?: { status: string; postUrl: string | null; error: string | null; scheduledAt: string | null; channel: { name: string; platform: string } }[];
 }
 export interface ReadyStory {
   id: string;
