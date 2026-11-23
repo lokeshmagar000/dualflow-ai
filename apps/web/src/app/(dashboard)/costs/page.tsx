@@ -1,4 +1,4 @@
-import { api, type CostSummary, type PipelineStatus } from "@/lib/api";
+import { api, hostName, type CostSummary, type PipelineStatus } from "@/lib/api";
 import { ApiError, Card, Notice, PageHeader, SectionTitle } from "@/components/ui";
 import { ActionButton } from "@/components/ActionButton";
 import { nepalTime } from "@/components/UploadStatus";
@@ -44,7 +44,7 @@ export default async function CostsPage() {
             ) : (
               <>
                 <button className="btn" disabled aria-disabled="true">Run now</button>
-                <p className="mt-2 text-xs text-fg3">Run now needs <code>GITHUB_REPO</code> and <code>GITHUB_DISPATCH_TOKEN</code> on Render (see Settings).</p>
+                <p className="mt-2 text-xs text-fg3">Run now needs <code>GITHUB_REPO</code> and <code>GITHUB_DISPATCH_TOKEN</code> on {hostName()} (see Settings).</p>
               </>
             )}
           </div>

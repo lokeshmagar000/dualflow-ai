@@ -43,7 +43,7 @@ export function secretKeySource(env: Env = process.env): string | null {
 function keyFor(env: Env) {
   const m = keyMaterial(env);
   if (!m) {
-    throw new SecretKeyError("No key to lock tokens with: add R2_SECRET_ACCESS_KEY (or TOKEN_KEY) on Render and in GitHub Secrets.");
+    throw new SecretKeyError("No key to lock tokens with: add R2_SECRET_ACCESS_KEY (or TOKEN_KEY) on your dashboard host (Render or Vercel) and in GitHub Secrets.");
   }
   const key = createHash("sha256").update(`dualflow-token-box:${m.value}`).digest();
   // The id is a different hash, so it tells nothing about the key itself.

@@ -3,18 +3,28 @@
  * The secret key stays on the server; the browser never sees it.
  */
 import "server-only";
-import { INSIDE_API_PORT, insideApiStatus, startInsideApi } from "./inside-api";
+import { insideApiBaseUrl, insideApiStatus, startInsideApi } from "./inside-api";
 
 /**
  * The API address. People often type it without "https://" or with a "/" at
  * the end, so we fix both here instead of failing.
  */
-function apiBaseUrl() {
+async function apiBaseUrl() {
   // One server mode: the API runs on this same machine (lib/inside-api.ts).
-  if (process.env.DATABASE_URL) return `http://127.0.0.1:${INSIDE_API_PORT}`;
+  if (process.env.DATABASE_URL) return insideApiBaseUrl();
   let url = (process.env.API_URL ?? "").trim() || "http://localhost:4000";
   if (!/^https?:\/\//.test(url)) url = `https://${url}`;
   return url.replace(/\/+$/, "");
+}
+
+/** Where the dashboard runs, for messages: "Vercel" or "Render". */
+export function hostName() {
+  return process.env.VERCEL === "1" ? "Vercel" : "Render";
+}
+
+/** Where you add a setting (environment variable) for the dashboard, in plain words. */
+export function envPlace() {
+  return process.env.VERCEL === "1" ? "Vercel (your project, Settings, Environment Variables)" : "Render (dualflow-web, Environment)";
 }
 
 /** True when the API runs inside this same server (one server mode: DATABASE_URL is set here). */
@@ -126,7 +136,7 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetchWithRetry(`${apiBaseUrl()}${path}`, {
+  const res = await fetchWithRetry(`${await apiBaseUrl()}${path}`, {
     ...init,
     headers: {
       "content-type": "application/json",
@@ -147,7 +157,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** Like api(), but returns the raw response (for files such as audio). */
 export async function apiRaw(path: string): Promise<Response> {
-  return fetchWithRetry(`${apiBaseUrl()}${path}`, {
+  return fetchWithRetry(`${await apiBaseUrl()}${path}`, {
     headers: { "x-internal-key": process.env.INTERNAL_API_KEY ?? "" },
     cache: "no-store",
   });

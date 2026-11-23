@@ -14,6 +14,10 @@
  *   2. Start the API. If it stops, start it again after 3 seconds.
  * The current state is kept in `insideApiStatus()` so the Settings page and the
  * error box can show what is happening.
+ *
+ * SAME PROCESS (Vercel): Vercel cannot start a second program, so there the API's
+ * routes run inside this very process instead (on a random port on 127.0.0.1).
+ * The database update runs during the Vercel build instead (see apps/web/vercel.json).
  */
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -22,17 +26,22 @@ import path from "node:path";
 
 export const INSIDE_API_PORT = 4001;
 
+/** True on Vercel (or when DUALFLOW_SAME_PROCESS=1): the API runs in this process, not as a helper program. */
+export function sameProcessMode() {
+  return Boolean(process.env.DATABASE_URL) && (process.env.VERCEL === "1" || process.env.DUALFLOW_SAME_PROCESS === "1");
+}
+
 export type InsideApiState = "off" | "updating-database" | "starting" | "running" | "restarting";
 interface Status {
   state: InsideApiState;
   since: number;
   restarts: number;
   lastError: string; // last lines the API printed before it stopped (shown on Settings)
-  migrate: "not run" | "ok" | "failed";
+  migrate: "not run" | "ok" | "failed" | "done when Vercel built the dashboard";
 }
 
 // Kept on globalThis so every part of the server sees the same value.
-const g = globalThis as unknown as { __dfInsideApi?: Status };
+const g = globalThis as unknown as { __dfInsideApi?: Status; __dfSameProcess?: Promise<string> };
 export function insideApiStatus(): Status {
   return g.__dfInsideApi ?? { state: "off", since: Date.now(), restarts: 0, lastError: "", migrate: "not run" };
 }
@@ -51,8 +60,41 @@ function tail(prev: string, chunk: Buffer) {
   return (prev + chunk.toString()).slice(-1500);
 }
 
+/**
+ * The address of the API inside this server.
+ * Same process mode: starts the API's routes here the first time (takes about a second).
+ */
+export async function insideApiBaseUrl(): Promise<string> {
+  if (!sameProcessMode()) return `http://127.0.0.1:${INSIDE_API_PORT}`;
+  g.__dfSameProcess ??= startSameProcess().catch((err) => {
+    g.__dfSameProcess = undefined; // try again on the next page
+    const message = err instanceof Error ? err.stack ?? err.message : String(err);
+    set({ state: "restarting", restarts: insideApiStatus().restarts + 1, lastError: message.slice(-1500) });
+    throw err;
+  });
+  return g.__dfSameProcess;
+}
+
+async function startSameProcess(): Promise<string> {
+  if (!process.env.INTERNAL_API_KEY) process.env.INTERNAL_API_KEY = randomBytes(24).toString("hex");
+  process.env.DUALFLOW_ONE_SERVER = "1";
+  set({ state: "starting", since: Date.now(), migrate: "done when Vercel built the dashboard" });
+  const { buildApp } = await import("@dualflow/api/app");
+  const app = await buildApp({ logger: false });
+  // Port 0 = "any free port". Only this process can reach 127.0.0.1.
+  const address = await app.listen({ port: 0, host: "127.0.0.1" });
+  process.env.API_URL = address;
+  set({ state: "running", since: Date.now() });
+  console.log(`Same process mode: the API runs inside this server at ${address}`);
+  return address;
+}
+
 export function startInsideApi() {
   if (!process.env.DATABASE_URL) return; // two-server mode: use API_URL as before
+  if (sameProcessMode()) {
+    void insideApiBaseUrl().catch((err) => console.error("[same process mode] The API could not start:", err));
+    return;
+  }
   if (g.__dfInsideApi && g.__dfInsideApi.state !== "off") return; // already started
   const apiDir = findApiDir();
   if (!apiDir) {

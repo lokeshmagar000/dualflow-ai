@@ -14,11 +14,12 @@ export function isConnectPlatform(p: string): p is ConnectPlatform {
 
 /**
  * The dashboard's public address, e.g. https://dualflow-web-k3x9.onrender.com.
- * Render tells us with RENDER_EXTERNAL_URL. PUBLIC_URL can override it (for your own domain).
+ * Render tells us with RENDER_EXTERNAL_URL, Vercel with VERCEL_PROJECT_PRODUCTION_URL.
+ * PUBLIC_URL can override both (for your own domain).
  * Otherwise we read it from the request (the "host" the browser used).
  */
 export async function publicOrigin(): Promise<string> {
-  const fixed = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || "").trim().replace(/\/+$/, "");
+  const fixed = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || "").trim().replace(/\/+$/, "");
   if (fixed) return /^https?:\/\//.test(fixed) ? fixed : `https://${fixed}`;
   const h = await headers();
   const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";

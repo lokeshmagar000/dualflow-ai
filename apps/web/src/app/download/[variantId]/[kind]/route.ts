@@ -9,7 +9,7 @@
  *  - Files on this computer: we pass the file through.
  * middleware.ts checks the login first, so only you can download.
  */
-import { apiRaw, oneServerMode, problemText, storageSetup } from "@/lib/api";
+import { apiRaw, envPlace, hostName, oneServerMode, problemText, storageSetup } from "@/lib/api";
 
 const KINDS = new Set(["video", "thumbnail", "srt"]);
 
@@ -38,12 +38,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ variantI
       .then((j: { error?: unknown }) => (typeof j.error === "string" ? j.error : ""))
       .catch(() => "");
     if (res.status === 422 && explained) {
-      return text(`Download is not working yet: ${explained}\n\nWhere: Render -> dualflow-web -> Environment. After saving, wait until Render says "Live", then try again. Settings in the dashboard shows the same check.`, 502);
+      return text(`Download is not working yet: ${explained}\n\nWhere: ${envPlace()}. After saving, redeploy on ${hostName()} and wait until it is ready, then try again. Settings in the dashboard shows the same check.`, 502);
     }
     // Video storage not connected? Then the file is in Cloudflare R2 but this server looks on its own disk.
     const notConnected = oneServerMode() && storageSetup().driver === "local";
     const message = notConnected
-      ? "Your video storage (Cloudflare R2) is not connected to the dashboard, so the file cannot be found. Open Settings in the dashboard and look at the \"Video storage\" line: it says what to add on Render."
+      ? "Your video storage (Cloudflare R2) is not connected to the dashboard, so the file cannot be found. Open Settings in the dashboard and look at the \"Video storage\" line: it says what to add on " + hostName() + "."
       : res.status === 404
         ? "This file is not there any more (it may have been deleted after upload)."
         : `Could not get the file (error ${res.status}). Try again in a minute.`;

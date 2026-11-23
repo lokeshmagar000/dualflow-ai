@@ -11,3 +11,6 @@ coverage
 /storage/
 dump.rdb
 *.tsbuildinfo
+
+# Vercel CLI files
+.vercel
