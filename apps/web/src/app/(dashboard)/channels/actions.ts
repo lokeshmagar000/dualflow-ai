@@ -47,7 +47,7 @@ export async function swapMetaLanguages(_prev: ActionResult): Promise<ActionResu
 }
 
 const SWITCH_TEXT: Record<string, string> = {
-  off: "Auto upload is OFF. Videos wait on Ready to upload for you.",
+  off: "Auto upload is OFF. Videos wait on Ready to upload; press Upload there to send one.",
   practice: "PRACTICE mode: the next runs only write what they WOULD upload. Nothing is posted.",
   approval: "ASK ME FIRST: each new video waits for your Approve button, then uploads at the next upload time.",
   auto: "FULLY AUTOMATIC: every new video uploads by itself at the next upload time.",

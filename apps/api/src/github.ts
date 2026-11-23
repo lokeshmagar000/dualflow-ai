@@ -58,13 +58,13 @@ export async function triggerQuietly(log: { warn: (msg: string) => void }) {
  * a GitHub problem never breaks the request (the next Pipeline run uploads it anyway).
  */
 export async function startUploadRun(log: { warn: (msg: string) => void }): Promise<string> {
-  if (!githubRunConfigured()) return "Upload now is not set up on Render (GITHUB_REPO and GITHUB_DISPATCH_TOKEN), so the next Pipeline run (2 AM and 4 AM Nepal time) will upload it.";
+  if (!githubRunConfigured()) return "Upload now is not set up on Render (GITHUB_REPO and GITHUB_DISPATCH_TOKEN), so it goes up at the next upload time (about 7:05 AM, 12:35 PM or 7:05 PM Nepal time).";
   try {
     const r = await triggerPipelineRun(UPLOAD_WORKFLOW);
     if (!r.started) log.warn(r.message);
-    return r.started ? r.message : `Could not start the upload run (${r.message}). The next Pipeline run will upload it.`;
+    return r.started ? r.message : `Could not start the upload run (${r.message}). It goes up at the next upload time (7:05 AM, 12:35 PM or 7:05 PM Nepal).`;
   } catch (err) {
     log.warn(`Could not start the upload run: ${(err as Error).message}`);
-    return "Could not reach GitHub. The next Pipeline run will upload it.";
+    return "Could not reach GitHub. It goes up at the next upload time (7:05 AM, 12:35 PM or 7:05 PM Nepal).";
   }
 }

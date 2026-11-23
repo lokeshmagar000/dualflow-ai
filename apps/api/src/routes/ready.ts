@@ -95,6 +95,8 @@ export async function readyRoutes(app: FastifyInstance) {
               manualUploadedAt: true,
               thumbnails: { select: { storageKey: true, sizes: true }, orderBy: { createdAt: "desc" }, take: 1 },
               subtitles: { select: { id: true }, take: 1 },
+              // Where this video was sent with the Upload buttons (or by Auto upload).
+              publications: { select: { status: true, postUrl: true, error: true, scheduledAt: true, channel: { select: { name: true, platform: true } } } },
             },
           },
         },

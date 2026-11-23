@@ -68,7 +68,8 @@ export function readSwitch(value: string | undefined): UploadSwitch | null {
 export function switchToEnv(mode: UploadSwitch): Env {
   switch (mode) {
     case "off":
-      return { PUBLISH_ENABLED: "false" };
+      // Nothing uploads BY ITSELF, but the "Upload" buttons on the dashboard still work.
+      return { PUBLISH_ENABLED: "true", PUBLISH_DRY_RUN: "false", PUBLISH_MODE: "manual" };
     case "practice":
       return { PUBLISH_ENABLED: "true", PUBLISH_DRY_RUN: "true", PUBLISH_MODE: "auto" };
     case "approval":

@@ -15,3 +15,28 @@ export async function setUploaded(_prev: ActionResult, formData: FormData): Prom
   revalidatePath("/library");
   return { ok: true };
 }
+
+/** "Upload to my channels": send this video to the channels of its language, now. */
+export async function uploadVideo(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const variantId = String(formData.get("variantId"));
+  try {
+    const r = await api<{ message: string }>(`/variants/${variantId}/upload-now`, { method: "POST", body: "{}" });
+    revalidatePath("/ready");
+    revalidatePath("/calendar");
+    return { ok: true, message: r.message };
+  } catch (e) {
+    return { message: problemText(e) };
+  }
+}
+
+/** "Upload all": every waiting video, each to the channels of its language. */
+export async function uploadAll(_prev: ActionResult): Promise<ActionResult> {
+  try {
+    const r = await api<{ message: string }>("/ready/upload-all", { method: "POST", body: "{}" });
+    revalidatePath("/ready");
+    revalidatePath("/calendar");
+    return { ok: true, message: r.message };
+  } catch (e) {
+    return { message: problemText(e) };
+  }
+}

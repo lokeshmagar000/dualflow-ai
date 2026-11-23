@@ -10,7 +10,7 @@ import { saveAppKeys, setUploadSwitch, testChannels, type TestResult } from "@/a
 import type { ActionResult } from "@/lib/api";
 
 const SWITCHES = [
-  { mode: "off", name: "Off", text: "Nothing uploads. You download videos yourself." },
+  { mode: "off", name: "Off", text: "Nothing uploads by itself. Upload buttons still work." },
   { mode: "practice", name: "Practice", text: "Shows what would upload. Posts nothing." },
   { mode: "approval", name: "Ask me first", text: "Each video waits for your Approve." },
   { mode: "auto", name: "Fully automatic", text: "Every new video uploads by itself." },
