@@ -6,8 +6,9 @@
  * These routes only change the queue in the database, then start a run.
  */
 import type { FastifyInstance } from "fastify";
-import { prisma, type Variant } from "@dualflow/db";
-import { readSwitch, SETTING } from "@dualflow/publish";
+import { z } from "zod";
+import { prisma, type Prisma, type Variant } from "@dualflow/db";
+import { connectionsToEnv, readSwitch, SETTING, tiktokCreator, tiktokDefaultCaption, type TikTokPostOptions } from "@dualflow/publish";
 import { startUploadRun } from "../github";
 import { getDefaultWorkspace } from "../workspace";
 
@@ -70,12 +71,39 @@ export async function publishingRoutes(app: FastifyInstance) {
     return sendUploads(ws.id, story.variants, req.log, reply);
   });
 
+  /**
+   * The TikTok upload window: who the connected TikTok account is and what it allows.
+   * { tiktok: null } when this video's language has no connected TikTok account.
+   */
+  app.get<{ Params: { id: string } }>("/variants/:id/tiktok", async (req, reply) => {
+    const ws = await getDefaultWorkspace();
+    const v = await prisma.variant.findFirst({ where: { id: req.params.id, story: { workspaceId: ws.id } }, include: { story: { include: { topic: true } } } });
+    if (!v) return reply.code(404).send({ error: "Video not found" });
+    const channels = await uploadTargets(ws.id);
+    if (!channels.some((c) => c.platform === "TIKTOK" && c.language === v.language)) return { tiktok: null };
+    const settings = await prisma.appSetting.findMany({ where: { workspaceId: ws.id } });
+    const { overlay } = connectionsToEnv(settings, channels.filter((c) => c.accessTokenEnc || c.refreshTokenEnc));
+    const caption = tiktokDefaultCaption(v.title || v.story.topic.title, v.hashtags);
+    try {
+      const creator = await tiktokCreator(v.language, { ...process.env, ...overlay });
+      return { tiktok: { creator, caption, durationSec: v.durationSec } };
+    } catch (err) {
+      return { tiktok: { creator: null, caption, durationSec: v.durationSec, error: (err as Error).message } };
+    }
+  });
+
   /** The "Upload to my channels" button of ONE video (one language) on Ready to upload. */
-  app.post<{ Params: { id: string } }>("/variants/:id/upload-now", async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: { tiktok?: unknown } }>("/variants/:id/upload-now", async (req, reply) => {
     const ws = await getDefaultWorkspace();
     const v = await prisma.variant.findFirst({ where: { id: req.params.id, story: { workspaceId: ws.id } } });
     if (!v) return reply.code(404).send({ error: "Video not found" });
-    return sendUploads(ws.id, [v], req.log, reply);
+    let tiktok: TikTokPostOptions | undefined;
+    if (req.body?.tiktok != null) {
+      const parsed = tiktokOptions.safeParse(req.body.tiktok);
+      if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Check the TikTok choices." });
+      tiktok = parsed.data;
+    }
+    return sendUploads(ws.id, [v], req.log, reply, tiktok);
   });
 
   /** "Upload all": every video still waiting on Ready to upload. */
@@ -106,6 +134,19 @@ export async function publishingRoutes(app: FastifyInstance) {
   });
 }
 
+/** The TikTok upload window's choices (TikTok's Direct Post rules). */
+const tiktokOptions = z
+  .object({
+    privacyLevel: z.string().min(1, "Pick who can see this TikTok post.").max(40),
+    caption: z.string().max(2200, "The TikTok caption can be at most 2200 characters."),
+    allowComment: z.boolean(),
+    allowDuet: z.boolean(),
+    allowStitch: z.boolean(),
+    brandOrganic: z.boolean().optional(),
+    brandedContent: z.boolean().optional(),
+  })
+  .refine((o) => !(o.brandedContent && o.privacyLevel === "SELF_ONLY"), "Branded content cannot be private. Pick another privacy.");
+
 /**
  * The channels the Upload buttons send to.
  * If you connected channels with the dashboard's Connect buttons, only those (a channel you
@@ -124,7 +165,7 @@ type Reply = { code: (n: number) => { send: (b: unknown) => unknown } };
  * Put these videos in the upload queue for "now", each only on the channels of ITS language
  * (Nepali video -> Nepali channels), then start the small "Upload now" run.
  */
-async function sendUploads(workspaceId: string, variants: Variant[], log: Log, reply: Reply) {
+async function sendUploads(workspaceId: string, variants: Variant[], log: Log, reply: Reply, tiktok?: TikTokPostOptions) {
   const channels = await uploadTargets(workspaceId);
   if (channels.length === 0) return reply.code(409).send({ error: "No channels yet. Open Channels and press Connect first." });
 
@@ -150,10 +191,12 @@ async function sendUploads(workspaceId: string, variants: Variant[], log: Log, r
     for (const ch of channels.filter((c) => c.language === v.language)) {
       const existing = await prisma.publication.findUnique({ where: { variantId_channelId: { variantId: v.id, channelId: ch.id } } });
       if (existing?.status === "PUBLISHED" || existing?.status === "GENERATING") continue;
+      // TikTok: keep the upload window's choices with this upload, so the worker uses them.
+      const options = ch.platform === "TIKTOK" && tiktok ? ({ tiktok } as unknown as Prisma.InputJsonValue) : undefined;
       await prisma.publication.upsert({
         where: { variantId_channelId: { variantId: v.id, channelId: ch.id } },
-        update: { status: "SCHEDULED", scheduledAt: now, attempts: 0, error: null },
-        create: { variantId: v.id, channelId: ch.id, status: "SCHEDULED", scheduledAt: now },
+        update: { status: "SCHEDULED", scheduledAt: now, attempts: 0, error: null, ...(options ? { options } : {}) },
+        create: { variantId: v.id, channelId: ch.id, status: "SCHEDULED", scheduledAt: now, ...(options ? { options } : {}) },
       });
       queued++;
       where.add(ch.name);

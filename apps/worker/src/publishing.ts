@@ -31,6 +31,7 @@ import {
   PublishQuotaError,
   type ChannelConfig,
   type PlatformName,
+  type TikTokPostOptions,
 } from "@dualflow/publish";
 import { contentTypeFor, readFile } from "@dualflow/storage";
 
@@ -202,6 +203,8 @@ export async function uploadDue(workspaceId: string, now = new Date()) {
           description: v.description ?? "",
           hashtags: v.hashtags,
           durationSec: v.durationSec,
+          // TikTok: the choices from the dashboard's upload window (none for Auto upload).
+          tiktok: ch.platform === "TIKTOK" ? readTikTokOptions(pub.options) : null,
         });
         await prisma.publication.update({
           where: { id: pub.id },
@@ -261,4 +264,19 @@ export async function markPublishedIfDone(storyId: string) {
     await prisma.story.update({ where: { id: storyId }, data: { status: "PUBLISHED" } });
     console.log(`[publish] story ${storyId} is on every channel; its files can now be deleted by the cleanup.`);
   }
+}
+
+/** The TikTok part of a publication's saved choices, or null when there is none (or it looks wrong). */
+export function readTikTokOptions(options: unknown): TikTokPostOptions | null {
+  const t = (options as { tiktok?: Partial<TikTokPostOptions> } | null)?.tiktok;
+  if (!t || typeof t.privacyLevel !== "string" || typeof t.caption !== "string") return null;
+  return {
+    privacyLevel: t.privacyLevel,
+    caption: t.caption,
+    allowComment: t.allowComment !== false,
+    allowDuet: t.allowDuet !== false,
+    allowStitch: t.allowStitch !== false,
+    brandOrganic: Boolean(t.brandOrganic),
+    brandedContent: Boolean(t.brandedContent),
+  };
 }

@@ -7,6 +7,7 @@ import { DeleteStoryButton } from "@/components/DeleteStoryButton";
 import { ActionButton } from "@/components/ActionButton";
 import { IconCheck, IconChevronLeft, IconChevronRight, IconDownload, IconUpload } from "@/components/icons";
 import { setUploaded, uploadAll, uploadVideo } from "./actions";
+import { TikTokUploadButton } from "@/components/TikTokUploadButton";
 
 /**
  * Ready to upload: every finished video, Nepali and English side by side.
@@ -25,14 +26,16 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
   const page = Math.max(1, Number(rawPage) || 1);
   let data: ReadyData;
   let canUpload = false; // true when at least one channel is connected (Channels page)
+  let tiktokLangs: string[] = []; // languages with a connected TikTok account (they get the TikTok upload window)
   try {
     // Only 10 stories at a time (one "page"), so the page loads fast.
     const [ready, connect] = await Promise.all([
       api<ReadyData>(`/ready?show=${show}&page=${page}`),
-      api<{ channels?: { connected: boolean }[] }>("/connect").catch(() => null),
+      api<{ channels?: { connected: boolean; platform?: string; language?: string }[] }>("/connect").catch(() => null),
     ]);
     data = ready;
     canUpload = Boolean(connect?.channels?.some((c) => c.connected));
+    tiktokLangs = (connect?.channels ?? []).filter((c) => c.connected && c.platform === "TIKTOK" && c.language).map((c) => c.language!);
   } catch (e) {
     return (<><PageHeader title="Ready to upload" /><ApiError error={e} /></>);
   }
@@ -123,7 +126,7 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
             {/* Nepali first, then English. */}
             <div className="grid gap-px bg-stroke xl:grid-cols-2">
               {[...(s.variants ?? [])].sort((a, b) => (a.language === "ne" ? -1 : b.language === "ne" ? 1 : 0)).map((v) => (
-                <VideoCard key={v.id} v={v} canUpload={canUpload} />
+                <VideoCard key={v.id} v={v} canUpload={canUpload} tiktok={tiktokLangs.includes(v.language)} />
               ))}
             </div>
           </section>
@@ -154,7 +157,7 @@ const SIZE_LABELS: Record<string, { short: string; title: string }> = {
   feed: { short: "FB / Insta post", title: "1080x1350: Facebook and Instagram feed posts" },
 };
 
-function VideoCard({ v, canUpload }: { v: ReadyVariant; canUpload: boolean }) {
+function VideoCard({ v, canUpload, tiktok }: { v: ReadyVariant; canUpload: boolean; tiktok: boolean }) {
   const tags = (v.hashtags ?? []).map((h) => `#${h.replace(/^#/, "")}`);
   const hashtags = tags.join(" ");
   const fullText = [v.description, hashtags].filter(Boolean).join("\n\n");
@@ -229,7 +232,11 @@ function VideoCard({ v, canUpload }: { v: ReadyVariant; canUpload: boolean }) {
       {(v.publications?.length ?? 0) > 0 && <SentTo pubs={v.publications!} />}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        {hasVideo && canUpload && (
+        {hasVideo && canUpload && tiktok && (
+          // TikTok needs its own upload window first (account, privacy, caption, comments/duet/stitch).
+          <TikTokUploadButton variantId={v.id} label={<><IconUpload className="h-4 w-4" /> Upload to my {langName} channels</>} />
+        )}
+        {hasVideo && canUpload && !tiktok && (
           <ActionButton action={uploadVideo} fields={{ variantId: v.id }} showOk
             label={<><IconUpload className="h-4 w-4" /> Upload to my {langName} channels</>}
             pendingLabel="Adding…" className="btn btn-primary" />

@@ -4,7 +4,7 @@
  */
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { chunkPlan, configuredChannels, getUploader, missingSettings, modeFor, PublishConfigError, PublishQuotaError } from "./index";
+import { chunkPlan, choosePrivacy, configuredChannels, tiktokCreator, getUploader, missingSettings, modeFor, PublishConfigError, PublishQuotaError } from "./index";
 
 type Call = { url: string; method: string; headers: Record<string, string>; body: any };
 const realFetch = globalThis.fetch;
@@ -139,4 +139,48 @@ test("TikTok: picks private when the app is not audited yet, and splits big file
   const MB = 1024 * 1024;
   assert.deepEqual(chunkPlan(30 * MB), { chunkSize: 30 * MB, count: 1 });
   assert.deepEqual(chunkPlan(105 * MB), { chunkSize: 10 * MB, count: 10 }); // last piece is 15 MB
+});
+
+test("TikTok: the upload window's choices are sent as they are", async () => {
+  const env = { TIKTOK_CLIENT_KEY: "k", TIKTOK_CLIENT_SECRET: "s", TIKTOK_REFRESH_TOKEN_NE: "r" };
+  const calls = fakeFetch((c) => {
+    if (c.url.includes("oauth/token")) return { json: { access_token: "A", refresh_token: "r" } };
+    if (c.url.includes("creator_info")) {
+      return { json: { error: { code: "ok" }, data: {
+        creator_username: "namaste", creator_nickname: "Namaste Facts", privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"], stitch_disabled: true,
+      } } };
+    }
+    if (c.url.includes("video/init")) return { json: { error: { code: "ok" }, data: { publish_id: "P2", upload_url: "https://up.tiktok/y" } } };
+    if (c.url === "https://up.tiktok/y") return { status: 201 };
+    if (c.url.includes("status/fetch")) return { json: { error: { code: "ok" }, data: { status: "PUBLISH_COMPLETE", publicaly_available_post_id: [77] } } };
+    return { status: 404, json: {} };
+  });
+  const creator = await tiktokCreator("ne", env);
+  assert.equal(creator.nickname, "Namaste Facts");
+  assert.deepEqual(creator.privacyOptions, ["PUBLIC_TO_EVERYONE", "SELF_ONLY"]);
+  assert.equal(creator.stitchDisabled, true);
+
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = ((fn: () => void) => realSetTimeout(fn, 0)) as typeof setTimeout;
+  try {
+    const tiktok = { privacyLevel: "PUBLIC_TO_EVERYONE", caption: "My own caption", allowComment: true, allowDuet: false, allowStitch: true, brandOrganic: true };
+    const res = await getUploader("tiktok", "ne", env).upload({ ...input, tiktok });
+    assert.equal(res.url, "https://www.tiktok.com/@namaste/video/77");
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
+  const init = JSON.parse(calls.find((c) => c.url.includes("video/init"))!.body);
+  assert.equal(init.post_info.privacy_level, "PUBLIC_TO_EVERYONE");
+  assert.equal(init.post_info.title, "My own caption");
+  assert.equal(init.post_info.disable_comment, false);
+  assert.equal(init.post_info.disable_duet, true);
+  assert.equal(init.post_info.disable_stitch, true); // the account has stitch off
+  assert.equal(init.post_info.brand_organic_toggle, true);
+  assert.equal(init.post_info.brand_content_toggle, false);
+});
+
+test("TikTok: a picked privacy the account does not allow is never swapped silently", () => {
+  assert.equal(choosePrivacy(["SELF_ONLY"], "PUBLIC_TO_EVERYONE", "SELF_ONLY"), undefined);
+  assert.equal(choosePrivacy(["SELF_ONLY", "PUBLIC_TO_EVERYONE"], "PUBLIC_TO_EVERYONE", "SELF_ONLY"), "PUBLIC_TO_EVERYONE");
+  assert.equal(choosePrivacy(["SELF_ONLY"], undefined, "PUBLIC_TO_EVERYONE"), "SELF_ONLY"); // Auto upload: old behaviour
 });

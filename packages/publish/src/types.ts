@@ -18,6 +18,38 @@ export interface UploadInput {
   description: string;
   hashtags: string[];
   durationSec?: number | null;
+  /** TikTok only: the choices made in the dashboard's TikTok upload window. */
+  tiktok?: TikTokPostOptions | null;
+}
+
+/**
+ * What the owner picked in the TikTok upload window (TikTok's rules for "Direct Post"
+ * apps: no privacy is picked for you, the caption can be edited, and comments,
+ * duet and stitch can each be turned off).
+ */
+export interface TikTokPostOptions {
+  /** One of creator_info's privacy_level_options, e.g. PUBLIC_TO_EVERYONE or SELF_ONLY. */
+  privacyLevel: string;
+  caption: string;
+  allowComment: boolean;
+  allowDuet: boolean;
+  allowStitch: boolean;
+  /** "Your brand": you promote yourself or your own business. */
+  brandOrganic?: boolean;
+  /** "Branded content": a paid partnership with another brand (cannot be private). */
+  brandedContent?: boolean;
+}
+
+/** What TikTok says about the connected account, shown in the upload window. */
+export interface TikTokCreator {
+  username?: string;
+  nickname?: string;
+  avatarUrl?: string;
+  privacyOptions: string[];
+  commentDisabled: boolean;
+  duetDisabled: boolean;
+  stitchDisabled: boolean;
+  maxDurationSec?: number;
 }
 
 export interface UploadResult {
