@@ -105,9 +105,12 @@ Before you start: both Instagram accounts must be **Professional** (Business or 
    In **Valid OAuth Redirect URIs** paste the **Return address** from the Facebook + Instagram box
    (it ends with `/connect/meta/callback`) → **Save changes**.
 7. **Only if you have "Facebook Login for Business":** open its **Configurations** → **Create configuration** →
-   name `DualFlow` → token type **User access token** → tick these permissions:
+   name `DualFlow` → Login variation **General** → Access token **User access token**
+   (NOT "System-user access token") → tick ALL six of these permissions:
    `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `business_management`, `instagram_basic`, `instagram_content_publish`
    → **Create**. Copy the **Configuration ID** (a number).
+   Check: when you press Connect later, Facebook should list **six** things (Pages, posts, Instagram...).
+   If it only says "Manage your business" + "Show a list of the Pages you manage", the configuration is wrong: make a new one.
 8. On the Channels page, Facebook + Instagram box → **Step A** → paste **App ID**, **App secret**
    (and the **Configuration ID** if you made one in step 7) → **Save keys**.
 9. Press **Connect Facebook + Instagram**. Facebook opens:
@@ -191,6 +194,7 @@ right away and takes 2-5 minutes. Without them it goes up at the next upload tim
 | YouTube stops after 7 days | Google app is in *Testing* | Part 2, step 6 → **Publish app**, then **Reconnect** |
 | Facebook: **"URL blocked"** or **"Can't load URL"** | The return address is not in Valid OAuth Redirect URIs | Part 3, step 6 |
 | Facebook: **"Invalid Scopes"** | Your app uses Facebook Login for Business | Make a Configuration (Part 3, step 7), paste its ID in Step A |
+| Facebook: **"Facebook shows no Pages"** (the Facebook window only showed "Manage your business" + "Show a list of the Pages you manage") | The Login for Business configuration has too few permissions, or uses a *System-user* token | Make a NEW configuration exactly as in Part 3, step 7 (User access token, all six permissions), paste the new Configuration ID in Step A → **Save keys** → Connect again |
 | **"Instagram: not linked to this Page"** | Instagram is personal, or not linked to that Page | channel-and-token-guide.md part 1C, then **Reconnect Facebook + Instagram** |
 | Facebook/Instagram posts only you can see | Meta app is in Development mode | Part 3, step 11 → **Live** |
 | TikTok: **unaudited_client_can_only_post_to_private_accounts** | Account is public, app not audited | Set the TikTok account to private |

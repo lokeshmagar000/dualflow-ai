@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { lockSecret, unlockSecret, SecretKeyError, secretKeyId } from "./secret-box";
 import { connectionsToEnv, SETTING, switchToEnv } from "./connections";
-import { authorizeUrl, looksNepali, pickPages } from "./oauth";
+import { authorizeUrl, looksNepali, missingMetaScopes, noPagesMessage, pickPages } from "./oauth";
 import { configuredChannels, publishEnabled, dryRun, modeFor } from "./config";
 
 const env = { R2_SECRET_ACCESS_KEY: "r2-secret-for-tests" };
@@ -94,4 +94,14 @@ test("sign-in addresses carry the app id, the return address and the state", () 
   const tt = new URL(authorizeUrl("tiktok", app, "https://x/cb", "st"));
   assert.equal(tt.searchParams.get("client_key"), "cid");
   assert.ok(!tt.toString().includes("secret"));
+});
+
+test("no Pages: the message names the missing Facebook permissions", () => {
+  const granted = ["business_management", "pages_show_list"];
+  assert.deepEqual(missingMetaScopes(granted), ["pages_manage_posts", "pages_read_engagement", "instagram_basic", "instagram_content_publish"]);
+  const msg = noPagesMessage(granted, true);
+  assert.match(msg, /pages_manage_posts/);
+  assert.match(msg, /User access token/);
+  assert.match(noPagesMessage([], true), /Full control/);
+  assert.match(noPagesMessage(["pages_show_list", "pages_manage_posts", "pages_read_engagement", "instagram_basic", "instagram_content_publish"], true), /Full control/);
 });
