@@ -7,7 +7,7 @@ export default function LoginPage() {
   const [state, formAction, pending] = useActionState(login, {} as LoginState);
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
       <form action={formAction} className="card w-full max-w-sm space-y-4 p-6 sm:p-8">
         <div className="flex items-center gap-3">
           <img src="/logo-light.svg" alt="" width={44} height={44} className="dark:hidden" />
@@ -30,6 +30,11 @@ export default function LoginPage() {
           {pending ? "Signing in…" : "Sign in"}
         </button>
       </form>
+      {/* Public links: TikTok, Google and Meta reviewers open the site and look for these. */}
+      <p className="max-w-sm text-center text-sm text-fg3">
+        Private tool that makes Namaste Facts videos and posts them to the owner&apos;s own channels.{" "}
+        <a href="/terms" className="underline">Terms of service</a> · <a href="/privacy" className="underline">Privacy policy</a>
+      </p>
     </main>
   );
 }
