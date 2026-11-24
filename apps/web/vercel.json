@@ -2,5 +2,15 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "sh ../../scripts/vercel-build.sh"
+  "buildCommand": "sh ../../scripts/vercel-build.sh",
+  "crons": [
+    {
+      "path": "/healthz?night=1",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/healthz?night=2",
+      "schedule": "0 23 * * *"
+    }
+  ]
 }

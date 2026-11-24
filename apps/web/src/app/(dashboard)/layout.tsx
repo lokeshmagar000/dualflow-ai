@@ -1,11 +1,13 @@
 import { Sidebar } from "@/components/Sidebar";
 import { logout } from "../login/actions";
+import { pokeBackupTimer } from "@/lib/backup-timer";
 
 /**
  * Every dashboard page sits inside this frame: the menu, plus the content "layer"
  * (on big screens it has a rounded top-left corner, like Windows 11 apps).
  */
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  pokeBackupTimer(); // a night video missing? start it now (never slows the page)
   return (
     <div className="min-h-screen lg:flex">
       <Sidebar logout={logout} />

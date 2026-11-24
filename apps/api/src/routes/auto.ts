@@ -4,6 +4,7 @@
  *   GET  /auto              Auto mode on/off, next run times, AI-picked topics
  *   POST /auto              { enabled: true | false } = the Auto mode switch
  *   POST /auto/generate-now the "Generate now" button: starts a run that makes one video now
+ *   POST /auto/tick         backup timer: starts a run when a night video is missing (src/backup-timer.ts)
  *
  * The switch is saved as an AutomationRule without a channel (no new table needed).
  * No rule yet = Auto mode ON (that is how it worked before).
@@ -12,6 +13,7 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "@dualflow/db";
 import { githubRunConfigured, triggerPipelineRun } from "../github";
 import { getDefaultWorkspace } from "../workspace";
+import { backupTick } from "../backup-timer";
 
 /** The scheduled times in .github/workflows/pipeline.yml, in UTC: 20:15 and 22:15 (= 2:00 and 4:00 AM Nepal). */
 export const SCHEDULE_UTC = [
@@ -68,6 +70,18 @@ export async function autoRoutes(app: FastifyInstance) {
     else await prisma.automationRule.create({ data: { workspaceId: ws.id, cron: "15 20,22 * * *", dailyLimit: 2, enabled } });
     await prisma.auditLog.create({ data: { workspaceId: ws.id, actor: "owner", action: enabled ? "auto.on" : "auto.off" } });
     return { enabled };
+  });
+
+  // Called by /healthz and by opening dashboard pages. Never fails the caller.
+  app.post("/auto/tick", async (req) => {
+    try {
+      const r = await backupTick();
+      if (r.started) req.log.info(`Backup timer: ${r.reason}`);
+      return r;
+    } catch (err) {
+      req.log.warn(`Backup timer: ${(err as Error).message}`);
+      return { started: false, reason: (err as Error).message };
+    }
   });
 
   app.post("/auto/generate-now", async (_req, reply) => {

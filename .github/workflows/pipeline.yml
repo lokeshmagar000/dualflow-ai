@@ -8,6 +8,9 @@
 #     GitHub sometimes skips a scheduled run when it is busy, so there are two backup
 #     runs (3:00 AM and 5:00 AM). They only add a story when today still has fewer than
 #     AUTO_STORIES_PER_DAY, so you never get extra videos.
+#     GitHub's timer is often hours late or does not fire at all, so the dashboard has a
+#     backup timer too (apps/api/src/backup-timer.ts): after 2:30 / 4:30 AM Nepal it starts
+#     "Night video 1/2 (backup timer)" here if that video is still missing.
 #     A catch-up run at 2:15 PM Nepal (just after the free Gemini limit resets) finishes
 #     videos that had to wait for the limit. It adds no new story.
 #   - when you press "Run now" / "Generate now" in the dashboard (or "Run workflow" in the Actions tab).
@@ -16,7 +19,7 @@
 # They are never written in the code. See README "Free plan setup".
 name: Pipeline
 # The name shown in the run list (the Mac app shows it too).
-run-name: ${{ inputs.topic && format('Idea - {0}', inputs.topic) || inputs.auto_now && 'Generate now (automatic topic)' || format('Pipeline ({0})', github.event_name) }}
+run-name: ${{ inputs.topic && format('Idea - {0}', inputs.topic) || inputs.auto_now && 'Generate now (automatic topic)' || inputs.auto_slot && format('Night video {0} (backup timer)', inputs.auto_slot) || format('Pipeline ({0})', github.event_name) }}
 on:
   # GitHub's clock is UTC. Nepal is UTC + 5:45, so:
   #   2:00 AM Nepal = 20:15 UTC (the evening before)
@@ -40,6 +43,10 @@ on:
         description: "Make one automatic video now (the AI picks the topic), even if today already has enough"
         type: boolean
         default: false
+      auto_slot:
+        description: "Backup timer only (the dashboard fills this): make night video 1 or 2 if it is still missing"
+        type: string
+        default: ""
       demo_story:
         description: "Add a practice story first (Mount Everest, Nepali + English)"
         type: boolean
@@ -186,7 +193,8 @@ jobs:
           AUTO_FORCE: ${{ inputs.auto_now && 'true' || 'false' }}
           # Which video of the day this scheduled run is for: the 2 AM run (and its 3 AM backup)
           # makes video 1, the 4 AM run (and its 5 AM backup) makes video 2.
-          AUTO_SLOT: ${{ (github.event.schedule == '15 20 * * *' || github.event.schedule == '15 21 * * *') && '1' || (github.event.schedule == '15 22 * * *' || github.event.schedule == '15 23 * * *') && '2' || '' }}
+          # The dashboard's backup timer passes it as the auto_slot input.
+          AUTO_SLOT: ${{ inputs.auto_slot || (github.event.schedule == '15 20 * * *' || github.event.schedule == '15 21 * * *') && '1' || (github.event.schedule == '15 22 * * *' || github.event.schedule == '15 23 * * *') && '2' || '' }}
       - name: Remake the newest video
         if: inputs.remake_latest
         run: pnpm --filter @dualflow/worker remake-video

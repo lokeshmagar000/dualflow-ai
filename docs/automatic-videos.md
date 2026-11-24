@@ -49,6 +49,26 @@ At the top of **Ideas & auto mode** is the **🤖 Automatic videos** card:
 - It also shows the next run times and the topics the AI picked.
 Your own ideas (added below the card) are always made first.
 
+## Backup timer (when GitHub's night timer is late or skips)
+
+GitHub's free timer is not reliable. On 23 Nov the 2 AM run started 4½ hours late, and on
+24 Nov the night runs did not start at all, so no videos were made.
+
+So the dashboard now checks too. After **2:30 AM** Nepal it makes sure video 1 exists, and after
+**4:30 AM** video 2. If one is missing and no run is busy, it starts the run itself. On the
+Actions page that run is called **Night video 1 (backup timer)** or **Night video 2 (backup timer)**.
+It never makes extra videos: it still follows the daily limit and the Auto mode switch.
+
+The check happens when:
+- **Vercel** opens `/healthz` by itself once between 2:45-3:45 AM and once between 4:45-5:45 AM
+  (set in `apps/web/vercel.json`, nothing to do), or
+- your **UptimeRobot** keep-awake checker opens `/healthz` (every few minutes), or
+- you open **any page** of the dashboard.
+
+It needs the same two settings as the Generate now button: `GITHUB_REPO` and
+`GITHUB_DISPATCH_TOKEN` (a token with **Actions: Read and write**) on your dashboard (Vercel or Render).
+If Generate now works, the backup timer works too.
+
 ## Delete a video
 
 **Ready to upload** (or a story's page under **Content**) → **🗑 Delete** → **OK**.
