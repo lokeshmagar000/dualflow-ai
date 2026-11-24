@@ -158,8 +158,12 @@ async function finishMeta(app: AppKeys, code: string, redirectUri: string, env: 
   });
   const j3 = await readJson(r3);
   if (!r3.ok) throw new ConnectError(`Facebook did not list your Pages (${j3.error?.message ?? r3.status}).`);
-  const pages: MetaPage[] = j3.data ?? [];
-  if (pages.length === 0) throw new ConnectError("Facebook shows no Pages. In the Facebook window, choose \"Opt in to all current and future Pages\" (or tick both Pages), then press Connect again.");
+  let pages: MetaPage[] = j3.data ?? [];
+  // d) Empty list? Pages that live in a business portfolio sometimes only show up through the
+  //    token's "granted Page ids" or through the business itself. Ask those two places too.
+  const info = await tokenInfo(g, app, userToken);
+  if (pages.length === 0) pages = await pagesFromOtherPlaces(g, userToken, info.pageIds);
+  if (pages.length === 0) throw new ConnectError(noPagesMessage(info.scopes, Boolean(app.configId)));
   const { ne, en } = pickPages(pages);
   const out: ConnectedAccount[] = [];
   for (const [language, page] of [["ne", ne], ["en", en]] as const) {
@@ -191,4 +195,68 @@ async function finishTikTok(app: AppKeys, code: string, redirectUri: string, lan
     /* the name is only for show */
   }
   return { platform: "TIKTOK", language, name, externalId: json.open_id ?? null, refreshToken: json.refresh_token };
+}
+
+/** Permissions the Page + Instagram uploads need. */
+const NEEDED_META = ["pages_show_list", "pages_manage_posts", "pages_read_engagement", "instagram_basic", "instagram_content_publish"];
+
+/** Which needed permissions are missing from what Facebook gave us. */
+export function missingMetaScopes(granted: string[]): string[] {
+  return NEEDED_META.filter((s) => !granted.includes(s));
+}
+
+/** A clear "what to fix" message when Facebook gives back no Pages. */
+export function noPagesMessage(granted: string[], usesConfigId: boolean): string {
+  const missing = missingMetaScopes(granted);
+  if (granted.length > 0 && missing.length > 0) {
+    const where = usesConfigId
+      ? `Your "Facebook Login for Business" configuration only asks for: ${granted.join(", ")}. In Meta for Developers, make a new configuration with Access token = "User access token" and these permissions: ${NEEDED_META.join(", ")}, business_management. Paste its Configuration ID in Step A, then press Connect again.`
+      : `Facebook only gave: ${granted.join(", ")}. Press Connect again and allow everything.`;
+    return `Facebook shows no Pages, because it did not give these permissions: ${missing.join(", ")}. ${where}`;
+  }
+  return 'Facebook shows no Pages. Make sure you are a full admin ("Full control") of both Pages, choose "Opt in to all current and future Pages" in the Facebook window, then press Connect again.';
+}
+
+/** Ask Facebook what this token may do: its permissions and the Page ids it was given. */
+async function tokenInfo(g: string, app: AppKeys, token: string): Promise<{ scopes: string[]; pageIds: string[] }> {
+  try {
+    const r = await http(`${g}/debug_token?${new URLSearchParams({ input_token: token, access_token: `${app.id}|${app.secret}` })}`);
+    const j = await readJson(r);
+    const d = j.data ?? {};
+    const pageIds = new Set<string>();
+    for (const gs of d.granular_scopes ?? []) {
+      if (String(gs.scope).startsWith("pages_")) for (const id of gs.target_ids ?? []) pageIds.add(String(id));
+    }
+    return { scopes: Array.isArray(d.scopes) ? d.scopes.map(String) : [], pageIds: [...pageIds] };
+  } catch {
+    return { scopes: [], pageIds: [] };
+  }
+}
+
+const PAGE_FIELDS = "id,name,access_token,instagram_business_account{id,username}";
+
+/** Backup ways to find the Pages: granted Page ids, then the Pages of your business portfolios. */
+async function pagesFromOtherPlaces(g: string, token: string, grantedIds: string[]): Promise<MetaPage[]> {
+  const auth = { headers: { authorization: `Bearer ${token}` } };
+  const ids = new Set(grantedIds);
+  try {
+    const r = await http(`${g}/me/businesses?${new URLSearchParams({ fields: "id,owned_pages.limit(100){id},client_pages.limit(100){id}", limit: "50" })}`, auth);
+    const j = await readJson(r);
+    for (const b of j.data ?? []) {
+      for (const p of [...(b.owned_pages?.data ?? []), ...(b.client_pages?.data ?? [])]) if (p?.id) ids.add(String(p.id));
+    }
+  } catch {
+    /* no business access: fine, we still try the granted ids */
+  }
+  const pages: MetaPage[] = [];
+  for (const id of ids) {
+    try {
+      const r = await http(`${g}/${encodeURIComponent(id)}?${new URLSearchParams({ fields: PAGE_FIELDS })}`, auth);
+      const j = await readJson(r);
+      if (r.ok && j.id) pages.push(j as MetaPage);
+    } catch {
+      /* skip a Page we cannot read */
+    }
+  }
+  return pages;
 }
