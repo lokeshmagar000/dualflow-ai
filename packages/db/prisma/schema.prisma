@@ -349,6 +349,9 @@ model Publication {
   // How many times the upload was tried (retries stop at PUBLISH_MAX_ATTEMPTS).
   attempts       Int           @default(0)
   error          String?
+  // Choices made in the dashboard's upload window, e.g. TikTok:
+  // { "tiktok": { "privacyLevel": "SELF_ONLY", "caption": "...", "allowComment": true, ... } }
+  options        Json?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 

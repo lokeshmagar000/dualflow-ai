@@ -15,7 +15,7 @@ export * from "./limits";
 export * from "./secret-box";
 export * from "./connections";
 export * from "./oauth";
-export { chunkPlan } from "./tiktok";
+export { chunkPlan, choosePrivacy, tiktokCreator, tiktokDefaultCaption } from "./tiktok";
 
 export function getUploader(platform: PlatformName, language: Lang, env: Record<string, string | undefined> = process.env): Uploader {
   switch (platform) {

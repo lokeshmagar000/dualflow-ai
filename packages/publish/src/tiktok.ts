@@ -18,7 +18,7 @@
 import { saveNewRefreshToken } from "./connections";
 import { PublishConfigError, PublishQuotaError } from "./errors";
 import { cut, http, readJson } from "./http";
-import type { ChannelCheck, Lang, UploadInput, UploadResult, Uploader } from "./types";
+import type { ChannelCheck, Lang, TikTokCreator, UploadInput, UploadResult, Uploader } from "./types";
 
 type Env = Record<string, string | undefined>;
 const API = "https://open.tiktokapis.com/v2";
@@ -43,6 +43,26 @@ function tiktokError(where: string, status: number, json: any): Error {
   }
   return new Error(text);
 }
+
+/** The text TikTok shows as the post's caption: title + hashtags (the default in the upload window). */
+export function tiktokDefaultCaption(title: string, hashtags: string[]): string {
+  const tags = hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ");
+  return cut([title, tags].filter(Boolean).join(" "), 2200);
+}
+
+/** Pick the privacy for one post. The owner's choice wins when TikTok allows it. */
+export function choosePrivacy(options: string[], picked: string | undefined, fallback: string): string | undefined {
+  if (picked) return options.includes(picked) ? picked : undefined;
+  const wanted = fallback.toUpperCase();
+  return options.includes(wanted) ? wanted : options.includes("SELF_ONLY") ? "SELF_ONLY" : options[0];
+}
+
+/** Ask TikTok about the connected account (name, picture, allowed choices). Uploads nothing. */
+export async function tiktokCreator(language: Lang, env: Env = process.env): Promise<TikTokCreator> {
+  return (tiktokUploader(language, env) as TikTokUploader).creator();
+}
+
+type TikTokUploader = Uploader & { creator(): Promise<TikTokCreator> };
 
 export function tiktokUploader(language: Lang, env: Env = process.env): Uploader {
   const L = language.toUpperCase();
@@ -84,12 +104,35 @@ export function tiktokUploader(language: Lang, env: Env = process.env): Uploader
     });
     const json = await readJson(res);
     if (!res.ok || json.error?.code !== "ok") throw tiktokError(`TikTok ${L} creator info`, res.status, json);
-    return json.data as { creator_username?: string; creator_nickname?: string; privacy_level_options?: string[]; max_video_post_duration_sec?: number };
+    return json.data as {
+      creator_username?: string;
+      creator_nickname?: string;
+      creator_avatar_url?: string;
+      privacy_level_options?: string[];
+      comment_disabled?: boolean;
+      duet_disabled?: boolean;
+      stitch_disabled?: boolean;
+      max_video_post_duration_sec?: number;
+    };
   }
 
-  return {
+  const uploader: TikTokUploader = {
     platform: "tiktok",
     language,
+
+    async creator(): Promise<TikTokCreator> {
+      const info = await creatorInfo(await accessToken());
+      return {
+        username: info.creator_username,
+        nickname: info.creator_nickname,
+        avatarUrl: info.creator_avatar_url,
+        privacyOptions: info.privacy_level_options ?? [],
+        commentDisabled: Boolean(info.comment_disabled),
+        duetDisabled: Boolean(info.duet_disabled),
+        stitchDisabled: Boolean(info.stitch_disabled),
+        maxDurationSec: info.max_video_post_duration_sec,
+      };
+    },
 
     async check(): Promise<ChannelCheck> {
       try {
@@ -107,27 +150,34 @@ export function tiktokUploader(language: Lang, env: Env = process.env): Uploader
     async upload(input: UploadInput): Promise<UploadResult> {
       const token = await accessToken();
       const info = await creatorInfo(token);
-      const wanted = (env.TIKTOK_PRIVACY || "SELF_ONLY").toUpperCase();
+      const picked = input.tiktok ?? null; // the owner's choices from the upload window (or none: Auto upload)
       const options = info.privacy_level_options ?? [];
-      const privacy = options.includes(wanted) ? wanted : options.includes("SELF_ONLY") ? "SELF_ONLY" : options[0];
-      if (!privacy) throw new PublishConfigError(`TikTok ${L}: the account allows no privacy option.`);
+      const privacy = choosePrivacy(options, picked?.privacyLevel, env.TIKTOK_PRIVACY || "SELF_ONLY");
+      if (!privacy) {
+        throw new PublishConfigError(picked
+          ? `TikTok ${L}: "${picked.privacyLevel}" is not allowed for this account now. Pick again in the upload window.`
+          : `TikTok ${L}: the account allows no privacy option.`);
+      }
       if (info.max_video_post_duration_sec && input.durationSec && input.durationSec > info.max_video_post_duration_sec) {
         throw new PublishConfigError(`TikTok ${L}: the video is ${Math.round(input.durationSec)} s, but this account allows ${info.max_video_post_duration_sec} s.`);
       }
 
       const size = input.video.length;
       const { chunkSize, count } = chunkPlan(size);
-      const tags = input.hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ");
+      const caption = picked?.caption?.trim() ? cut(picked.caption.trim(), 2200) : tiktokDefaultCaption(input.title, input.hashtags);
       const initRes = await http(`${API}/post/publish/video/init/`, {
         method: "POST",
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json; charset=UTF-8" },
         body: JSON.stringify({
           post_info: {
-            title: cut([input.title, tags].filter(Boolean).join(" "), 2200),
+            title: caption,
             privacy_level: privacy,
-            disable_duet: false,
-            disable_comment: false,
-            disable_stitch: false,
+            // Off when the owner turned it off, or when the account itself has it off.
+            disable_duet: info.duet_disabled || (picked ? !picked.allowDuet : false),
+            disable_comment: info.comment_disabled || (picked ? !picked.allowComment : false),
+            disable_stitch: info.stitch_disabled || (picked ? !picked.allowStitch : false),
+            brand_content_toggle: Boolean(picked?.brandedContent),
+            brand_organic_toggle: Boolean(picked?.brandOrganic),
             is_aigc: (env.TIKTOK_AI_LABEL ?? "true") !== "false",
           },
           source_info: { source: "FILE_UPLOAD", video_size: size, chunk_size: chunkSize, total_chunk_count: count },
@@ -175,4 +225,5 @@ export function tiktokUploader(language: Lang, env: Env = process.env): Uploader
       return { postId: String(publishId), url: null, note: "TikTok is still processing the video." };
     },
   };
+  return uploader;
 }
