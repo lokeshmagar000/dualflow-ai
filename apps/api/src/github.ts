@@ -42,6 +42,23 @@ export async function triggerPipelineRun(workflow = WORKFLOW, inputs?: Record<st
   return { started: false, message: `GitHub said ${res.status}: ${(await res.text()).slice(0, 200)}` };
 }
 
+/** The newest Pipeline runs (status: "queued", "in_progress", "completed", ...). Needs "Actions: Read". */
+export async function latestPipelineRuns(count = 5): Promise<{ status: string; created_at: string }[]> {
+  const repo = process.env.GITHUB_REPO!;
+  const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/runs?per_page=${count}`, {
+    headers: {
+      authorization: `Bearer ${process.env.GITHUB_DISPATCH_TOKEN}`,
+      accept: "application/vnd.github+json",
+      "x-github-api-version": "2022-11-28",
+      "user-agent": "dualflow-ai",
+    },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`GitHub said ${res.status} when listing runs`);
+  const data = (await res.json()) as { workflow_runs?: { status: string; created_at: string }[] };
+  return data.workflow_runs ?? [];
+}
+
 /** Start a run if possible, but never let a GitHub problem break the request. */
 export async function triggerQuietly(log: { warn: (msg: string) => void }) {
   if (!githubRunConfigured() || (process.env.AUTO_RUN_ON_NEW_STORY ?? "true") === "false") return;
