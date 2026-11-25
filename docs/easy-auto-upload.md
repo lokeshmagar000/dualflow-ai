@@ -83,7 +83,31 @@ You need: one Gmail that owns both channels (Namaste Facts and Namaste Facts न
 
 ---
 
-## Part 3. Facebook + Instagram (about 20 minutes, ONE Connect for all four)
+## Part 3A. Instagram only, no Facebook Page (about 15 minutes)
+
+Use this if your Facebook is a **profile in Professional mode** (not a Page), or you simply don't want Pages.
+Each Instagram account must be **Professional** (Creator or Business): Instagram app → Settings → Account type and tools.
+
+1. Open **developers.facebook.com** → **My Apps** → your app (for example **Dualflow en**).
+2. Left menu → **Use cases** → **Manage messaging & content on Instagram** → **Customize**.
+   Choose **API setup with Instagram login** (NOT "with Facebook login").
+3. Under **Permissions**, press **Add** next to `instagram_business_basic` and `instagram_business_content_publish`.
+4. Find **Set up Instagram business login** (or **Business login settings**) → in **OAuth redirect URIs** paste the
+   **Return address** from the dashboard's **Instagram** box (it ends with `/connect/instagram/callback`) → **Save**.
+5. On the same page, copy the **Instagram app ID** and the **Instagram app secret**.
+   ⚠️ They are **different** from the Facebook App ID / App secret.
+6. Still there, under **Generate access tokens** → **Add account**, add **both** Instagram accounts
+   (Nepali and English). This makes them "testers" so they work before App Review.
+   Each Instagram account then accepts the invite: Instagram app → Settings → **Website permissions** (or **Apps and websites**) → **Tester invites** → **Accept**.
+7. Dashboard → **Channels** → **Instagram** box → **Step A** → paste the Instagram app ID and secret → **Save keys**.
+8. Press **Connect** next to **नेपाली**. Instagram opens: log in with the **Nepali** Instagram account → **Allow**.
+9. Press **Connect** next to **English**. Log in with the **English** Instagram account → **Allow**.
+10. Press **Test now** in part 3 of the Channels page. Both should say "Connected to Instagram @...".
+
+You can skip the **Facebook Pages (optional)** box completely. The Instagram key lasts 60 days, and DualFlow renews it
+by itself on every upload run, so you do this only once.
+
+## Part 3. Facebook Pages + Instagram (optional) (about 20 minutes, ONE Connect for all four)
 
 Before you start: both Instagram accounts must be **Professional** (Business or Creator) and each must be
 **linked to its own Facebook Page**. See [channel-and-token-guide.md](channel-and-token-guide.md), part 1C, steps 3-4.
@@ -195,6 +219,8 @@ right away and takes 2-5 minutes. Without them it goes up at the next upload tim
 | Facebook: **"URL blocked"** or **"Can't load URL"** | The return address is not in Valid OAuth Redirect URIs | Part 3, step 6 |
 | Facebook: **"Invalid Scopes"** | Your app uses Facebook Login for Business | Make a Configuration (Part 3, step 7), paste its ID in Step A |
 | Facebook: **"Facebook shows no Pages"** (the Facebook window only showed "Manage your business" + "Show a list of the Pages you manage") | The Login for Business configuration has too few permissions, or uses a *System-user* token | Make a NEW configuration exactly as in Part 3, step 7 (User access token, all six permissions), paste the new Configuration ID in Step A → **Save keys** → Connect again |
+| Instagram: **"Invalid redirect_uri"** | The return address is not in the Instagram login settings | Part 3A, step 4 |
+| Instagram: **"Insufficient developer role"** | The Instagram account is not a tester yet | Part 3A, step 6 (add it and accept the invite) |
 | **"Instagram: not linked to this Page"** | Instagram is personal, or not linked to that Page | channel-and-token-guide.md part 1C, then **Reconnect Facebook + Instagram** |
 | Facebook/Instagram posts only you can see | Meta app is in Development mode | Part 3, step 11 → **Live** |
 | TikTok: **unaudited_client_can_only_post_to_private_accounts** | Account is public, app not audited | Set the TikTok account to private |
@@ -209,6 +235,8 @@ right away and takes 2-5 minutes. Without them it goes up at the next upload tim
 
 | Word | Meaning |
 |---|---|
+| **Instagram Login** | Logging in with Instagram itself (not Facebook), so no Facebook Page is needed. |
+| **Professional mode** | A setting that makes a Facebook profile look like a creator. It is still a person, not a Page. |
 | **One-click connect** | Signing in to a platform from the dashboard and pressing *Allow*, instead of copying tokens by hand. |
 | **OAuth** | The standard way to say "yes, this app may use my account" without giving it your password. |
 | **App (developer app)** | Your own small, free registration at Google / Meta / TikTok. It gives you an id and a secret. |

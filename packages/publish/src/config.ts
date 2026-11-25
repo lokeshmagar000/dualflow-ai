@@ -19,7 +19,8 @@
  *   YouTube:   YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET (shared), YOUTUBE_REFRESH_TOKEN_NE / _EN
  *   Facebook:  FACEBOOK_PAGE_ID_NE / _EN, FACEBOOK_PAGE_TOKEN_NE / _EN
  *   Instagram: INSTAGRAM_USER_ID_NE / _EN (uses the Facebook page token of the same language,
- *              or INSTAGRAM_TOKEN_NE / _EN if you set one)
+ *              or INSTAGRAM_TOKEN_NE / _EN if you set one, or INSTAGRAM_LOGIN_TOKEN_NE / _EN from
+ *              the dashboard's "Connect Instagram" button, which needs no Facebook Page)
  *   TikTok:    TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET (shared), TIKTOK_REFRESH_TOKEN_NE / _EN
  */
 import type { Lang, PlatformName } from "./types";
@@ -71,7 +72,7 @@ export function requiredSettings(platform: PlatformName, lang: Lang): string[] {
 export function missingSettings(platform: PlatformName, lang: Lang, env: Env = process.env): string[] {
   const missing = requiredSettings(platform, lang).filter((k) => !env[k]?.trim());
   // Instagram also needs a token: its own, or the Facebook page token of the same language.
-  if (platform === "instagram" && !langSetting("INSTAGRAM_TOKEN", lang, env) && !langSetting("FACEBOOK_PAGE_TOKEN", lang, env)) {
+  if (platform === "instagram" && !langSetting("INSTAGRAM_TOKEN", lang, env) && !langSetting("INSTAGRAM_LOGIN_TOKEN", lang, env) && !langSetting("FACEBOOK_PAGE_TOKEN", lang, env)) {
     missing.push(`INSTAGRAM_TOKEN_${lang.toUpperCase()} or FACEBOOK_PAGE_TOKEN_${lang.toUpperCase()}`);
   }
   return missing;

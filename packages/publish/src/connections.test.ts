@@ -106,3 +106,15 @@ test("no Pages: the message names the missing Facebook permissions", () => {
   assert.match(noPagesMessage([], true, "Namaste Facts"), /logged in as "Namaste Facts".*personal profile/);
   assert.match(noPagesMessage(["pages_show_list", "pages_manage_posts", "pages_read_engagement", "instagram_basic", "instagram_content_publish"], true), /Full control/);
 });
+
+test("Instagram Login: authorize address and saved token become the right env names", () => {
+  const u = new URL(authorizeUrl("instagram", { id: "IGAPP", secret: "s" }, "https://x/connect/instagram/callback", "st", {}));
+  assert.equal(u.host, "www.instagram.com");
+  assert.equal(u.searchParams.get("scope"), "instagram_business_basic,instagram_business_content_publish");
+  assert.equal(u.searchParams.get("force_reauth"), "true");
+  const channels = [{ platform: "INSTAGRAM" as const, language: "en" as const, externalId: "1789", accessTokenEnc: null, refreshTokenEnc: lockSecret("IGTOKEN", env) }];
+  const { overlay } = connectionsToEnv([], channels, env);
+  assert.equal(overlay.INSTAGRAM_LOGIN_TOKEN_EN, "IGTOKEN");
+  assert.equal(overlay.INSTAGRAM_USER_ID_EN, "1789");
+  assert.equal(overlay.FACEBOOK_PAGE_TOKEN_EN, undefined);
+});

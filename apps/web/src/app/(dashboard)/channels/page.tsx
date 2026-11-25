@@ -31,7 +31,7 @@ export default async function ChannelsPage({ searchParams }: { searchParams: Pro
   channels = Array.isArray(channels) ? channels : [];
   const anyConnected = status.channels.some((c) => c.connected);
   const find = (platform: string, lang: "ne" | "en") => status.channels.find((c) => c.platform === platform && c.language === lang && c.connected);
-  const [ytBack, metaBack, ttBack] = await Promise.all([callbackUrl("youtube"), callbackUrl("meta"), callbackUrl("tiktok")]);
+  const [ytBack, metaBack, ttBack, igBack] = await Promise.all([callbackUrl("youtube"), callbackUrl("meta"), callbackUrl("tiktok"), callbackUrl("instagram")]);
 
   return (
     <>
@@ -59,7 +59,7 @@ export default async function ChannelsPage({ searchParams }: { searchParams: Pro
       </Card>
 
       <SectionTitle>2. Connect your accounts</SectionTitle>
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <PlatformCard
           title="YouTube"
           platform="youtube"
@@ -73,21 +73,16 @@ export default async function ChannelsPage({ searchParams }: { searchParams: Pro
           tip="When Google asks which account, pick the matching channel (Namaste Facts or Namaste Facts नेपाली), not your own name."
         />
         <PlatformCard
-          title="Facebook + Instagram"
-          platform="meta"
-          app={status.apps.meta}
-          back={metaBack}
-          appHelp={<>From <b>developers.facebook.com</b> → My Apps → DualFlow → App settings → <b>Basic</b>.</>}
-          idLabel="App ID"
-          secretLabel="App secret"
-          withConfigId
-          oneButton={{ label: "Connect Facebook + Instagram", href: "/connect/meta/start" }}
-          rows={(["ne", "en"] as const).map((l) => ({ lang: l, ch: find("FACEBOOK", l), extra: find("INSTAGRAM", l) }))}
-          rule="One click connects both Pages and the Instagram account linked to each. Switch the Meta app to Live so everyone can see the posts."
-          tip="In the Facebook window, choose both Pages (or “all current and future Pages”)."
-          footer={status.channels.some((c) => (c.platform === "FACEBOOK" || c.platform === "INSTAGRAM") && c.connected) ? (
-            <ActionButton action={swapMetaLanguages} label="Wrong language? Swap Nepali ↔ English" pendingLabel="Swapping…" className="btn btn-sm btn-subtle" />
-          ) : null}
+          title="Instagram"
+          platform="instagram"
+          app={status.apps.instagram}
+          back={igBack}
+          appHelp={<>From <b>developers.facebook.com</b> → My Apps → your app → <b>Instagram</b> → <b>API setup with Instagram login</b> → Business login settings. The <b>Instagram app ID</b> and <b>secret</b> are different from the Facebook App ID.</>}
+          idLabel="Instagram app ID"
+          secretLabel="Instagram app secret"
+          rows={(["ne", "en"] as const).map((l) => ({ lang: l, ch: find("INSTAGRAM", l), connectHref: `/connect/instagram/start?lang=${l}` }))}
+          rule="No Facebook Page needed. Works with an Instagram Professional (Creator or Business) account. Videos post as Reels."
+          tip="Instagram asks you to log in each time. Log in with the Nepali account for नेपाली and the English account for English."
         />
         <PlatformCard
           title="TikTok"
@@ -100,6 +95,23 @@ export default async function ChannelsPage({ searchParams }: { searchParams: Pro
           rows={(["ne", "en"] as const).map((l) => ({ lang: l, ch: find("TIKTOK", l), connectHref: `/connect/tiktok/start?lang=${l}` }))}
           rule="TikTok must approve your app first. Until its audit, posts are private (only you see them). Do TikTok last."
           tip="TikTok signs in with the account open in this browser. Switch to the right TikTok account on tiktok.com before each Connect."
+        />
+        <PlatformCard
+          title="Facebook Pages (optional)"
+          platform="meta"
+          app={status.apps.meta}
+          back={metaBack}
+          appHelp={<>From <b>developers.facebook.com</b> → My Apps → DualFlow → App settings → <b>Basic</b>.</>}
+          idLabel="App ID"
+          secretLabel="App secret"
+          withConfigId
+          oneButton={{ label: "Connect Facebook + Instagram", href: "/connect/meta/start" }}
+          rows={(["ne", "en"] as const).map((l) => ({ lang: l, ch: find("FACEBOOK", l), extra: find("INSTAGRAM", l) }))}
+          rule="Only if you have real Facebook Pages (a profile in Professional mode is not a Page). Skip this box if you use the Instagram box. Switch the Meta app to Live so everyone can see the posts."
+          tip="In the Facebook window, choose both Pages (or “all current and future Pages”)."
+          footer={status.channels.some((c) => (c.platform === "FACEBOOK" || c.platform === "INSTAGRAM") && c.connected) ? (
+            <ActionButton action={swapMetaLanguages} label="Wrong language? Swap Nepali ↔ English" pendingLabel="Swapping…" className="btn btn-sm btn-subtle" />
+          ) : null}
         />
       </div>
 

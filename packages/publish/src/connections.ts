@@ -38,6 +38,7 @@ export const SETTING = {
   youtubeApp: "app.youtube", // locked JSON { id, secret }
   metaApp: "app.meta", // locked JSON { id, secret, configId? }
   tiktokApp: "app.tiktok", // locked JSON { id, secret }
+  instagramApp: "app.instagram", // locked JSON { id, secret } (Instagram Login, no Facebook Page needed)
   uploadSwitch: "publish.switch", // plain JSON { mode: UploadSwitch }
 } as const;
 
@@ -122,7 +123,11 @@ export function connectionsToEnv(settings: StoredSetting[], channels: StoredChan
           }
           break;
         case "INSTAGRAM":
-          if (ch.accessTokenEnc && ch.externalId) {
+          // Connected with "Connect Instagram" (Instagram Login): its own token, kept fresh by the uploader.
+          if (ch.refreshTokenEnc) {
+            overlay[`INSTAGRAM_LOGIN_TOKEN_${L}`] = unlockSecret(ch.refreshTokenEnc, env);
+            overlay[`INSTAGRAM_USER_ID_${L}`] = ch.externalId || "me";
+          } else if (ch.accessTokenEnc && ch.externalId) {
             overlay[`INSTAGRAM_TOKEN_${L}`] = unlockSecret(ch.accessTokenEnc, env);
             overlay[`INSTAGRAM_USER_ID_${L}`] = ch.externalId;
           }
@@ -136,18 +141,19 @@ export function connectionsToEnv(settings: StoredSetting[], channels: StoredChan
   return { overlay, problems };
 }
 
-/* ---------- TikTok gives a NEW refresh token now and then ---------- */
+/* ---------- TikTok (and Instagram Login) give a NEW token now and then ---------- */
 
-type Saver = (platform: "tiktok", language: Lang, refreshToken: string) => Promise<void>;
+export type RefreshPlatform = "tiktok" | "instagram";
+type Saver = (platform: RefreshPlatform, language: Lang, refreshToken: string) => Promise<void>;
 let saver: Saver | null = null;
 
-/** The worker registers this so a new TikTok refresh token is saved in the database by itself. */
+/** The worker registers this so a new TikTok / Instagram token is saved in the database by itself. */
 export function setRefreshTokenSaver(fn: Saver | null) {
   saver = fn;
 }
 
 /** Called by the TikTok uploader. Returns true when the new token was saved. */
-export async function saveNewRefreshToken(platform: "tiktok", language: Lang, token: string): Promise<boolean> {
+export async function saveNewRefreshToken(platform: RefreshPlatform, language: Lang, token: string): Promise<boolean> {
   if (!saver) return false;
   try {
     await saver(platform, language, token);

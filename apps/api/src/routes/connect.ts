@@ -2,7 +2,7 @@
  * One-click channel connections and the "Auto upload" switch (dashboard Channels page).
  *
  *   GET  /connect                       what is connected, which app keys are saved, the switch
- *   POST /connect/:platform/keys        save your app's id + secret (locked) for youtube | meta | tiktok
+ *   POST /connect/:platform/keys        save your app's id + secret (locked) for youtube | meta | tiktok | instagram
  *   POST /connect/:platform/start       { language, redirectUri } -> { url } to send you to sign in
  *   POST /connect/:platform/finish      { code, state, redirectUri } -> saves the tokens (locked)
  *   POST /connect/:platform/disconnect  { language? } forget the tokens
@@ -38,8 +38,8 @@ import {
 } from "@dualflow/publish";
 import { getDefaultWorkspace } from "../workspace";
 
-const APP_KEY: Record<ConnectPlatform, string> = { youtube: SETTING.youtubeApp, meta: SETTING.metaApp, tiktok: SETTING.tiktokApp };
-const DB_PLATFORMS: Record<ConnectPlatform, Platform[]> = { youtube: ["YOUTUBE"], meta: ["FACEBOOK", "INSTAGRAM"], tiktok: ["TIKTOK"] };
+const APP_KEY: Record<ConnectPlatform, string> = { youtube: SETTING.youtubeApp, meta: SETTING.metaApp, tiktok: SETTING.tiktokApp, instagram: SETTING.instagramApp };
+const DB_PLATFORMS: Record<ConnectPlatform, Platform[]> = { youtube: ["YOUTUBE"], meta: ["FACEBOOK", "INSTAGRAM"], tiktok: ["TIKTOK"], instagram: ["INSTAGRAM"] };
 const STATE_MAX_AGE_MS = 20 * 60_000; // the sign-in must finish within 20 minutes
 
 const platformParam = z.object({ platform: z.enum(CONNECT_PLATFORMS as [ConnectPlatform, ...ConnectPlatform[]]) });
@@ -104,14 +104,14 @@ function channelMode(mode: string | null) {
   return mode === "auto" || mode === "practice" ? "AUTO" : "APPROVAL";
 }
 
-/** TikTok sometimes gives a new refresh token while we check or upload: keep it (locked). */
-export async function saveTikTokToken(language: Language, token: string) {
+/** TikTok (and Instagram Login) sometimes give a new token while we check or upload: keep it (locked). */
+export async function saveTikTokToken(language: Language, token: string, platform: "TIKTOK" | "INSTAGRAM" = "TIKTOK") {
   const ws = await getDefaultWorkspace();
-  await prisma.channel.updateMany({ where: { workspaceId: ws.id, platform: "TIKTOK", language }, data: { refreshTokenEnc: lockSecret(token) } });
+  await prisma.channel.updateMany({ where: { workspaceId: ws.id, platform, language }, data: { refreshTokenEnc: lockSecret(token) } });
 }
 
 export async function connectRoutes(app: FastifyInstance) {
-  setRefreshTokenSaver((_p, language, token) => saveTikTokToken(language, token));
+  setRefreshTokenSaver((p, language, token) => saveTikTokToken(language, token, p === "instagram" ? "INSTAGRAM" : "TIKTOK"));
 
   app.get("/connect", async () => {
     const ws = await getDefaultWorkspace();
