@@ -18,6 +18,8 @@ import "@fontsource/khand/700.css";
 import { FPS, sizeFor, storyFrames, storyStartFrame, thumbnailSizeFor, type ThumbnailProps, type VideoProps } from "../types";
 import { Video } from "./Video";
 import { Thumbnail } from "./Thumbnail";
+import { VideoV2 } from "./VideoV2";
+import type { V2Props } from "../v2types";
 
 /** Example data, only used when you preview in Remotion Studio (pnpm --filter @dualflow/video preview). */
 const sample: VideoProps = {
@@ -44,6 +46,24 @@ const sample: VideoProps = {
   ],
 };
 
+const sampleV2: V2Props = {
+  language: "en",
+  audioFile: "",
+  durationMs: 9000,
+  shots: [{ startMs: 0, endMs: 9000 }],
+  words: [],
+  emphasis: [],
+  hook: { lines: ["Only 1 flag", "breaks the rule"], highlight: 0 },
+  topic: "Nepal's flag",
+  cards: [],
+  sfx: [],
+  musicFile: null,
+  musicVolume: 0.2,
+  brand: "Namaste Facts",
+  brandTag: "",
+  follow: null,
+};
+
 export function Root() {
   return (
     <>
@@ -60,6 +80,17 @@ export function Root() {
           // The intro, then the voice and half a second of quiet (so the video does not cut off sharply).
           durationInFrames: storyStartFrame(props) + storyFrames(props),
         })}
+      />
+      {/* STYLE V2 sample (not used by the pipeline until the owner confirms the new style). */}
+      <Composition
+        id="VideoV2"
+        component={VideoV2}
+        fps={FPS}
+        width={1080}
+        height={1920}
+        durationInFrames={300}
+        defaultProps={sampleV2}
+        calculateMetadata={({ props }) => ({ durationInFrames: Math.ceil(((props.durationMs + 300) / 1000) * FPS) })}
       />
       <Still
         id="Thumbnail"

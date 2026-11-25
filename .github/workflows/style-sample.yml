@@ -1,0 +1,48 @@
+# STYLE V2 SAMPLE: renders the same story in today's style ("before") and the
+# proposed new style ("after"), English + Nepali, with the real voice and real stock clips.
+# The videos are committed to this branch under samples/style-v2/ so they can be watched.
+# Uses 2 Gemini voice requests (one per language). Runs only on the sample branch.
+name: Style sample
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/project-thread-tq5boj]
+    paths:
+      - .github/workflows/style-sample.yml
+      - apps/worker/src/style-v2-sample.ts
+      - packages/video/src/**
+permissions:
+  contents: write
+concurrency: { group: style-sample, cancel-in-progress: true }
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      VOICE_PROVIDER: gemini
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_TTS_STYLE: "Read this aloud like an energetic, curious YouTube Shorts storyteller sharing a surprising secret: lively and a little fast, with clear stress on the key words. Pause clearly (about half a second) at every blank line. Read only the text"
+      PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: FedericoCarboni/setup-ffmpeg@v3
+      - name: Install
+        run: |
+          pnpm install --frozen-lockfile
+          pip install -r packages/voice/python/requirements.txt
+      - name: Render before + after (English and Nepali)
+        run: pnpm --filter @dualflow/worker exec tsx src/style-v2-sample.ts "$GITHUB_WORKSPACE/samples/style-v2"
+      - name: Save the videos to the branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git add samples/style-v2
+          git commit -m "Style V2 sample videos" || exit 0
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
