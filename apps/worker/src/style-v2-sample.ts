@@ -16,6 +16,7 @@ import { buildCues, edgeVoice, getVoiceProvider, pcmDurationMs, pcmToWav, silenc
 import {
   closeRenderer,
   findCheckedMedia,
+  splitLongShots,
   makeJobFolder,
   plain,
   prepareIntro,
@@ -43,8 +44,8 @@ type Story = {
   hook: { lines: string[]; highlight: number };
   topic: string;
   emphasis: string[];
-  /** Number card: shown during this line. */
-  card: { line: number; big: string; small: string };
+  /** Animated cards, each shown during one line (number counts up, date flips like a calendar). */
+  cards: { line: number; kind: "number" | "year" | "date" | "time"; big: string; small: string }[];
   /** The line with the biggest surprise: a riser builds up before it. */
   payoffLine: number;
   /** The follow pill appears at the start of this line. */
@@ -63,8 +64,9 @@ const TOPIC = "Nepal's national flag (the only non-rectangular national flag in 
 const VISUALS = {
   world: { q: ["world map", "globe earth rotating", "world flags"], must: "a world map or a globe of the Earth (no single country's flag)" },
   flag: { q: ["nepal flag", "flag of nepal", "nepal flag waving"], must: "the national flag of NEPAL: two stacked crimson triangles with a blue border, a white moon and a white sun" },
-  flag2: { q: ["nepal flag waving", "nepal flag", "nepal flag wind"], must: "the national flag of NEPAL: two stacked crimson triangles with a blue border, a white moon and a white sun" },
-  flag3: { q: ["nepal flag kathmandu", "nepal flag", "nepal flag pole"], must: "the national flag of NEPAL (two stacked crimson triangles with a blue border)" },
+  people: { q: ["nepali people flag", "nepal festival people", "nepal people"], must: "Nepali people in a real place in Nepal (ideally holding or near the Nepal flag)" },
+  durbar: { q: ["kathmandu durbar square", "bhaktapur durbar square", "patan durbar square"], must: "a Durbar Square or old palace square in Kathmandu valley, Nepal" },
+  map: { q: ["nepal map", "map of nepal", "nepal satellite"], must: "a map of Nepal or Nepal seen from above (no other country's map alone)" },
   himalaya: { q: ["himalaya nepal", "everest", "himalayas snow mountains"], must: "snowy Himalayan mountain peaks" },
   religion: { q: ["boudhanath stupa", "swayambhunath", "pashupatinath temple", "nepal temple"], must: "a Buddhist stupa or Hindu temple in Nepal (such as Boudhanath, Swayambhunath or Pashupatinath)" },
   rhodo: { q: ["rhododendron", "rhododendron flower red", "rhododendron tree"], must: "red rhododendron flowers (poppies, roses or tulips fail)" },
@@ -74,17 +76,31 @@ const VISUALS = {
   flagEnd: { q: ["nepal flag wind", "nepal flag", "nepal flag sky"], must: "the national flag of NEPAL: two stacked crimson triangles with a blue border, a white moon and a white sun" },
 } as const;
 
+/**
+ * VARIETY pictures: a long line is cut into ~2 s pieces and the extra pieces show these,
+ * one after another (people, places, map, culture), so the video keeps flowing.
+ */
+const BROLL = [
+  { q: ["nepali people", "nepal village people", "nepal people"], must: "Nepali people in a real place in Nepal" },
+  { q: ["himalaya village nepal", "nepal village", "nepal mountains village"], must: "a village or valley in Nepal with mountains" },
+  { q: ["nepal festival", "kathmandu festival", "nepal dance"], must: "a festival, dance or celebration in Nepal" },
+  { q: ["kathmandu city", "kathmandu street", "thamel kathmandu"], must: "a street or city view of Kathmandu, Nepal" },
+  { q: ["prayer flags nepal", "prayer flags himalaya", "prayer flags"], must: "colourful Buddhist prayer flags in Nepal or the Himalayas" },
+  { q: ["pokhara lake", "phewa lake", "pokhara nepal"], must: "Phewa Lake or Pokhara, Nepal" },
+] as const;
+
 // Facts checked: Nepal's flag is the only non-rectangular national flag; its construction is
 // set out step by step in Schedule 1 of the Constitution; crimson = rhododendron (national
 // flower); the moon and sun express the wish that the nation lasts as long as they do; the two
 // pennants are commonly said to stand for the Himalayas and for Hinduism and Buddhism.
-// 193 = UN member states.
+// 193 = UN member states. The current flag was adopted on 16 December 1962.
 const STORIES: Record<"en" | "ne", Story> = {
   en: {
     lines: [
       { parts: [{ text: "Every country's flag is a rectangle.", v: "world" }, { text: "Except one.", v: "flag" }] },
-      { parts: [{ text: "Out of one hundred ninety-three countries, only Nepal's flag looks like this.", v: "flag2" }] },
-      { parts: [{ text: "But the shape isn't even the strangest part.", v: "flag3" }] },
+      { parts: [{ text: "Out of one hundred ninety-three countries, only Nepal's flag looks like this.", v: "people" }] },
+      { parts: [{ text: "It became the official flag on the sixteenth of December, nineteen sixty-two.", v: "durbar" }] },
+      { parts: [{ text: "But the shape isn't even the strangest part.", v: "map" }] },
       { parts: [{ text: "Its two triangles stand for the Himalayas,", v: "himalaya" }, { text: "and for Hinduism and Buddhism.", v: "religion" }] },
       { parts: [{ text: "The crimson red is the colour of the rhododendron, Nepal's national flower.", v: "rhodo" }] },
       { parts: [{ text: "The moon and the sun?", v: "moon" }, { text: "A wish that Nepal lasts as long as they do.", v: "sun" }] },
@@ -96,16 +112,20 @@ const STORIES: Record<"en" | "ne", Story> = {
     hook: { lines: ["Only 1 flag", "breaks the rule"], highlight: 0 },
     topic: "Nepal's flag",
     emphasis: ["rectangle", "except", "nepal's", "strangest", "himalayas", "rhododendron", "moon", "sun", "constitution", "geometry", "only"],
-    card: { line: 1, big: "1 / 193", small: "countries" },
-    payoffLine: 6,
-    followLine: 3,
+    cards: [
+      { line: 1, kind: "number", big: "1 / 193", small: "countries" },
+      { line: 2, kind: "date", big: "16 December 1962", small: "official flag" },
+    ],
+    payoffLine: 7,
+    followLine: 4,
     followText: "Follow for Part 2",
   },
   ne: {
     lines: [
       { parts: [{ text: "संसारका सबै देशको झण्डा चार कुने हुन्छ।", v: "world" }, { text: "एउटा बाहेक।", v: "flag" }] },
-      { parts: [{ text: "एक सय त्रियानब्बे देशमध्ये, यस्तो आकारको झण्डा नेपालको मात्र छ।", v: "flag2" }] },
-      { parts: [{ text: "तर आकार मात्र अचम्मको कुरा होइन।", v: "flag3" }] },
+      { parts: [{ text: "एक सय त्रियानब्बे देशमध्ये, यस्तो आकारको झण्डा नेपालको मात्र छ।", v: "people" }] },
+      { parts: [{ text: "सन् उन्नाइस सय बयसट्ठी, डिसेम्बर सोह्र तारिखमा यो झण्डा आधिकारिक भयो।", v: "durbar" }] },
+      { parts: [{ text: "तर आकार मात्र अचम्मको कुरा होइन।", v: "map" }] },
       { parts: [{ text: "यसका दुई त्रिकोणले हिमाललाई जनाउँछन्,", v: "himalaya" }, { text: "अनि हिन्दू र बौद्ध धर्मलाई पनि।", v: "religion" }] },
       { parts: [{ text: "यसको सिम्रिक रातो रङ राष्ट्रिय फूल लालीगुराँसको रङ हो।", v: "rhodo" }] },
       { parts: [{ text: "अनि चन्द्र र सूर्य?", v: "moon" }, { text: "नेपाल तिनीहरू रहुन्जेल रहोस् भन्ने कामना।", v: "sun" }] },
@@ -117,17 +137,21 @@ const STORIES: Record<"en" | "ne", Story> = {
     hook: { lines: ["एउटा मात्र झण्डा", "जसले नियम तोड्छ"], highlight: 0 },
     topic: "नेपालको झण्डा",
     emphasis: ["बाहेक", "नेपालको", "अचम्मको", "हिमाललाई", "लालीगुराँसको", "चन्द्र", "सूर्य", "संविधानमै", "ज्यामितिको", "मात्र"],
-    card: { line: 1, big: "1 / 193", small: "देशमध्ये" },
-    payoffLine: 6,
-    followLine: 3,
+    cards: [
+      { line: 1, kind: "number", big: "1 / 193", small: "देशमध्ये" },
+      { line: 2, kind: "date", big: "१६ डिसेम्बर १९६२", small: "आधिकारिक झण्डा" },
+    ],
+    payoffLine: 7,
+    followLine: 4,
     followText: "भाग २ का लागि फलो गर्नुहोस्",
   },
 };
 
 /** Checked pictures, found once and shared by both languages (fewer Gemini requests). */
-const picked = new Map<string, { path: string; kind: "video" | "image" } | null>();
+const picked = new Map<string, { path: string; kind: "video" | "image"; durationSec?: number } | null>();
 const usedIds = new Set<number>();
 const report: string[] = [];
+let brollNext = 0;
 
 /** Join voice pieces with a gap; returns the audio and where each line and word is. */
 function glue(pieces: SpeechResult[], gapMs: number) {
@@ -204,7 +228,7 @@ async function make(language: "ne" | "en") {
       if (!picked.has(part.v)) {
         const vis = VISUALS[part.v];
         const found = await findCheckedMedia([...vis.q], vis.must, TOPIC, "SHORT", job.dir, `pick-${part.v}`, usedIds, (endMs - starts[pi]!) / 1000);
-        picked.set(part.v, found ? { path: path.join(job.dir, found.file), kind: found.kind } : null);
+        picked.set(part.v, found ? { path: path.join(job.dir, found.file), kind: found.kind, durationSec: found.durationSec } : null);
         report.push(`${part.v}: ${found ? `${found.kind} ${found.sourceUrl}${found.checked ? " (checked)" : " (NOT checked)"}` : "nothing passed the check -> colour background"}`);
       }
       const p = picked.get(part.v);
@@ -212,10 +236,32 @@ async function make(language: "ne" | "en") {
       if (p) {
         const file = `clip-${n}${path.extname(p.path)}`;
         await copyFile(p.path, path.join(job.dir, file));
-        media = { src: job.url(file), kind: p.kind };
+        media = { src: job.url(file), kind: p.kind, durationSec: p.durationSec };
       }
       mediaByPart.push(media);
-      shotsNew.push({ startMs: starts[pi]!, endMs, media });
+      // A long part is cut into ~2 s pieces: the first keeps its picture, the others show variety pictures.
+      for (const piece of splitLongShots([{ startMs: starts[pi]!, endMs }])) {
+        if (!piece.extra) {
+          shotsNew.push({ ...piece, media });
+          continue;
+        }
+        const k = brollNext++ % BROLL.length;
+        const key = `broll-${k}`;
+        if (!picked.has(key)) {
+          const b = BROLL[k]!;
+          const found = await findCheckedMedia([...b.q], b.must, TOPIC, "SHORT", job.dir, `pick-${key}`, usedIds, 3);
+          picked.set(key, found ? { path: path.join(job.dir, found.file), kind: found.kind, durationSec: found.durationSec } : null);
+          report.push(`${key}: ${found ? `${found.kind} ${found.sourceUrl}${found.checked ? " (checked)" : " (NOT checked)"}` : "nothing passed the check -> keeps the line's picture"}`);
+        }
+        const bp = picked.get(key);
+        let bm: Media | null = media;
+        if (bp) {
+          const file = `broll-${n}-${k}${path.extname(bp.path)}`;
+          await copyFile(bp.path, path.join(job.dir, file));
+          bm = { src: job.url(file), kind: bp.kind, durationSec: bp.durationSec };
+        }
+        shotsNew.push({ startMs: piece.startMs, endMs: piece.endMs, media: bm });
+      }
       n++;
     }
   }
@@ -226,13 +272,17 @@ async function make(language: "ne" | "en") {
   for (const [name, s] of Object.entries(fx)) await writeFile(path.join(job.dir, `${name}.wav`), toWav(s));
   await writeFile(path.join(job.dir, "music.wav"), toWav(musicBed(newVoice.durationMs / 1000 + 1)));
   const emphasis = new Set(story.emphasis.map(plain));
-  const cardLine = newVoice.lines[story.card.line]!;
+  const cards: V2Props["cards"] = story.cards.map((c) => {
+    const l = newVoice.lines[c.line]!;
+    return { startMs: Math.max(l.startMs + 200, 2700), endMs: l.endMs + 300, big: c.big, small: c.small, kind: c.kind };
+  });
+  for (let i = 0; i + 1 < cards.length; i++) cards[i]!.endMs = Math.min(cards[i]!.endMs, cards[i + 1]!.startMs - 150);
   const payoff = newVoice.lines[story.payoffLine]!;
   const sfx: V2Props["sfx"] = [
     { atMs: 0, src: job.url("hit.wav"), volume: 0.55 },
     ...shotsNew.slice(1).map((s) => ({ atMs: s.startMs - 120, src: job.url("whoosh.wav"), volume: 0.35 })),
     ...newVoice.words.filter((w) => emphasis.has(plain(w.text)) && w.startMs > 900).map((w) => ({ atMs: w.startMs, src: job.url("pop.wav"), volume: 0.3 })),
-    { atMs: cardLine.startMs + 200, src: job.url("ding.wav"), volume: 0.3 },
+    ...cards.map((c) => ({ atMs: c.startMs, src: job.url("ding.wav"), volume: 0.3 })),
     { atMs: payoff.startMs - 1200, src: job.url("riser.wav"), volume: 0.3 },
     { atMs: payoff.startMs, src: job.url("hit.wav"), volume: 0.35 },
   ];
@@ -245,7 +295,7 @@ async function make(language: "ne" | "en") {
     emphasis: story.emphasis,
     hook: story.hook,
     topic: story.topic,
-    cards: [{ startMs: cardLine.startMs + 200, endMs: cardLine.endMs + 300, big: story.card.big, small: story.card.small }],
+    cards,
     sfx,
     musicFile: job.url("music.wav"),
     musicVolume: 0.28,

@@ -52,14 +52,21 @@ export const ScriptSchema = z.object({
     .array(z.string())
     .default([])
     .describe("Key words copied EXACTLY as they appear in the narration (one word each, no spaces): 1-2 per scene, the words that carry the surprise"),
-  numberCard: z
-    .object({
-      order: z.number().int().describe("Scene number where the card shows, or 0 for no card"),
-      big: z.string().describe("The number as digits, short, e.g. '1 / 193' or '8,849 m'"),
-      small: z.string().describe("1-2 word label under the number, target language, e.g. 'countries'"),
-    })
-    .default({ order: 0, big: "", small: "" })
-    .describe("One big number shown on screen while that scene is spoken (only if the script has a striking number)"),
+  cards: z
+    .array(
+      z.object({
+        order: z.number().int().describe("Scene number where the card shows"),
+        kind: z
+          .enum(["number", "year", "date", "time"])
+          .describe("number = a count or size (counts up); year = a year (digits roll); date = a day and month (calendar flips); time = a time of day (clock hands turn)"),
+        big: z
+          .string()
+          .describe("Short, as digits: number '1 / 193' or '8,849 m'; year '1962'; date '16 Dec 1962' (day, short month, optional year); time '5:45' (24-hour H:MM)"),
+        small: z.string().describe("1-3 word label under it, target language, e.g. 'countries'"),
+      }),
+    )
+    .default([])
+    .describe("0-3 animated cards for striking numbers, years, dates or times that the narration says (at most one per scene)"),
   followText: z.string().default("").describe("Short follow message, target language, e.g. 'Follow for Part 2'"),
 });
 export type Script = z.infer<typeof ScriptSchema>;
@@ -128,7 +135,10 @@ ${videoStyle() === "v2" ? V2_SCRIPT_RULES : CLASSIC_SCRIPT_RULES}
 
 Pictures inside a line ("parts"):
 - Cut each line into 1-3 parts, word for word, so that the picture can change the moment
-  the narrator names a new thing. Example: "Yaks live in the high Himalaya, | above the forests and jungles."
+  the narrator names a new thing. In Style V2 cut every line of more than 6 words into 2-3 parts, and give
+  each part a DIFFERENT picture: when a line keeps talking about one thing (for example Nepal's flag),
+  mix it with related on-topic pictures (Nepali people with the flag, a map of Nepal, Kathmandu, mountains).
+  Never the same picture twice in a row. Example: "Yaks live in the high Himalaya, | above the forests and jungles."
   -> part 1 "Yaks live in the high Himalaya," = "yak himalaya mountain", part 2 "above the forests and jungles." = "himalayan forest valley".
 - Each part has at least 4 words. Do not cut in the middle of a name.
 - This works for ANY topic: whenever the line names something a viewer could see (an animal, a place,
@@ -143,7 +153,8 @@ On-screen text (target language):
 - hookLines: 1-2 short lines for the first frame (a promise or shock, 2-4 words each). hookHighlight: the line with the surprise.
 - topicChip: 2-3 words naming the topic.
 - emphasis: 1-2 key words per scene, copied exactly as written in the narration.
-- numberCard: if a scene has a striking number, show it as digits (order = that scene); otherwise order 0.
+- cards: for each striking number, year, date or time in the narration (0-3 in total), an animated card
+  on that scene: kind "number" (counts up), "year" (digits roll), "date" (calendar flips), "time" (clock turns).
 - followText: a short "Follow for Part 2" message.
 
 Summary:
@@ -223,7 +234,10 @@ function normalise(script: Script): Script {
     hookLines: script.hookLines.map((l) => nfc(l).trim()).filter(Boolean).slice(0, 2),
     topicChip: nfc(script.topicChip).trim(),
     emphasis: script.emphasis.map((w) => nfc(w).trim()).filter(Boolean),
-    numberCard: { ...script.numberCard, small: nfc(script.numberCard.small) },
+    cards: script.cards
+      .filter((c) => c.order > 0 && c.big.trim())
+      .slice(0, 3)
+      .map((c) => ({ ...c, big: c.big.trim(), small: nfc(c.small).trim() })),
     followText: nfc(script.followText).trim(),
   };
 }

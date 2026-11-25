@@ -47,6 +47,17 @@ export const ResearchSchema = z.object({
       }),
     )
     .describe("Ordered scenes, one spoken idea each. Shorts: 7-9 scenes. Long videos: 15-25 scenes."),
+  broll: z
+    .array(
+      z.object({
+        query: z.string().describe("2-4 English words for stock footage, always naming the topic's place or subject, e.g. 'nepali people festival', 'kathmandu durbar square', 'nepal map'"),
+        mustShow: z.string().describe("Plain English: what that picture must clearly show, e.g. 'Nepali people at a festival in Nepal'"),
+      }),
+    )
+    .default([])
+    .describe(
+      "6-10 extra ON-TOPIC pictures that mix things around the subject: its people, places, daily life, culture, nature, a map of the country. Used between the main pictures so the video never stays on one thing",
+    ),
   focus: z
     .string()
     .default("")
@@ -73,6 +84,11 @@ const PICTURE_RULES = `- "idea" must say the actual fact (with its number), not 
   When a line talks about the whole world or all countries, show "world map" or "globe earth",
   never one random country's flag or city.
 - "mustShow" says exactly what the picture must show; a picture check uses it to reject wrong pictures.
+- VARIETY: the viewer must never watch the same thing for long. Also list "broll": 6-10 extra pictures
+  around the subject (its people, places, daily life, culture, nature, a map), all clearly on the topic.
+  Example for Nepal's flag: "nepali people holding flag", "kathmandu durbar square", "nepal map",
+  "himalaya village nepal", "nepali festival dance". Never another country's things.
+- Always prefer real places and real people. Never pictures of one object alone on a plain background.
 - Stock sites have no famous people, logos or charts: never ask for them.
 - Use different pictures for different scenes (no two scenes with the same visualQuery).
 

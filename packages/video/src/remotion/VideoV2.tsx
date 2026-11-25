@@ -8,7 +8,9 @@
  *      topic chip at the top, so people who join late still know what the video is about.
  *   3. Fast "whip" transitions with motion blur and a whoosh on every picture change.
  *   4. Key words get a marigold sticker box + a quick camera "punch" zoom + a pop sound.
- *   5. Number cards: big numbers count up on screen (with a ding).
+ *   5. Cards (with a ding): numbers count up, years roll like a meter, dates flip like a
+ *      desk calendar, times turn the hands of a clock. Cards, stickers, the topic chip and
+ *      the follow pill all keep moving a little (nothing on screen is ever frozen).
  *   6. Quiet code-made music under the voice; it ducks (gets quieter) while the voice talks.
  *   7. A small "follow for part 2" pill in the MIDDLE, not a like/follow card at the end:
  *      the end flows straight back into the start, so the video loops.
@@ -78,7 +80,7 @@ export function VideoV2(props: V2Props) {
       <Hook props={props} />
       {props.cards.map((card, i) => (
         <Sequence key={i} from={ms(card.startMs)} durationInFrames={Math.max(1, ms(card.endMs - card.startMs))}>
-          <NumberCard card={card} language={props.language} frames={Math.max(1, ms(card.endMs - card.startMs))} />
+          <Card card={card} language={props.language} frames={Math.max(1, ms(card.endMs - card.startMs))} />
         </Sequence>
       ))}
       <Captions props={props} emphasis={emphasis} />
@@ -184,7 +186,7 @@ function Hook({ props }: { props: V2Props }) {
     <div style={{ position: "absolute", top: 150, left: 0, right: 0, display: "flex", justifyContent: "center", opacity: chipIn }}>
       <div
         style={{
-          transform: `scale(${0.7 + 0.3 * chipIn})`,
+          transform: `scale(${0.7 + 0.3 * chipIn}) translateY(${Math.sin(frame / 20) * 4}px) rotate(${Math.sin(frame / 31) * 0.8}deg)`,
           fontFamily: font,
           fontWeight: props.language === "en" ? 400 : 700,
           fontSize: 50,
@@ -254,7 +256,7 @@ function Captions({ props, emphasis }: { props: V2Props; emphasis: Set<string> }
                 background: said ? LOGO.marigold : "rgba(255,255,255,0.15)",
                 color: said ? "#13203F" : "white",
                 fontSize: size * 1.12,
-                transform: `scale(${0.9 + 0.22 * pop - (said ? 0.12 * Math.max(0, pop - 1) : 0)}) rotate(${-3 * pop}deg)`,
+                transform: `scale(${0.9 + 0.22 * pop - (said ? 0.12 * Math.max(0, pop - 1) : 0) + (said ? 0.025 * Math.sin(frame / 4) : 0)}) rotate(${-3 * pop + (said ? 2 * Math.sin(frame / 6) : 0)}deg)`,
                 boxShadow: said ? "0 10px 0 rgba(0,0,0,0.6)" : undefined,
               }}
             >
@@ -284,46 +286,232 @@ function Captions({ props, emphasis }: { props: V2Props; emphasis: Set<string> }
   );
 }
 
-/** Big number card: the number counts up, the label slides in under it. */
-function NumberCard({ card, language, frames }: { card: V2Card; language: "ne" | "en"; frames: number }) {
+/* ---------- Animated cards ---------- */
+
+const DEVA = "०१२३४५६७८९";
+/** "२०१९" -> "2019" (so we can count with it). */
+const toAscii = (t: string) => t.replace(/[०-९]/g, (d) => String(DEVA.indexOf(d)));
+/** Show digits in the same script the script writer used. */
+const digitsLike = (sample: string, t: string) => (/[०-९]/.test(sample) ? t.replace(/[0-9]/g, (d) => DEVA[Number(d)]!) : t);
+
+/** The box every card sits in: springs in with a little turn, floats gently, fades out. */
+function CardShell({ frames, children, small, language }: { frames: number; children: React.ReactNode; small: string; language: "ne" | "en" }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const inn = spring({ frame, fps, config: { damping: 11, mass: 0.6 } });
   const out = interpolate(frame, [frames - 7, frames], [1, 0], clamp);
-  // Count up any number inside "big" (e.g. "1 / 193" counts the 193).
-  const count = interpolate(frame, [2, 20], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
-  const shown = card.big.replace(/[0-9]+/g, (n) => (Number(n) > 9 ? String(Math.round(Number(n) * count)) : n));
+  const float = Math.sin(frame / 11) * 8; // idle: never stands still
   const font = HEADLINE_FONT[language];
   return (
-    <div style={{ position: "absolute", top: 420, left: 0, right: 0, display: "flex", justifyContent: "center", opacity: out }}>
+    <div style={{ position: "absolute", top: 400, left: 0, right: 0, display: "flex", justifyContent: "center", opacity: out }}>
       <div
         style={{
-          transform: `scale(${0.4 + 0.6 * inn}) rotate(${(1 - inn) * -8}deg)`,
-          padding: "26px 60px 30px",
+          transform: `translateY(${float}px) scale(${(0.4 + 0.6 * inn) * (1 - 0.15 * (1 - out))}) rotate(${(1 - inn) * -8 + Math.sin(frame / 17) * 0.8}deg)`,
+          padding: "26px 56px 30px",
           borderRadius: 36,
-          background: "rgba(10,16,34,0.78)",
+          background: "rgba(10,16,34,0.8)",
           border: `5px solid ${LOGO.marigold}`,
           boxShadow: `0 20px 60px rgba(0,0,0,0.55), 0 0 60px ${LOGO.crimson}55`,
           textAlign: "center",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
         }}
       >
-        <div style={{ fontFamily: font, fontSize: 210, lineHeight: 1, color: LOGO.marigold, fontWeight: language === "en" ? 400 : 700 }}>
-          {shown}
+        {children}
+        {small ? (
+          <div
+            style={{
+              fontFamily: font,
+              fontSize: 60,
+              color: "white",
+              fontWeight: language === "en" ? 400 : 700,
+              textTransform: language === "en" ? "uppercase" : undefined,
+              letterSpacing: language === "en" ? 2 : 0,
+              marginTop: 10,
+              opacity: interpolate(frame, [6, 14], [0, 1], clamp),
+              transform: `translateY(${(1 - inn) * 30}px)`,
+            }}
+          >
+            {small}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Pick the right animation for the card. Anything we cannot read falls back to the count-up. */
+function Card({ card, language, frames }: { card: V2Card; language: "ne" | "en"; frames: number }) {
+  const kind = card.kind ?? "number";
+  let body: React.ReactNode = null;
+  if (kind === "time") body = <ClockFace big={card.big} language={language} />;
+  if (kind === "date") body = <CalendarFlip big={card.big} language={language} />;
+  if (kind === "year") body = <YearRoll big={card.big} language={language} />;
+  return (
+    <CardShell frames={frames} small={card.small} language={language}>
+      {body ?? <CountUp big={card.big} language={language} />}
+    </CardShell>
+  );
+}
+
+/** NUMBER: every number in the text counts up from 0 ("8849" -> 0, 1203 ... 8849). */
+function CountUp({ big, language }: { big: string; language: "ne" | "en" }) {
+  const frame = useCurrentFrame();
+  const count = interpolate(frame, [2, 22], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
+  const shown = toAscii(big).replace(/[0-9][0-9,]*/g, (raw) => {
+    const n = Number(raw.replace(/,/g, ""));
+    if (!(n > 9)) return raw;
+    const v = Math.round(n * count);
+    return raw.includes(",") ? v.toLocaleString("en-US") : String(v);
+  });
+  return (
+    <div style={{ fontFamily: HEADLINE_FONT[language], fontSize: 200, lineHeight: 1, color: LOGO.marigold, fontWeight: language === "en" ? 400 : 700 }}>
+      {digitsLike(big, shown)}
+    </div>
+  );
+}
+
+/** One rolling digit, like the distance meter in a car. */
+function RollDigit({ digit, delay, spins, size, sample }: { digit: number; delay: number; spins: number; size: number; sample: string }) {
+  const frame = useCurrentFrame();
+  const p = interpolate(frame, [delay, delay + 22], [0, 1], { ...clamp, easing: Easing.bezier(0.2, 0.9, 0.25, 1.06) });
+  const pos = p * (spins * 10 + digit); // how many digits have rolled past
+  const strip = Array.from({ length: spins * 10 + digit + 2 }, (_, i) => i % 10);
+  return (
+    <span style={{ display: "inline-block", height: size, overflow: "hidden", verticalAlign: "top" }}>
+      <span style={{ display: "flex", flexDirection: "column", transform: `translateY(${-pos * size}px)`, filter: `blur(${Math.min(6, Math.abs(1 - p) * 10)}px)` }}>
+        {strip.map((d, i) => (
+          <span key={i} style={{ height: size, lineHeight: `${size}px` }}>
+            {digitsLike(sample, String(d))}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+/** YEAR: the four digits roll into place one after the other. */
+function YearRoll({ big, language }: { big: string; language: "ne" | "en" }) {
+  const m = toAscii(big).match(/\d{3,4}/);
+  if (!m) return null;
+  const size = 210;
+  const [before, after] = [toAscii(big).slice(0, m.index), toAscii(big).slice(m.index! + m[0].length)];
+  return (
+    <div style={{ fontFamily: HEADLINE_FONT[language], fontSize: size * 0.95, color: LOGO.marigold, fontWeight: language === "en" ? 400 : 700, display: "flex", alignItems: "flex-start" }}>
+      {before.trim() ? <span style={{ lineHeight: `${size}px`, marginRight: 20, fontSize: size * 0.4 }}>{before.trim()}</span> : null}
+      {m[0].split("").map((d, i) => (
+        <RollDigit key={i} digit={Number(d)} delay={2 + i * 4} spins={1 + i} size={size} sample={big} />
+      ))}
+      {after.trim() ? <span style={{ lineHeight: `${size}px`, marginLeft: 20, fontSize: size * 0.4 }}>{after.trim()}</span> : null}
+    </div>
+  );
+}
+
+/** Read "16 December 1962", "December 16, 1962", "१६ पुस २०१९" into day / month / year. */
+export function parseDate(big: string): { day: number; month: string; year: string } | null {
+  const t = toAscii(big).replace(/,/g, " ");
+  const nums = [...t.matchAll(/\d+/g)].map((x) => x[0]);
+  const day = nums.find((n) => n.length <= 2 && Number(n) >= 1 && Number(n) <= 32);
+  const year = nums.find((n) => n.length === 4) ?? "";
+  const month = t.replace(/\d+/g, " ").replace(/\s+/g, " ").trim();
+  if (!day || !month) return null;
+  return { day: Number(day), month, year };
+}
+
+/** DATE: a desk calendar. Pages tear off and flip down, day after day, until the right date. */
+function CalendarFlip({ big, language }: { big: string; language: "ne" | "en" }) {
+  const frame = useCurrentFrame();
+  const d = parseDate(big);
+  if (!d) return null;
+  const font = HEADLINE_FONT[language];
+  const pages = Math.min(6, d.day - 1); // how many pages flip before the right day
+  const per = 4; // frames per page flip
+  const step = Math.min(pages, Math.max(0, (frame - 4) / per));
+  const current = Math.floor(step); // pages already gone
+  const flipP = step - current; // 0..1 of the page flipping now
+  const dayAt = (k: number) => d.day - pages + k;
+  const settle = spring({ frame: frame - (4 + pages * per), fps: FPS, config: { damping: 8, mass: 0.5 } });
+  const W = 380;
+  const pageStyle: React.CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "white",
+    color: "#13203F",
+    fontFamily: font,
+    fontSize: 190,
+    fontWeight: language === "en" ? 400 : 700,
+    borderRadius: "0 0 24px 24px",
+    backfaceVisibility: "hidden",
+  };
+  const num = (k: number) => digitsLike(big, String(dayAt(k)));
+  return (
+    <div style={{ width: W, display: "flex", flexDirection: "column", alignItems: "center", transform: `scale(${1 + 0.06 * Math.sin(settle * Math.PI)})` }}>
+      {/* Red header with the month, two rings on top */}
+      <div style={{ position: "relative", width: W, background: LOGO.crimson, borderRadius: "24px 24px 0 0", padding: "18px 0 10px", color: "white", fontFamily: font, fontSize: 58, textTransform: language === "en" ? "uppercase" : undefined, fontWeight: language === "en" ? 400 : 700 }}>
+        {[0.27, 0.73].map((x) => (
+          <span key={x} style={{ position: "absolute", top: -18, left: `${x * 100}%`, width: 22, height: 40, marginLeft: -11, borderRadius: 12, background: "#d8d8d8", border: "4px solid #555" }} />
+        ))}
+        {d.month}
+      </div>
+      {/* Pages: the next day waits underneath, the current page flips down over the bottom edge */}
+      <div style={{ position: "relative", width: W, height: 250, perspective: 900 }}>
+        <div style={pageStyle}>{num(Math.min(pages, current + 1))}</div>
+        {current < pages ? (
+          <div style={{ ...pageStyle, transformOrigin: "50% 100%", transform: `rotateX(${-flipP * 100}deg)`, filter: `brightness(${1 - 0.35 * flipP})` }}>{num(current)}</div>
+        ) : null}
+      </div>
+      {d.year ? (
+        <div style={{ marginTop: 12, fontFamily: font, fontSize: 80, color: LOGO.marigold, display: "flex", fontWeight: language === "en" ? 400 : 700, opacity: interpolate(frame, [pages * per, 4 + pages * per], [0, 1], clamp) }}>
+          {d.year.split("").map((n, i) => (
+            <RollDigit key={i} digit={Number(n)} delay={4 + pages * per + i * 3} spins={1} size={92} sample={big} />
+          ))}
         </div>
-        <div
-          style={{
-            fontFamily: font,
-            fontSize: 64,
-            color: "white",
-            fontWeight: language === "en" ? 400 : 700,
-            textTransform: language === "en" ? "uppercase" : undefined,
-            letterSpacing: language === "en" ? 2 : 0,
-            marginTop: 6,
-            transform: `translateY(${(1 - inn) * 30}px)`,
-          }}
-        >
-          {card.small}
-        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Read "10:30", "4:05 PM", "१०:३०" into hours and minutes. */
+export function parseTime(big: string): { h: number; m: number } | null {
+  const t = toAscii(big);
+  const x = t.match(/(\d{1,2})[:.](\d{2})/);
+  if (!x) return null;
+  let h = Number(x[1]);
+  if (/pm/i.test(t) && h < 12) h += 12;
+  if (/am/i.test(t) && h === 12) h = 0;
+  return { h, m: Number(x[2]) };
+}
+
+/** TIME: a clock. The hands spin from 12:00 to the time, then the digital time types under it. */
+function ClockFace({ big, language }: { big: string; language: "ne" | "en" }) {
+  const frame = useCurrentFrame();
+  const time = parseTime(big);
+  if (!time) return null;
+  const p = interpolate(frame, [3, 30], [0, 1], { ...clamp, easing: Easing.bezier(0.3, 0, 0.2, 1) });
+  const totalMin = ((time.h % 12) * 60 + time.m) * p;
+  const minuteDeg = (totalMin / 60) * 360 + 360 * p; // the minute hand also does one extra lap
+  const hourDeg = (totalMin / 720) * 360;
+  const tick = frame > 30 ? Math.sin((frame - 30) * 0.8) * Math.max(0, 1 - (frame - 30) / 12) * 4 : 0; // little bounce when it lands
+  const R = 150;
+  const shownMin = Math.round(totalMin);
+  const digital = `${Math.floor(shownMin / 60) || 12}:${String(shownMin % 60).padStart(2, "0")}`;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <svg width={R * 2 + 20} height={R * 2 + 20} viewBox={`${-R - 10} ${-R - 10} ${R * 2 + 20} ${R * 2 + 20}`}>
+        <circle r={R} fill="white" stroke={LOGO.marigold} strokeWidth={10} />
+        {Array.from({ length: 12 }, (_, i) => (
+          <line key={i} x1={0} y1={-R + 14} x2={0} y2={-R + (i % 3 === 0 ? 40 : 28)} stroke="#13203F" strokeWidth={i % 3 === 0 ? 8 : 4} strokeLinecap="round" transform={`rotate(${i * 30})`} />
+        ))}
+        <line x1={0} y1={14} x2={0} y2={-R * 0.5} stroke="#13203F" strokeWidth={14} strokeLinecap="round" transform={`rotate(${hourDeg + tick})`} />
+        <line x1={0} y1={18} x2={0} y2={-R * 0.78} stroke={LOGO.crimson} strokeWidth={8} strokeLinecap="round" transform={`rotate(${minuteDeg + tick})`} />
+        <circle r={12} fill={LOGO.marigold} stroke="#13203F" strokeWidth={4} />
+      </svg>
+      <div style={{ marginTop: 8, fontFamily: HEADLINE_FONT[language], fontSize: 96, color: LOGO.marigold, fontWeight: language === "en" ? 400 : 700 }}>
+        {p < 1 ? digitsLike(big, digital) : big}
       </div>
     </div>
   );
@@ -335,13 +523,13 @@ function FollowPill({ text, language }: { text: string; language: "ne" | "en" })
   const { fps, durationInFrames } = useVideoConfig();
   const inn = spring({ frame, fps, config: { damping: 13 } });
   const out = interpolate(frame, [ms(2600) - 8, ms(2600)], [0, 1], clamp);
-  const wiggle = frame > 18 && frame < 34 ? Math.sin((frame - 18) * 0.9) * 4 : 0;
+  const wiggle = (frame > 18 && frame < 34 ? Math.sin((frame - 18) * 0.9) * 4 : 0) + Math.sin(frame / 7) * 1.2;
   void durationInFrames;
   return (
     <div style={{ position: "absolute", top: 1040, left: 0, right: 0, display: "flex", justifyContent: "center" }}>
       <div
         style={{
-          transform: `translateX(${(1 - inn) * -700 + out * 700}px) rotate(${wiggle}deg)`,
+          transform: `translateX(${(1 - inn) * -700 + out * 700}px) translateY(${Math.sin(frame / 9) * 5}px) scale(${1 + 0.03 * Math.sin(frame / 5)}) rotate(${wiggle}deg)`,
           display: "flex",
           alignItems: "center",
           gap: 16,

@@ -6,8 +6,17 @@ import type { Media, VideoWord } from "./types";
 
 export type V2Shot = { startMs: number; endMs: number; media?: Media | null };
 
-/** A big number or short fact that pops up on screen, e.g. "1 / 193" + "countries". */
-export type V2Card = { startMs: number; endMs: number; big: string; small: string };
+/** What kind of animation a card gets. */
+export type V2CardKind = "number" | "year" | "date" | "time";
+
+/**
+ * A big number or short fact that pops up on screen.
+ *   number  "1 / 193" + "countries"   -> counts up (0, 1, 2 ... 193)
+ *   year    "1962"                    -> digits roll like a car's distance meter
+ *   date    "16 December 1962"        -> calendar page flips to the day
+ *   time    "10:30"                   -> clock hands turn to that time
+ */
+export type V2Card = { startMs: number; endMs: number; big: string; small: string; kind?: V2CardKind };
 
 /** One sound effect: which file, when, how loud (0-1). */
 export type V2Sfx = { atMs: number; src: string; volume: number };

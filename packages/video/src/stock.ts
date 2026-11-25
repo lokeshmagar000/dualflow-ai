@@ -25,6 +25,8 @@ export type FoundMedia = {
   provider: string;
   /** The clip's id on that site. */
   id: number;
+  /** Clip length in seconds (0 or missing for photos), so a short clip can loop instead of freezing. */
+  durationSec?: number;
 };
 
 /** Which stock site to use, or null for colour backgrounds. */
@@ -258,7 +260,7 @@ export async function findMedia(
     const file = `${name}.${c.kind === "video" ? "mp4" : "jpg"}`;
     await download(c.downloadUrl, path.join(dir, file));
     used.add(c.id);
-    return { file, kind: c.kind, sourceUrl: c.sourceUrl, provider, id: c.id };
+    return { file, kind: c.kind, sourceUrl: c.sourceUrl, provider, id: c.id, durationSec: c.duration };
   };
 
   try {
@@ -396,13 +398,16 @@ export async function checkPictures(candidates: Candidate[], mustShow: string, t
   parts.push({
     text: `This is for a short educational video about: ${topic}.
 The narrator is saying a line, and the picture on screen must clearly show: ${mustShow}.
-Be STRICT. Say a picture passes ONLY if a viewer would instantly see that exact thing.
+Be STRICT. Say a picture passes ONLY if a viewer would instantly see that exact thing, in a real, good-looking scene.
 - A flag must be exactly the right country's flag (any other country's flag fails).
 - A plant or animal must be the right species (for example poppies or roses are NOT rhododendrons).
 - Pictures about Nepal must look like Nepal (no other country's temples, cities or symbols).
 - Text, logos or sports balls that only print the thing fail.
-- Raw green-screen or blue-screen footage (a plain bright green or blue background) fails.
-Answer with the numbers of the pictures that pass, best first.`,
+- FAIL any "cut-out" picture: an object alone on a plain or single-colour background (white, black,
+  green screen, blue screen, grey, any flat colour or simple gradient), 3D renders on a plain background,
+  clip-art, icons, and slides of text. These look cheap in a video.
+- Prefer real places, real people and real life with depth and movement.
+Answer with the numbers of the pictures that pass, BEST FIRST (the most lively, real, high-quality scene first).`,
   });
   const body = {
     contents: [{ role: "user", parts }],
@@ -485,7 +490,7 @@ export async function findCheckedMedia(
     const file = `${name}.${pick.kind === "video" ? "mp4" : "jpg"}`;
     await download(pick.downloadUrl, path.join(dir, file));
     used.add(pick.id);
-    return { file, kind: pick.kind, sourceUrl: pick.sourceUrl, provider, id: pick.id, checked };
+    return { file, kind: pick.kind, sourceUrl: pick.sourceUrl, provider, id: pick.id, durationSec: pick.duration, checked };
   };
   for (let i = 0; i < Math.min(ordered.length, CHECK_BATCH * 3); i += CHECK_BATCH) {
     const batch = ordered.slice(i, i + CHECK_BATCH);

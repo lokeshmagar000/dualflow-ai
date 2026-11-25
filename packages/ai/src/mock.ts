@@ -34,6 +34,7 @@ export function mockResearch(input: { title: string; format: "SHORT" | "LONG" })
       { purpose: "call_to_action", idea: "Ask viewers to like and follow", visualQuery: "phone like button", backupQuery: "smartphone", mustShow: "a smartphone" },
     ],
     focus: t,
+    broll: [],
     thumbnailQuery: "nepal mountains",
   };
 }
@@ -76,7 +77,7 @@ export function mockScript(input: { language: Language; title: string; research:
     hookHighlight: 0,
     topicChip: input.title.slice(0, 30),
     emphasis: [],
-    numberCard: { order: 0, big: "", small: "" },
+    cards: [],
     followText: isNe ? "भाग २ का लागि फलो गर्नुहोस्" : "Follow for Part 2",
   };
 }

@@ -30,6 +30,7 @@ import {
   normaliseLoudness,
   prepareIntro,
   prepareV2,
+  splitLongShots,
   renderThumbnail,
   renderVideo,
   renderVideoV2,
@@ -101,6 +102,7 @@ const research: Step = async ({ storyId, run = 1 }) => {
           facts: research.facts,
           thumbnailQuery: research.thumbnailQuery,
           focus: research.focus,
+          broll: research.broll,
         } as unknown as Prisma.InputJsonValue,
       },
     }),
@@ -120,7 +122,7 @@ const script: Step = async (data) => {
   await prisma.variant.update({ where: { id: variant.id }, data: { status: "GENERATING", lastError: null } });
 
   // Rebuild the Research object saved by the research step.
-  const saved = story.research as unknown as (Pick<Research, "summary" | "facts" | "thumbnailQuery"> & { focus?: string }) | null;
+  const saved = story.research as unknown as (Pick<Research, "summary" | "facts" | "thumbnailQuery"> & { focus?: string; broll?: Research["broll"] }) | null;
   const visualPlan = story.visualPlan as unknown as Research["visualPlan"] | null;
   if (!saved || !visualPlan) throw new Error("Research is missing for this story.");
 
@@ -128,7 +130,7 @@ const script: Step = async (data) => {
     language: variant.language as Language,
     title: story.topic.title,
     format: story.format,
-    research: { ...saved, thumbnailQuery: saved.thumbnailQuery ?? "", focus: saved.focus ?? "", visualPlan },
+    research: { ...saved, thumbnailQuery: saved.thumbnailQuery ?? "", focus: saved.focus ?? "", broll: saved.broll ?? [], visualPlan },
   });
   await recordCosts(story.workspaceId, story.id, costs);
 
@@ -173,7 +175,7 @@ const script: Step = async (data) => {
           hookHighlight: script.hookHighlight,
           topicChip: script.topicChip,
           emphasis: script.emphasis,
-          numberCard: script.numberCard,
+          cards: script.cards,
           followText: script.followText,
         } satisfies V2Text as unknown as Prisma.InputJsonValue,
       },
@@ -318,7 +320,7 @@ const render: Step = async (data) => {
     // A long line is split at a sentence end into two shots with two different clips,
     // so one picture never has to stay on screen for too long.
     const plan = (story.visualPlan as unknown as Research["visualPlan"] | null) ?? [];
-    const shots = planShots(
+    const lineShots = planShots(
       variant.scenes.map((s) => ({
         order: s.order,
         text: s.text,
@@ -328,6 +330,13 @@ const render: Step = async (data) => {
       })),
       words,
     );
+    // STYLE V2: a shot longer than ~3 s is cut into ~2 s pieces; the extra pieces show
+    // other on-topic pictures (people, places, maps... from the research "broll" list),
+    // so the video keeps flowing instead of staying on one picture.
+    const v2 = videoStyle() === "v2" && format === "SHORT";
+    const shots = v2 ? splitLongShots(lineShots) : lineShots.map((s) => ({ ...s, extra: false }));
+    const broll = ((story.research as { broll?: { query: string; mustShow?: string }[] } | null)?.broll ?? []).filter((b) => b?.query);
+    let nextBroll = 0;
     const used = new Set<number>();
     const media: (FoundMedia | null)[] = [];
     // What the whole video is about: the picture check uses it to be strict
@@ -336,12 +345,19 @@ const render: Step = async (data) => {
     const visionBefore = visionRequests;
     for (const [i, shot] of shots.entries()) {
       const p = plan[shot.order - 1];
+      const seconds = (shot.endMs - shot.startMs) / 1000;
+      if (shot.extra && broll.length) {
+        // Variety piece: the next b-roll idea (they take turns, so nothing repeats soon).
+        const b = broll[nextBroll++ % broll.length]!;
+        const queries = [...new Set([b.query, p?.backupQuery, p?.visualQuery].map((q) => q?.trim() ?? "").filter(Boolean))];
+        media.push(await findCheckedMedia(queries, b.mustShow || b.query, focus, format, job.dir, `shot-${i + 1}`, used, seconds));
+        continue;
+      }
       // A part of a line shows the thing that part names ("yak", "jungle") first.
       // The second shot of a long line uses the simpler backup words first, for variety.
       const planned = shot.part === 0 ? [p?.visualQuery, p?.backupQuery] : [p?.backupQuery, p?.visualQuery];
       const queries = [...new Set([shot.visualQuery, ...planned, story.topic.title].map((q) => q?.trim() ?? "").filter(Boolean))];
       const mustShow = shot.mustShow || (shot.part === 0 ? p?.mustShow : "") || shot.visualQuery || p?.visualQuery || story.topic.title;
-      const seconds = (shot.endMs - shot.startMs) / 1000;
       media.push(await findCheckedMedia(queries, mustShow, focus, format, job.dir, `shot-${i + 1}`, used, seconds));
     }
 
@@ -349,11 +365,12 @@ const render: Step = async (data) => {
     const brandInfo = brandFor(language);
     const brand = brandInfo.name;
     const accent = process.env.VIDEO_ACCENT || BRAND_COLORS.marigold;
-    const toMedia = (m: FoundMedia | null | undefined) => (m ? { src: job.url(m.file), kind: m.kind } : null);
+    // durationSec lets the video loop a short clip smoothly instead of freezing on its last frame.
+    const toMedia = (m: FoundMedia | null | undefined) => (m ? { src: job.url(m.file), kind: m.kind, durationSec: m.durationSec } : null);
 
     const videoFile = path.join(job.dir, "video.mp4");
     const started = Date.now();
-    if (videoStyle() === "v2" && format === "SHORT") {
+    if (v2) {
       // STYLE V2: hook on frame 1 (no logo intro), music + sound effects, key-word stickers,
       // number card, follow pill in the middle and a loop ending (no like & follow card).
       const props = await prepareV2({

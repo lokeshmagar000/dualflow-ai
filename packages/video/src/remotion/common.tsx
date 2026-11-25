@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
   AbsoluteFill,
   Img,
+  Loop,
   OffthreadVideo,
   Easing,
   continueRender,
@@ -66,22 +67,26 @@ export function Background({ media, index, frames }: { media?: Media | null; ind
   // Even scenes zoom in, odd scenes zoom out, and each drifts a little sideways.
   const t = Easing.inOut(Easing.sin)(Math.min(1, frame / Math.max(1, frames)));
   const zoomIn = index % 2 === 0;
-  const amount = media?.kind === "video" ? 0.06 : 0.14;
-  const zoom = zoomIn ? 1.02 + amount * t : 1.02 + amount * (1 - t);
-  const drift = (index % 3 === 0 ? 1 : index % 3 === 1 ? -1 : 0) * 2.5 * t; // percent
+  // Photos move more than clips (a still photo must never look frozen).
+  const photo = media?.kind === "image";
+  const amount = photo ? 0.2 : 0.06;
+  const zoom = zoomIn ? 1.04 + amount * t : 1.04 + amount * (1 - t);
+  const drift = (index % 3 === 0 ? 1 : index % 3 === 1 ? -1 : 0) * (photo ? 4 : 2.5) * t; // percent
+  const lift = photo ? (index % 2 === 0 ? -1.5 : 1.5) * t : 0; // percent, a slow tilt up or down
+  const turn = photo ? (index % 2 === 0 ? 0.8 : -0.8) * t : 0; // degrees
   const fill = {
     width: "100%",
     height: "100%",
     objectFit: "cover" as const,
-    transform: `scale(${zoom}) translateX(${drift}%)`,
+    transform: `scale(${zoom}) translate(${drift}%, ${lift}%) rotate(${turn}deg)`,
   };
 
   if (media?.kind === "video") {
-    return (
-      <AbsoluteFill>
-        <OffthreadVideo src={media.src} muted style={fill} startFrom={Math.round((media.atSec ?? 0) * 30)} />
-      </AbsoluteFill>
-    );
+    const start = Math.round((media.atSec ?? 0) * 30);
+    const clip = <OffthreadVideo src={media.src} muted style={fill} startFrom={start} />;
+    // A clip shorter than its scene loops (instead of stopping on its last frame).
+    const usable = media.durationSec ? Math.floor(media.durationSec * 30) - start - 2 : 0;
+    return <AbsoluteFill>{usable > 15 && usable < frames ? <Loop durationInFrames={usable}>{clip}</Loop> : clip}</AbsoluteFill>;
   }
   if (media?.kind === "image") {
     return (
