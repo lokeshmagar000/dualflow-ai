@@ -72,3 +72,16 @@ export const THUMBNAIL_SIZE_LABELS: Record<ThumbnailSizeName, string> = {
 export function thumbnailKeyFor(mainKey: string, size: ThumbnailSizeName): string {
   return mainKey.replace(/thumbnail\.jpg$/, `thumbnail-${size}.jpg`);
 }
+
+/**
+ * Which video style to make (VIDEO_STYLE setting):
+ *   "v2" (default)  hook on frame 1, no logo intro, loop ending, music + sound effects,
+ *                   key-word stickers, number cards, strict picture check
+ *   "classic"       the older style: logo intro, title box, like & follow card at the end
+ */
+export type VideoStyleName = "v2" | "classic";
+export function videoStyle(
+  env: Record<string, string | undefined> = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {},
+): VideoStyleName {
+  return (env.VIDEO_STYLE ?? "").toLowerCase() === "classic" ? "classic" : "v2";
+}

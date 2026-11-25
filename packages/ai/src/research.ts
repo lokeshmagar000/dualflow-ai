@@ -11,6 +11,7 @@ import { claudeCost, type CostLine } from "./cost";
 import { isMockAI, mockResearch } from "./mock";
 import { aiProvider } from "./provider";
 import { askGemini, askGeminiJson } from "./gemini";
+import { videoStyle } from "@dualflow/shared";
 
 export const ResearchSchema = z.object({
   summary: z.string().describe("3-5 sentence summary of what the video should explain"),
@@ -25,7 +26,7 @@ export const ResearchSchema = z.object({
   visualPlan: z
     .array(
       z.object({
-        purpose: z.enum(["hook", "point", "example", "call_to_action"]),
+        purpose: z.enum(["hook", "point", "example", "open_loop", "payoff", "loop_back", "call_to_action"]),
         idea: z
           .string()
           .describe("The ONE thing the narrator says in this scene, as one short English sentence with the real fact or number"),
@@ -37,9 +38,30 @@ export const ResearchSchema = z.object({
         backupQuery: z
           .string()
           .describe("1-2 simpler English words for the same picture, used if nothing is found, e.g. 'yak', 'mountain climber'"),
+        mustShow: z
+          .string()
+          .default("")
+          .describe(
+            "In plain English, exactly what the picture MUST clearly show for this scene, specific enough to reject wrong pictures, e.g. 'the national flag of Nepal: two stacked crimson triangles with a blue border' or 'red rhododendron flowers'",
+          ),
       }),
     )
     .describe("Ordered scenes, one spoken idea each. Shorts: 7-9 scenes. Long videos: 15-25 scenes."),
+  broll: z
+    .array(
+      z.object({
+        query: z.string().describe("2-4 English words for stock footage, always naming the topic's place or subject, e.g. 'nepali people festival', 'kathmandu durbar square', 'nepal map'"),
+        mustShow: z.string().describe("Plain English: what that picture must clearly show, e.g. 'Nepali people at a festival in Nepal'"),
+      }),
+    )
+    .default([])
+    .describe(
+      "6-10 extra ON-TOPIC pictures that mix things around the subject: its people, places, daily life, culture, nature, a map of the country. Used between the main pictures so the video never stays on one thing",
+    ),
+  focus: z
+    .string()
+    .default("")
+    .describe("The exact subject of the whole video in a few English words, e.g. 'Nepal\'s national flag'. Used to keep every picture on topic"),
   thumbnailQuery: z
     .string()
     .describe(
@@ -52,6 +74,53 @@ const RESEARCH_SYSTEM = `You are the research desk for a Nepali + English educat
 Find accurate, recent information. Prefer official, academic and established news sources.
 Only keep facts you can support with a source. If sources disagree, say so in the summary.`;
 
+/** Rules for pictures, both styles. */
+const PICTURE_RULES = `- "idea" must say the actual fact (with its number), not just "talk about the history".
+- "visualQuery" must show exactly what that scene talks about, as something a camera can film.
+  If the fact is abstract (a number, a date, a record), show the thing it is about:
+  "Everest grows 4 mm a year" -> "everest snowy peak", not "growth" or "number".
+- STAY ON THE TOPIC. When the video is about one country, place or thing, put its name in every
+  visualQuery that shows it: "nepal flag" (never just "flag"), "kathmandu temple" (never just "temple").
+  When a line talks about the whole world or all countries, show "world map" or "globe earth",
+  never one random country's flag or city.
+- "mustShow" says exactly what the picture must show; a picture check uses it to reject wrong pictures.
+- VARIETY: the viewer must never watch the same thing for long. Also list "broll": 6-10 extra pictures
+  around the subject (its people, places, daily life, culture, nature, a map), all clearly on the topic.
+  Example for Nepal's flag: "nepali people holding flag", "kathmandu durbar square", "nepal map",
+  "himalaya village nepal", "nepali festival dance". Never another country's things.
+- Always prefer real places and real people. Never pictures of one object alone on a plain background.
+- Stock sites have no famous people, logos or charts: never ask for them.
+- Use different pictures for different scenes (no two scenes with the same visualQuery).
+
+`;
+
+/** Older style: hook, facts, then a call to action at the end. */
+const CLASSIC_PLAN_RULES = `How to build the visual plan (the pictures must match the words):
+- Each scene is ONE spoken idea: one or two short sentences, about 4-7 seconds of speech.
+- Scene 1 is the hook: the most surprising fact or a question. No greeting, no "in this video".
+- Then the facts, one per scene, in an order that tells a little story. The last fact is the best "wow".
+- The last scene is a short call to action (follow for more facts).
+${PICTURE_RULES}`;
+
+/**
+ * Style V2: a story shape that keeps people watching (see the style guide):
+ * hook -> first fact fast -> open loop -> facts -> payoff (the biggest wow) -> loop line.
+ */
+const V2_PLAN_RULES = `How to build the visual plan (the pictures must match the words). Shorts: 7-9 scenes, 30-45 seconds in total:
+- Each scene is ONE spoken idea: one short sentence, about 3-5 seconds of speech.
+- Scene 1 (purpose "hook"): ONE sentence under 10 words that opens a question the video answers later.
+  Use one of these shapes: break a rule ("Every flag is a rectangle. Except one."), a shocking number,
+  "you were told wrong", a hidden secret, "only one / the first", or a direct "why" question.
+  Never give the answer in the hook. No greeting, no "in this video", no "did you know".
+- Scene 2 (purpose "point"): the first fact, fast.
+- One scene in the middle (purpose "open_loop") promises more: "But that's not even the strangest part."
+- Then the other facts (purpose "point" or "example").
+- The second-to-last scene (purpose "payoff") is the biggest surprise: save the best fact for here.
+- The last scene (purpose "loop_back") ends the story so that it leads straight back into the hook
+  when the video replays (e.g. hook "Every flag is a rectangle. Except one." -> last line
+  "That's why it's the only flag on Earth that breaks the rule."). NO "like and follow", no goodbye.
+${PICTURE_RULES}`;
+
 type ResearchInput = { title: string; notes?: string | null; format: "SHORT" | "LONG" };
 
 /** The same two prompts are used by Claude and by Gemini. */
@@ -60,21 +129,10 @@ function notesPrompt(input: ResearchInput) {
 Write research notes: key facts (each with its source URL), useful numbers, and anything specific to Nepal or Nepali viewers.`;
 }
 function planPrompt(input: ResearchInput, notes: string) {
-  return `Topic: "${input.title}". Video format: ${input.format === "SHORT" ? "vertical short, about 60 seconds" : "long video, 8-12 minutes"}.
+  return `Topic: "${input.title}". Video format: ${input.format === "SHORT" ? (videoStyle() === "v2" ? "vertical short, 30-45 seconds" : "vertical short, about 60 seconds") : "long video, 8-12 minutes"}.
 Using ONLY these research notes, produce the facts list and the visual plan.
 
-How to build the visual plan (the pictures must match the words):
-- Each scene is ONE spoken idea: one or two short sentences, about 4-7 seconds of speech.
-- Scene 1 is the hook: the most surprising fact or a question. No greeting, no "in this video".
-- Then the facts, one per scene, in an order that tells a little story. The last fact is the best "wow".
-- The last scene is a short call to action (follow for more facts).
-- "idea" must say the actual fact (with its number), not just "talk about the history".
-- "visualQuery" must show exactly what that scene talks about, as something a camera can film.
-  If the fact is abstract (a number, a date, a record), show the thing it is about:
-  "Everest grows 4 mm a year" -> "snowy mountain peak", not "growth" or "number".
-- Stock sites have no famous people, logos, maps or charts: never ask for them.
-- Use different pictures for different scenes (no two scenes with the same visualQuery).
-
+${videoStyle() === "v2" ? V2_PLAN_RULES : CLASSIC_PLAN_RULES}
 <research_notes>
 ${notes}
 </research_notes>`;

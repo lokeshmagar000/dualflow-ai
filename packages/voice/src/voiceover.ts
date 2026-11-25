@@ -11,8 +11,11 @@ import type { SpeechResult, VoiceProvider, WordTiming } from "./types";
 import { pcmDurationMs, pcmToWav, silence } from "./wav";
 import { buildCues, toSrt, toVtt, type Cue } from "./subtitles";
 
-/** Pause between two scenes. */
-export const SCENE_GAP_MS = 400;
+/**
+ * Pause between two scenes (SCENE_GAP_MS). Style V2 keeps it short (120 ms: no dead air),
+ * the classic style uses 400 ms.
+ */
+export const SCENE_GAP_MS = Number(process.env.SCENE_GAP_MS ?? (process.env.VIDEO_STYLE?.toLowerCase() === "classic" ? 400 : 120));
 
 export interface SceneTiming {
   order: number;

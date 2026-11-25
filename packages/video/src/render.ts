@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, renderStill, selectComposition } from "@remotion/renderer";
 import type { ThumbnailProps, VideoProps } from "./types";
+import type { V2Props } from "./v2types";
 
 const ENTRY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "remotion/index.ts");
 const ROOT = process.env.RENDER_DIR || path.join(tmpdir(), "dualflow-render");
@@ -134,6 +135,23 @@ export async function renderVideo(props: VideoProps, outFile: string, onProgress
         onProgress?.(progress);
       }
     },
+  });
+}
+
+/** STYLE V2 sample: render the new-style video (not used by the pipeline yet). */
+export async function renderVideoV2(props: V2Props, outFile: string) {
+  const serveUrl = await getBundle();
+  const inputProps = props as unknown as Record<string, unknown>;
+  const composition = await selectComposition({ serveUrl, id: "VideoV2", inputProps, browserExecutable: browserExecutable() });
+  await renderMedia({
+    serveUrl,
+    composition,
+    inputProps,
+    codec: "h264",
+    audioCodec: "aac",
+    outputLocation: outFile,
+    browserExecutable: browserExecutable(),
+    concurrency: process.env.RENDER_CONCURRENCY ? Number(process.env.RENDER_CONCURRENCY) : null,
   });
 }
 

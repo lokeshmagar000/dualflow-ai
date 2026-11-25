@@ -13,6 +13,8 @@ export type Media = {
   kind: "video" | "image";
   /** For clips in a thumbnail: which second of the clip to show (default 0). */
   atSec?: number;
+  /** Clip length in seconds: a clip shorter than its scene loops instead of freezing on its last frame. */
+  durationSec?: number;
 };
 
 export type VideoScene = {

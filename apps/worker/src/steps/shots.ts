@@ -19,13 +19,15 @@ const MIN_SENTENCE_SHOT_MS = 2500;
 /** Ends a sentence: English . ! ? and the Nepali danda । */
 const SENTENCE_END = /[.!?।]["'”’)]*$/;
 
-export type ScenePart = { text: string; visualQuery: string };
+export type ScenePart = { text: string; visualQuery: string; mustShow?: string };
 export type SceneTime = { order: number; text: string; startMs: number; endMs: number; parts?: ScenePart[] | null };
 export type Shot = Omit<SceneTime, "parts"> & {
   /** 0 = first shot of the scene, 1 = second, ... */
   part: number;
   /** The picture words for this shot (from the script's parts), if any. */
   visualQuery?: string;
+  /** What the picture must clearly show (the picture check uses it), if the script said. */
+  mustShow?: string;
 };
 
 const tokens = (text: string) => text.trim().split(/\s+/).filter(Boolean);
@@ -41,13 +43,14 @@ export function planShots(scenes: SceneTime[], words: WordTiming[]): Shot[] {
       continue;
     }
     const single = parts?.length === 1 ? parts[0]!.visualQuery : undefined;
+    const singleMust = parts?.length === 1 ? parts[0]!.mustShow || undefined : undefined;
     const length = scene.endMs - scene.startMs;
     const split = length > LONG_SCENE_MS ? splitPoint(scene, inside) : null;
     if (split === null) {
-      shots.push({ ...base, part: 0, visualQuery: single });
+      shots.push({ ...base, part: 0, visualQuery: single, mustShow: singleMust });
       continue;
     }
-    shots.push({ ...base, endMs: split, text: textBetween(inside, scene.startMs, split), part: 0, visualQuery: single });
+    shots.push({ ...base, endMs: split, text: textBetween(inside, scene.startMs, split), part: 0, visualQuery: single, mustShow: singleMust });
     shots.push({ ...base, startMs: split, text: textBetween(inside, split, scene.endMs), part: 1 });
   }
   return shots;
@@ -84,7 +87,7 @@ function shotsFromParts(scene: Omit<SceneTime, "parts">, parts: ScenePart[], ins
       last.text = `${last.text} ${p.text}`;
       return;
     }
-    shots.push({ ...scene, startMs, endMs, text: p.text, part: shots.length, visualQuery: p.visualQuery });
+    shots.push({ ...scene, startMs, endMs, text: p.text, part: shots.length, visualQuery: p.visualQuery, mustShow: p.mustShow || undefined });
   });
   return shots;
 }
