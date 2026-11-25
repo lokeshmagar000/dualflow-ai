@@ -11,7 +11,7 @@
  */
 import { prisma, Prisma } from "@dualflow/db";
 import { findHashtags, researchTopic, writeScript, type Research } from "@dualflow/ai";
-import { BRAND_COLORS, brandFor, JOB_NAMES, THUMBNAIL_SIZE_NAMES, thumbnailKeyFor, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
+import { BRAND_COLORS, brandFor, JOB_NAMES, THUMBNAIL_SIZE_NAMES, thumbnailKeyFor, videoStyle, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
 import { AIQuotaError, nextQuotaReset } from "@dualflow/ai";
 import {
   buildCues,
@@ -23,15 +23,20 @@ import {
 } from "@dualflow/voice";
 import { readFile, saveFile } from "@dualflow/storage";
 import {
-  findMedia,
+  findCheckedMedia,
   findPhoto,
   mainThumbnailSize,
   makeJobFolder,
+  normaliseLoudness,
   prepareIntro,
+  prepareV2,
   renderThumbnail,
   renderVideo,
+  renderVideoV2,
+  visionRequests,
   type FoundMedia,
   type Media,
+  type V2Text,
 } from "@dualflow/video";
 import { copyFile, mkdir, readFile as readLocal, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -95,6 +100,7 @@ const research: Step = async ({ storyId, run = 1 }) => {
           summary: research.summary,
           facts: research.facts,
           thumbnailQuery: research.thumbnailQuery,
+          focus: research.focus,
         } as unknown as Prisma.InputJsonValue,
       },
     }),
@@ -114,7 +120,7 @@ const script: Step = async (data) => {
   await prisma.variant.update({ where: { id: variant.id }, data: { status: "GENERATING", lastError: null } });
 
   // Rebuild the Research object saved by the research step.
-  const saved = story.research as unknown as Pick<Research, "summary" | "facts" | "thumbnailQuery"> | null;
+  const saved = story.research as unknown as (Pick<Research, "summary" | "facts" | "thumbnailQuery"> & { focus?: string }) | null;
   const visualPlan = story.visualPlan as unknown as Research["visualPlan"] | null;
   if (!saved || !visualPlan) throw new Error("Research is missing for this story.");
 
@@ -122,7 +128,7 @@ const script: Step = async (data) => {
     language: variant.language as Language,
     title: story.topic.title,
     format: story.format,
-    research: { ...saved, thumbnailQuery: saved.thumbnailQuery ?? "", visualPlan },
+    research: { ...saved, thumbnailQuery: saved.thumbnailQuery ?? "", focus: saved.focus ?? "", visualPlan },
   });
   await recordCosts(story.workspaceId, story.id, costs);
 
@@ -161,6 +167,15 @@ const script: Step = async (data) => {
         description: script.description,
         hashtags: tags.hashtags,
         thumbnailHeadline: script.thumbnailHeadline,
+        // Style V2 on-screen text (hook, topic chip, key words, number card, follow text).
+        style: {
+          hookLines: script.hookLines,
+          hookHighlight: script.hookHighlight,
+          topicChip: script.topicChip,
+          emphasis: script.emphasis,
+          numberCard: script.numberCard,
+          followText: script.followText,
+        } satisfies V2Text as unknown as Prisma.InputJsonValue,
       },
     }),
   ]);
@@ -315,15 +330,19 @@ const render: Step = async (data) => {
     );
     const used = new Set<number>();
     const media: (FoundMedia | null)[] = [];
+    // What the whole video is about: the picture check uses it to be strict
+    // (a story about Nepal's flag never shows another country's flag).
+    const focus = (story.research as { focus?: string } | null)?.focus || story.topic.title;
+    const visionBefore = visionRequests;
     for (const [i, shot] of shots.entries()) {
       const p = plan[shot.order - 1];
       // A part of a line shows the thing that part names ("yak", "jungle") first.
       // The second shot of a long line uses the simpler backup words first, for variety.
       const planned = shot.part === 0 ? [p?.visualQuery, p?.backupQuery] : [p?.backupQuery, p?.visualQuery];
-      const queries = shot.visualQuery ? [shot.visualQuery, ...planned] : planned;
-      queries.push(story.topic.title);
+      const queries = [...new Set([shot.visualQuery, ...planned, story.topic.title].map((q) => q?.trim() ?? "").filter(Boolean))];
+      const mustShow = shot.mustShow || (shot.part === 0 ? p?.mustShow : "") || shot.visualQuery || p?.visualQuery || story.topic.title;
       const seconds = (shot.endMs - shot.startMs) / 1000;
-      media.push(await findMedia(queries, format, job.dir, `shot-${i + 1}`, used, seconds));
+      media.push(await findCheckedMedia(queries, mustShow, focus, format, job.dir, `shot-${i + 1}`, used, seconds));
     }
 
     // "Namaste Facts" in English videos, "नमस्ते फ्याक्ट्स" in Nepali videos (BRAND_NAME_* settings).
@@ -334,31 +353,52 @@ const render: Step = async (data) => {
 
     const videoFile = path.join(job.dir, "video.mp4");
     const started = Date.now();
-    await renderVideo(
-      {
-        format,
+    if (videoStyle() === "v2" && format === "SHORT") {
+      // STYLE V2: hook on frame 1 (no logo intro), music + sound effects, key-word stickers,
+      // number card, follow pill in the middle and a loop ending (no like & follow card).
+      const props = await prepareV2({
+        job,
         language,
-        title: variant.thumbnailHeadline || variant.title || story.topic.title,
         audioFile: job.url("voice.wav"),
         durationMs,
-        brand,
-        brandTag: brandInfo.tag, // always a string: "" = no label (see Root.tsx)
-        accent,
-        scenes: shots.map((s, i) => ({ startMs: s.startMs, endMs: s.endMs, text: s.text, media: toMedia(media[i]) })),
-        // The "like and follow" card with the platform logos appears when the narrator
-        // starts asking for it (the call-to-action line), or for the last 3.5 seconds.
-        ctaStartMs:
-          [...variant.scenes].reverse().find((s) => s.purpose === "call_to_action")?.startMs ?? Math.max(0, durationMs - 3500),
-        cues: buildCues(words),
-        // Word Pop subtitles need the time of every word.
         words,
-        subtitleStyle: process.env.SUBTITLE_STYLE === "classic" ? "classic" : "word-pop",
-        // Short animated intro with the channel name and a sound (INTRO_* settings).
-        intro: await prepareIntro(language, job),
-      },
-      videoFile,
-      (p) => console.log(`[render] ${language} ${Math.round(p * 100)}%`),
-    );
+        lines: variant.scenes.map((s) => ({ order: s.order, purpose: s.purpose, startMs: s.startMs ?? 0, endMs: s.endMs ?? durationMs })),
+        shots: shots.map((s, i) => ({ startMs: s.startMs, endMs: s.endMs, media: toMedia(media[i]) })),
+        text: variant.style as Partial<V2Text> | null,
+        fallbackHook: variant.thumbnailHeadline || variant.title || story.topic.title,
+        brand,
+        brandTag: brandInfo.tag,
+      });
+      const raw = path.join(job.dir, "video-raw.mp4");
+      await renderVideoV2(props, raw);
+      if (!(await normaliseLoudness(raw, videoFile))) await copyFile(raw, videoFile);
+    } else {
+      await renderVideo(
+        {
+          format,
+          language,
+          title: variant.thumbnailHeadline || variant.title || story.topic.title,
+          audioFile: job.url("voice.wav"),
+          durationMs,
+          brand,
+          brandTag: brandInfo.tag, // always a string: "" = no label (see Root.tsx)
+          accent,
+          scenes: shots.map((s, i) => ({ startMs: s.startMs, endMs: s.endMs, text: s.text, media: toMedia(media[i]) })),
+          // The "like and follow" card with the platform logos appears when the narrator
+          // starts asking for it (the call-to-action line), or for the last 3.5 seconds.
+          ctaStartMs:
+            [...variant.scenes].reverse().find((s) => s.purpose === "call_to_action")?.startMs ?? Math.max(0, durationMs - 3500),
+          cues: buildCues(words),
+          // Word Pop subtitles need the time of every word.
+          words,
+          subtitleStyle: process.env.SUBTITLE_STYLE === "classic" ? "classic" : "word-pop",
+          // Short animated intro with the channel name and a sound (INTRO_* settings).
+          intro: await prepareIntro(language, job),
+        },
+        videoFile,
+        (p) => console.log(`[render] ${language} ${Math.round(p * 100)}%`),
+      );
+    }
     console.log(`[render] ${language} video made in ${Math.round((Date.now() - started) / 1000)} s`);
 
     // Thumbnails: one per platform size, with a photo of the video's main subject
@@ -408,6 +448,10 @@ const render: Step = async (data) => {
       await copyFile(thumbFile, path.join(process.env.VIDEO_COPY_DIR, `${name}.jpg`));
       for (const size of extraSizes) await copyFile(thumbFiles[size]!, path.join(process.env.VIDEO_COPY_DIR, `${name}-${size}.jpg`));
     }
+
+    // The picture check uses free Gemini requests: show them on the costs page.
+    const visionUsed = visionRequests - visionBefore;
+    if (visionUsed > 0) await recordCosts(story.workspaceId, story.id, [{ provider: "gemini-vision", units: visionUsed, unitType: "requests", usd: 0 }]);
 
     // Remember where each clip came from (credits).
     const assets = await Promise.all(

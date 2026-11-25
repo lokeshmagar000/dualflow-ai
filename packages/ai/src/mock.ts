@@ -27,12 +27,13 @@ export function mockResearch(input: { title: string; format: "SHORT" | "LONG" })
     ],
     // The same 5 scenes are used by BOTH languages, like the real pipeline.
     visualPlan: [
-      { purpose: "hook", idea: `Grab attention with a question about ${t}`, visualQuery: "curious person looking up", backupQuery: "curious person" },
-      { purpose: "point", idea: `First main point about ${t}`, visualQuery: "nepal landscape", backupQuery: "nepal" },
-      { purpose: "point", idea: `Second main point about ${t}`, visualQuery: "city street kathmandu", backupQuery: "kathmandu" },
-      { purpose: "example", idea: `A simple real-life example`, visualQuery: "people talking", backupQuery: "people" },
-      { purpose: "call_to_action", idea: "Ask viewers to like and follow", visualQuery: "phone like button", backupQuery: "smartphone" },
+      { purpose: "hook", idea: `Grab attention with a question about ${t}`, visualQuery: "curious person looking up", backupQuery: "curious person", mustShow: "a curious person" },
+      { purpose: "point", idea: `First main point about ${t}`, visualQuery: "nepal landscape", backupQuery: "nepal", mustShow: "a landscape in Nepal" },
+      { purpose: "point", idea: `Second main point about ${t}`, visualQuery: "city street kathmandu", backupQuery: "kathmandu", mustShow: "a street in Kathmandu" },
+      { purpose: "example", idea: `A simple real-life example`, visualQuery: "people talking", backupQuery: "people", mustShow: "people talking" },
+      { purpose: "call_to_action", idea: "Ask viewers to like and follow", visualQuery: "phone like button", backupQuery: "smartphone", mustShow: "a smartphone" },
     ],
+    focus: t,
     thumbnailQuery: "nepal mountains",
   };
 }
@@ -71,5 +72,11 @@ export function mockScript(input: { language: Language; title: string; research:
       text: (lines[i] ?? lines[lines.length - 1]!).normalize("NFC"),
       parts: [],
     })),
+    hookLines: [isNe ? "अभ्यास भिडियो" : "Practice video"],
+    hookHighlight: 0,
+    topicChip: input.title.slice(0, 30),
+    emphasis: [],
+    numberCard: { order: 0, big: "", small: "" },
+    followText: isNe ? "भाग २ का लागि फलो गर्नुहोस्" : "Follow for Part 2",
   };
 }

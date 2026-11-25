@@ -340,7 +340,7 @@ export async function findPhoto(
 }
 
 /* ------------------------------------------------------------------------------------------
- * PICTURE CHECK (STOCK_VISION_CHECK=on, needs GEMINI_API_KEY)
+ * PICTURE CHECK (on by default when GEMINI_API_KEY is set; STOCK_VISION_CHECK=off turns it off)
  *
  * Stock tags are often wrong: "flag" finds the US flag, "rhododendron" finds poppies.
  * So before we use a clip, Gemini LOOKS at a small picture of it and says whether it
@@ -351,11 +351,20 @@ export async function findPhoto(
  * ---------------------------------------------------------------------------------------- */
 
 const VISION_API = "https://generativelanguage.googleapis.com/v1beta/models";
-const VISION_MODELS = [process.env.GEMINI_VISION_MODEL || "gemini-flash-latest", "gemini-flash-lite-latest"];
+const VISION_MODELS = [
+  ...new Set([process.env.GEMINI_VISION_MODEL || "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite"]),
+];
+/** Free Gemini is sometimes busy (503) or allows only a few requests a minute (429): wait and try again. */
+const VISION_WAITS_MS = [0, 8_000, 20_000, 40_000];
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const CHECK_BATCH = 8;
 
+/** How many picture-check requests this program made (for the cost page). */
+export let visionRequests = 0;
+
 export function visionCheckOn(): boolean {
-  return /^(on|yes|true|1)$/i.test(process.env.STOCK_VISION_CHECK ?? "") && Boolean(process.env.GEMINI_API_KEY);
+  // On by default whenever there is a Gemini key; STOCK_VISION_CHECK=off turns it off.
+  return !/^(off|no|false|0)$/i.test(process.env.STOCK_VISION_CHECK ?? "on") && Boolean(process.env.GEMINI_API_KEY);
 }
 
 async function previewPart(url: string): Promise<{ inline_data: { mime_type: string; data: string } } | null> {
@@ -405,24 +414,28 @@ Answer with the numbers of the pictures that pass, best first.`,
       },
     },
   };
-  for (const model of VISION_MODELS) {
-    try {
-      const res = await fetch(`${VISION_API}/${encodeURIComponent(model)}:generateContent`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY! },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(90_000),
-      });
-      if (!res.ok) {
-        console.warn(`Picture check: ${model} said ${res.status}, trying the next model.`);
-        continue;
+  for (const wait of VISION_WAITS_MS) {
+    if (wait) await sleep(wait);
+    for (const model of VISION_MODELS) {
+      try {
+        const res = await fetch(`${VISION_API}/${encodeURIComponent(model)}:generateContent`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY! },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (!res.ok) {
+          console.warn(`Picture check: ${model} said ${res.status}, trying the next model.`);
+          continue;
+        }
+        const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+        const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
+        const { pass } = JSON.parse(text) as { pass: number[] };
+        visionRequests++;
+        return pass.map((n) => withPictures[n - 1]?.c).filter((c): c is Candidate => Boolean(c));
+      } catch (err) {
+        console.warn(`Picture check: ${model} failed (${(err as Error).message}).`);
       }
-      const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-      const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
-      const { pass } = JSON.parse(text) as { pass: number[] };
-      return pass.map((n) => withPictures[n - 1]?.c).filter((c): c is Candidate => Boolean(c));
-    } catch (err) {
-      console.warn(`Picture check: ${model} failed (${(err as Error).message}).`);
     }
   }
   // The check itself did not work: say so, and let the caller decide (we do NOT guess).
@@ -467,16 +480,26 @@ export async function findCheckedMedia(
     }
   }
   const ordered = [...pool.values()].sort((a, b) => b.score - a.score);
+  const take = async (pick: Candidate, checked: boolean) => {
+    const file = `${name}.${pick.kind === "video" ? "mp4" : "jpg"}`;
+    await download(pick.downloadUrl, path.join(dir, file));
+    used.add(pick.id);
+    return { file, kind: pick.kind, sourceUrl: pick.sourceUrl, provider, id: pick.id, checked };
+  };
   for (let i = 0; i < Math.min(ordered.length, CHECK_BATCH * 3); i += CHECK_BATCH) {
     const batch = ordered.slice(i, i + CHECK_BATCH);
-    const passed = await checkPictures(batch, mustShow, topic);
-    const pick = passed.find((c) => c.kind === "video") ?? passed[0];
-    if (pick) {
-      const file = `${name}.${pick.kind === "video" ? "mp4" : "jpg"}`;
-      await download(pick.downloadUrl, path.join(dir, file));
-      used.add(pick.id);
-      return { file, kind: pick.kind, sourceUrl: pick.sourceUrl, provider, id: pick.id, checked: true };
+    let passed: Candidate[];
+    try {
+      passed = await checkPictures(batch, mustShow, topic);
+    } catch {
+      // Gemini is not answering at all: only take a picture whose tags name EVERY search word
+      // (strict, so we still avoid wrong pictures), else nothing.
+      const strict = ordered.find((c) => queries.some((q) => tagMatch(q, c.tags) === 1));
+      console.warn(`Picture check unavailable for "${mustShow}": ${strict ? "using a clip whose tags match every word" : "no picture"}.`);
+      return strict ? take(strict, false) : null;
     }
+    const pick = passed.find((c) => c.kind === "video") ?? passed[0];
+    if (pick) return take(pick, true);
   }
   console.warn(`Picture check: nothing showed "${mustShow}" (${ordered.length} looked at).`);
   return null;

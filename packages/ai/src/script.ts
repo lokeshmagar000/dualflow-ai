@@ -5,7 +5,7 @@
  */
 import { z } from "zod/v4";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import type { Language } from "@dualflow/shared";
+import { videoStyle, type Language } from "@dualflow/shared";
 import { claude, currentModel, fallbackOptions } from "./client";
 import { claudeCost, type CostLine } from "./cost";
 import type { Research } from "./research";
@@ -32,12 +32,35 @@ export const ScriptSchema = z.object({
               visualQuery: z
                 .string()
                 .describe("2-4 ENGLISH words for stock footage of the thing named in THIS piece, e.g. 'yak grazing', 'himalaya forest'"),
+              mustShow: z
+                .string()
+                .default("")
+                .describe("Plain English: exactly what the picture for THIS piece must clearly show, e.g. 'the national flag of Nepal' or 'red rhododendron flowers'"),
             }),
           )
           .describe("The line cut into 1-3 pieces: start a new piece where the line names a new thing to show"),
       }),
     )
     .describe("Exactly one entry per visual plan scene, same order"),
+  hookLines: z
+    .array(z.string())
+    .default([])
+    .describe("The big hook text on the first frame, target language: 1-2 short lines, 2-4 words each, e.g. ['Only 1 flag', 'breaks the rule']. A promise or shock, not the topic name"),
+  hookHighlight: z.number().int().default(0).describe("Which hook line (0 or 1) gets the marigold box: the most surprising words"),
+  topicChip: z.string().default("").describe("2-3 words naming the topic, target language, shown at the top after the hook, e.g. 'Nepal\'s flag'"),
+  emphasis: z
+    .array(z.string())
+    .default([])
+    .describe("Key words copied EXACTLY as they appear in the narration (one word each, no spaces): 1-2 per scene, the words that carry the surprise"),
+  numberCard: z
+    .object({
+      order: z.number().int().describe("Scene number where the card shows, or 0 for no card"),
+      big: z.string().describe("The number as digits, short, e.g. '1 / 193' or '8,849 m'"),
+      small: z.string().describe("1-2 word label under the number, target language, e.g. 'countries'"),
+    })
+    .default({ order: 0, big: "", small: "" })
+    .describe("One big number shown on screen while that scene is spoken (only if the script has a striking number)"),
+  followText: z.string().default("").describe("Short follow message, target language, e.g. 'Follow for Part 2'"),
 });
 export type Script = z.infer<typeof ScriptSchema>;
 
@@ -57,6 +80,19 @@ const STYLE: Record<Language, string> = {
 /** Most words in one scene, so one picture never has to cover a long speech. */
 export const MAX_SCENE_WORDS: Record<Language, number> = { ne: 16, en: 20 };
 
+const CLASSIC_SCRIPT_RULES = `- Scene 1 is a strong hook (surprise or question). No greeting, no "welcome", no "in this video".
+- No filler ("did you know that..." more than once, "interestingly", "let's find out").
+- Each fact only once. The last scene is a short call to action (follow for more).`;
+
+/** Style V2: hook on the first word, an open loop, the best fact near the end, and a loop line. */
+const V2_SCRIPT_RULES = `- Scene 1 is the hook: one sentence under 10 words, spoken from the very first second.
+  It opens a question the video answers later. No greeting, no "welcome", no "in this video", no "did you know".
+- The "open_loop" scene promises more ("But that's not even the strangest part.").
+- The "payoff" scene gives the biggest surprise.
+- The last ("loop_back") scene leads straight back into the hook, so the video loops when it replays.
+  NO call to action, no "like and follow", no goodbye.
+- No filler ("interestingly", "let's find out"). Each fact only once. Energetic, curious, spoken style.`;
+
 type ScriptInput = { language: Language; title: string; format: "SHORT" | "LONG"; research: Research };
 
 /** The same prompt is used by Claude and by Gemini. */
@@ -69,7 +105,9 @@ function scriptPrompt(input: ScriptInput): { system: string; prompt: string } {
   const factsText = research.facts.map((f) => `- ${f.claim}`).join("\n");
   const length =
     input.format === "SHORT"
-      ? "The whole script must take about 40-55 seconds to speak."
+      ? videoStyle() === "v2"
+        ? "The whole script must take about 30-45 seconds to speak."
+        : "The whole script must take about 40-55 seconds to speak."
       : "The whole script must take about 8-12 minutes to speak.";
 
   return {
@@ -85,9 +123,7 @@ Rules (the picture changes with every scene, so the words must fit the picture):
 - Each entry says ONLY that scene's "say" idea, and talks about what is "on screen" at that moment.
   Never talk about the next scene's thing early, and never go back to an earlier one.
 - Each entry: one or two short sentences, at most ${MAX_SCENE_WORDS[language]} words.
-- Scene 1 is a strong hook (surprise or question). No greeting, no "welcome", no "in this video".
-- No filler ("did you know that..." more than once, "interestingly", "let's find out").
-- Each fact only once. The last scene is a short call to action (follow for more).
+${videoStyle() === "v2" ? V2_SCRIPT_RULES : CLASSIC_SCRIPT_RULES}
 - Plain spoken words only: no emojis, hashtags, brackets, stage directions or "Scene 1:" labels.
 
 Pictures inside a line ("parts"):
@@ -98,7 +134,17 @@ Pictures inside a line ("parts"):
 - This works for ANY topic: whenever the line names something a viewer could see (an animal, a place,
   a food, a building, a vehicle, a body part, a kind of person, a natural thing, an action), start a part there.
 - visualQuery is always in ENGLISH, and shows exactly the thing that part names.
-- The call to action is one part, visualQuery "smartphone like button".
+- visualQuery STAYS ON THE TOPIC: name the subject in it ("nepal flag", never just "flag"). A line about the
+  whole world or all countries shows "world map" or "globe earth".
+- mustShow says exactly what that picture must show (a picture check rejects wrong pictures).
+${videoStyle() === "v2" ? "" : '- The call to action is one part, visualQuery "smartphone like button".'}
+
+On-screen text (target language):
+- hookLines: 1-2 short lines for the first frame (a promise or shock, 2-4 words each). hookHighlight: the line with the surprise.
+- topicChip: 2-3 words naming the topic.
+- emphasis: 1-2 key words per scene, copied exactly as written in the narration.
+- numberCard: if a scene has a striking number, show it as digits (order = that scene); otherwise order 0.
+- followText: a short "Follow for Part 2" message.
 
 Summary:
 ${research.summary}
@@ -152,12 +198,13 @@ export function alignScenes(scenes: SceneInput[], planLength: number): Script["s
   return [...byOrder.values()].sort((a, b) => a.order - b.order);
 }
 
-type SceneInput = { order: number; text: string; parts?: { text: string; visualQuery: string }[] };
+type PartInput = { text: string; visualQuery: string; mustShow?: string };
+type SceneInput = { order: number; text: string; parts?: PartInput[] };
 
 /** Clean the parts; drop the parts if fewer than 2 remain (one part = one picture anyway). */
-function cleanParts(parts: { text: string; visualQuery: string }[]): { text: string; visualQuery: string }[] {
+function cleanParts(parts: PartInput[]): { text: string; visualQuery: string; mustShow: string }[] {
   const clean = parts
-    .map((p) => ({ text: cleanLine(p.text), visualQuery: p.visualQuery.replace(/\s+/g, " ").trim() }))
+    .map((p) => ({ text: cleanLine(p.text), visualQuery: p.visualQuery.replace(/\s+/g, " ").trim(), mustShow: (p.mustShow ?? "").trim() }))
     .filter((p) => p.text);
   if (clean.length < 2 || clean.some((p) => !p.visualQuery)) return clean.length === 1 && clean[0]!.visualQuery ? clean : [];
   return clean.slice(0, 4);
@@ -173,6 +220,11 @@ function normalise(script: Script): Script {
     thumbnailHeadline: nfc(script.thumbnailHeadline),
     hashtags: script.hashtags.map(nfc),
     scenes: script.scenes.map((s) => ({ ...s, text: nfc(s.text) })),
+    hookLines: script.hookLines.map((l) => nfc(l).trim()).filter(Boolean).slice(0, 2),
+    topicChip: nfc(script.topicChip).trim(),
+    emphasis: script.emphasis.map((w) => nfc(w).trim()).filter(Boolean),
+    numberCard: { ...script.numberCard, small: nfc(script.numberCard.small) },
+    followText: nfc(script.followText).trim(),
   };
 }
 

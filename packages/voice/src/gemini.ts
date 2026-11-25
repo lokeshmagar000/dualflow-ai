@@ -48,7 +48,10 @@ async function requestAudio(text: string, language: Language, voice: string): Pr
   if (!key) throw new VoiceConfigError("VOICE_PROVIDER=gemini needs GEMINI_API_KEY (free from Google AI Studio).");
   const style =
     process.env.GEMINI_TTS_STYLE ||
-    `Read this aloud in natural, warm ${LANGUAGE_NAME[language]}, like a friendly YouTube storyteller. Pause clearly (about half a second) at every blank line. Read only the text`;
+    (process.env.VIDEO_STYLE?.toLowerCase() === "classic"
+      ? `Read this aloud in natural, warm ${LANGUAGE_NAME[language]}, like a friendly YouTube storyteller. Pause clearly (about half a second) at every blank line. Read only the text`
+      : // Style V2: livelier, a little faster, with stress on the key words.
+        `Read this aloud in natural ${LANGUAGE_NAME[language]}, like an energetic, curious YouTube Shorts storyteller sharing a surprising secret: lively and a little fast, with clear stress on the key words. Pause clearly (about half a second) at every blank line. Read only the text`);
   const models = process.env.GEMINI_TTS_MODEL ? [process.env.GEMINI_TTS_MODEL] : DEFAULT_MODELS;
 
   let last = "";

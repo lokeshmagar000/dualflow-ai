@@ -241,6 +241,8 @@ model Variant {
   outputKey         String? // final video file in storage
   // You uploaded this video yourself (the "Mark as uploaded" button on the Ready to upload page).
   manualUploadedAt  DateTime?
+  /// Style V2 on-screen text: { hookLines, hookHighlight, topicChip, emphasis, numberCard, followText }
+  style             Json?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -262,7 +264,7 @@ model Scene {
   order     Int
   purpose   String? // hook, point, call to action...
   text      String
-  /// Parts of the line, each with its own picture: [{ text, visualQuery }] (null = one picture)
+  /// Parts of the line, each with its own picture: [{ text, visualQuery, mustShow }] (null = one picture)
   parts     Json?
   startMs   Int?
   endMs     Int?
