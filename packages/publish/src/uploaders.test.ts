@@ -184,3 +184,32 @@ test("TikTok: a picked privacy the account does not allow is never swapped silen
   assert.equal(choosePrivacy(["SELF_ONLY", "PUBLIC_TO_EVERYONE"], "PUBLIC_TO_EVERYONE", "SELF_ONLY"), "PUBLIC_TO_EVERYONE");
   assert.equal(choosePrivacy(["SELF_ONLY"], undefined, "PUBLIC_TO_EVERYONE"), "SELF_ONLY"); // Auto upload: old behaviour
 });
+
+test("Instagram Login (no Facebook Page): graph.instagram.com, fresh token, saved", async () => {
+  const { setRefreshTokenSaver } = await import("./connections");
+  const saved: string[] = [];
+  setRefreshTokenSaver(async (p, l, t) => void saved.push(`${p}:${l}:${t}`));
+  const env = { INSTAGRAM_USER_ID_EN: "1789", INSTAGRAM_LOGIN_TOKEN_EN: "OLD", INSTAGRAM_PROCESS_WAIT_SECONDS: "30" };
+  assert.deepEqual(missingSettings("instagram", "en", env), []);
+  const calls = fakeFetch((c) => {
+    if (c.url.includes("refresh_access_token")) return { json: { access_token: "NEW" } };
+    if (c.url.endsWith("graph.instagram.com/v24.0/me/media")) return { json: { id: "C1", uri: "https://rupload.facebook.com/ig-api-upload/v24.0/C1" } };
+    if (c.url.includes("rupload")) return { json: { success: true } };
+    if (c.url.includes("C1?fields=status_code")) return { json: { status_code: "FINISHED" } };
+    if (c.url.endsWith("/me/media_publish")) return { json: { id: "P1" } };
+    if (c.url.includes("P1?fields=permalink")) return { json: { permalink: "https://instagram.com/reel/y" } };
+    return { status: 404, json: {} };
+  });
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = ((fn: () => void) => realSetTimeout(fn, 0)) as typeof setTimeout;
+  try {
+    const res = await getUploader("instagram", "en", env).upload({ ...input, language: "en" });
+    assert.equal(res.postId, "P1");
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+    setRefreshTokenSaver(null);
+  }
+  assert.deepEqual(saved, ["instagram:en:NEW"]);
+  assert.ok(calls.filter((c) => !c.url.includes("refresh_access_token")).every((c) => !c.url.includes("graph.facebook.com")));
+  assert.equal(calls.find((c) => c.url.includes("rupload"))!.headers.authorization, "OAuth NEW");
+});

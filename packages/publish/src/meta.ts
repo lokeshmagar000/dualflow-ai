@@ -17,6 +17,7 @@
 import { PublishConfigError, PublishQuotaError } from "./errors";
 import { cut, http, readJson } from "./http";
 import { facebookAsReel } from "./limits";
+import { saveNewRefreshToken } from "./connections";
 import type { ChannelCheck, Lang, UploadInput, UploadResult, Uploader } from "./types";
 
 type Env = Record<string, string | undefined>;
@@ -126,13 +127,40 @@ export function facebookUploader(language: Lang, env: Env = process.env): Upload
 
 /* ------------------------------ Instagram ------------------------------ */
 
+/**
+ * Instagram Login tokens ("Connect Instagram", no Facebook Page) last 60 days.
+ * Each run asks Instagram for a fresh one and saves it, so it never runs out while videos keep going up.
+ */
+export async function refreshInstagramLoginToken(token: string): Promise<string | null> {
+  try {
+    const res = await http(`https://graph.instagram.com/refresh_access_token?${new URLSearchParams({ grant_type: "ig_refresh_token", access_token: token })}`, { tries: 1 });
+    const json = await readJson(res);
+    return res.ok && typeof json.access_token === "string" ? json.access_token : null;
+  } catch {
+    return null; // a token younger than 24 hours cannot be refreshed yet: the old one still works
+  }
+}
+
 export function instagramUploader(language: Lang, env: Env = process.env): Uploader {
   const L = language.toUpperCase();
-  const igId = env[`INSTAGRAM_USER_ID_${L}`]?.trim();
-  const token = (env[`INSTAGRAM_TOKEN_${L}`] || env[`FACEBOOK_PAGE_TOKEN_${L}`])?.trim();
-  const { version, graph } = graphBase(env);
-  const need = () => {
-    if (!igId || !token) throw new PublishConfigError(`Instagram ${L}: add INSTAGRAM_USER_ID_${L} (and FACEBOOK_PAGE_TOKEN_${L}).`);
+  const loginToken = env[`INSTAGRAM_LOGIN_TOKEN_${L}`]?.trim();
+  const viaLogin = Boolean(loginToken);
+  // Instagram Login talks to graph.instagram.com and can say "me" instead of the account id.
+  const igId = viaLogin ? "me" : env[`INSTAGRAM_USER_ID_${L}`]?.trim();
+  let token = (loginToken || env[`INSTAGRAM_TOKEN_${L}`] || env[`FACEBOOK_PAGE_TOKEN_${L}`])?.trim();
+  const { version, graph: fbGraph } = graphBase(env);
+  const graph = viaLogin ? `https://graph.instagram.com/${version}` : fbGraph;
+  let refreshed = false;
+  const need = async () => {
+    if (!igId || !token) throw new PublishConfigError(`Instagram ${L}: press "Connect Instagram" on the Channels page (or add INSTAGRAM_USER_ID_${L} and FACEBOOK_PAGE_TOKEN_${L}).`);
+    if (viaLogin && !refreshed) {
+      refreshed = true;
+      const fresh = await refreshInstagramLoginToken(token);
+      if (fresh && fresh !== token) {
+        token = fresh;
+        await saveNewRefreshToken("instagram", language, fresh);
+      }
+    }
     return { igId, token };
   };
   /** How long to wait for Instagram to process the video (default 5 minutes). */
@@ -144,7 +172,7 @@ export function instagramUploader(language: Lang, env: Env = process.env): Uploa
 
     async check(): Promise<ChannelCheck> {
       try {
-        const { igId, token } = need();
+        const { igId, token } = await need();
         const res = await http(`${graph}/${encodeURIComponent(igId)}?fields=username`, { headers: { authorization: `Bearer ${token}` } });
         const json = await readJson(res);
         if (!res.ok) throw metaError(`Instagram ${L} account check`, res.status, json);
@@ -159,7 +187,7 @@ export function instagramUploader(language: Lang, env: Env = process.env): Uploa
     },
 
     async upload(input: UploadInput): Promise<UploadResult> {
-      const { igId, token } = need();
+      const { igId, token } = await need();
       const auth = { authorization: `Bearer ${token}` };
 
       // Step 1: make a "container" for a Reel, with resumable upload.

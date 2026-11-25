@@ -16,12 +16,16 @@ import type { Lang } from "./types";
 
 type Env = Record<string, string | undefined>;
 
-/** The three buttons: YouTube, Meta (Facebook + Instagram together) and TikTok. */
-export type ConnectPlatform = "youtube" | "meta" | "tiktok";
-export const CONNECT_PLATFORMS: ConnectPlatform[] = ["youtube", "meta", "tiktok"];
+/**
+ * The buttons: YouTube, Meta (Facebook Pages + their Instagram), TikTok, and Instagram on its own
+ * ("Instagram Login": for an Instagram professional account with no Facebook Page).
+ */
+export type ConnectPlatform = "youtube" | "meta" | "tiktok" | "instagram";
+export const CONNECT_PLATFORMS: ConnectPlatform[] = ["youtube", "meta", "tiktok", "instagram"];
 
 export const YOUTUBE_SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"];
 export const META_SCOPES = ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "business_management", "instagram_basic", "instagram_content_publish"];
+export const INSTAGRAM_SCOPES = ["instagram_business_basic", "instagram_business_content_publish"];
 export const TIKTOK_SCOPES = ["user.info.basic", "video.upload", "video.publish"];
 
 /** One account that a Connect button found. */
@@ -73,6 +77,11 @@ export function authorizeUrl(platform: ConnectPlatform, app: AppKeys, redirectUr
       const q = new URLSearchParams({ client_key: app.id, redirect_uri: redirectUri, response_type: "code", scope: TIKTOK_SCOPES.join(","), state });
       return `https://www.tiktok.com/v2/auth/authorize/?${q}`;
     }
+    case "instagram": {
+      // force_reauth = always show the Instagram login, so you can pick the Nepali or the English account.
+      const q = new URLSearchParams({ client_id: app.id, redirect_uri: redirectUri, response_type: "code", scope: INSTAGRAM_SCOPES.join(","), state, force_reauth: "true" });
+      return `https://www.instagram.com/oauth/authorize?${q}`;
+    }
   }
 }
 
@@ -92,6 +101,8 @@ export async function finishConnect(
       return finishMeta(app, code, redirectUri, env);
     case "tiktok":
       return [await finishTikTok(app, code, redirectUri, language)];
+    case "instagram":
+      return [await finishInstagram(app, code, redirectUri, language, env)];
   }
 }
 
@@ -273,4 +284,42 @@ async function whoAmI(g: string, token: string): Promise<string | undefined> {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Instagram Login: code -> short token (1 hour) -> long token (60 days).
+ * The long token is saved as the "refresh token": every upload run swaps it for a fresh 60-day one.
+ */
+async function finishInstagram(app: AppKeys, code: string, redirectUri: string, language: Lang, env: Env): Promise<ConnectedAccount> {
+  const cleanCode = code.replace(/#_$/, ""); // Instagram adds "#_" to the end of the code
+  const r1 = await http("https://api.instagram.com/oauth/access_token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: app.id, client_secret: app.secret, grant_type: "authorization_code", redirect_uri: redirectUri, code: cleanCode }),
+    tries: 1,
+  });
+  const j1raw = await readJson(r1);
+  const j1 = Array.isArray(j1raw.data) ? j1raw.data[0] ?? {} : j1raw;
+  if (!r1.ok || !j1.access_token) {
+    const why = j1raw.error_message || j1raw.error?.message || j1raw.error_description || r1.status;
+    throw new ConnectError(`Instagram refused (${why}). Check the Instagram app ID and secret (Instagram → API setup with Instagram login → Business login settings), and that ${redirectUri} is in its "OAuth redirect URIs".`);
+  }
+  const perms: string[] = typeof j1.permissions === "string" ? j1.permissions.split(",") : Array.isArray(j1.permissions) ? j1.permissions : [];
+  if (perms.length > 0 && !perms.includes("instagram_business_content_publish")) {
+    throw new ConnectError("Instagram did not allow posting. Press Connect again and allow everything Instagram asks.");
+  }
+  const r2 = await http(`https://graph.instagram.com/access_token?${new URLSearchParams({ grant_type: "ig_exchange_token", client_secret: app.secret, access_token: j1.access_token })}`);
+  const j2 = await readJson(r2);
+  if (!r2.ok || !j2.access_token) throw new ConnectError(`Instagram gave no long-lasting token (${j2.error?.message ?? r2.status}). Press Connect again.`);
+  const version = (env.META_GRAPH_VERSION || "v24.0").trim();
+  const me = await http(`https://graph.instagram.com/${version}/me?fields=user_id,username`, { headers: { authorization: `Bearer ${j2.access_token}` } });
+  const mj = await readJson(me);
+  if (!me.ok) throw new ConnectError(`Connected, but Instagram did not show the account (${mj.error?.message ?? me.status}). Is it a Professional (Creator or Business) account?`);
+  return {
+    platform: "INSTAGRAM",
+    language,
+    name: mj.username ? `@${mj.username}` : "Instagram account",
+    externalId: String(mj.user_id ?? j1.user_id ?? "") || null,
+    refreshToken: j2.access_token,
+  };
 }

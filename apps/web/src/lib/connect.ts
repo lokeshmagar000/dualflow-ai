@@ -5,8 +5,8 @@
 import "server-only";
 import { headers } from "next/headers";
 
-export type ConnectPlatform = "youtube" | "meta" | "tiktok";
-export const CONNECT_PLATFORMS: ConnectPlatform[] = ["youtube", "meta", "tiktok"];
+export type ConnectPlatform = "youtube" | "meta" | "tiktok" | "instagram";
+export const CONNECT_PLATFORMS: ConnectPlatform[] = ["youtube", "meta", "tiktok", "instagram"];
 
 export function isConnectPlatform(p: string): p is ConnectPlatform {
   return (CONNECT_PLATFORMS as string[]).includes(p);

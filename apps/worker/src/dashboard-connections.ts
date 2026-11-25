@@ -28,8 +28,8 @@ export async function applyDashboardConnections(): Promise<void> {
   }
   for (const p of problems) console.log(`::warning::${p}`);
 
-  // TikTok sometimes hands out a new refresh token: save it (locked) so the next run uses it.
-  setRefreshTokenSaver(async (_platform, language, token) => {
-    await prisma.channel.updateMany({ where: { workspaceId: ws.id, platform: "TIKTOK", language }, data: { refreshTokenEnc: lockSecret(token) } });
+  // TikTok (and Instagram Login) hand out a new token now and then: save it (locked) so the next run uses it.
+  setRefreshTokenSaver(async (platform, language, token) => {
+    await prisma.channel.updateMany({ where: { workspaceId: ws.id, platform: platform === "instagram" ? "INSTAGRAM" : "TIKTOK", language }, data: { refreshTokenEnc: lockSecret(token) } });
   });
 }

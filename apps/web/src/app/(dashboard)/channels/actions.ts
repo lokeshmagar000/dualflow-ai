@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { api, problemText, type ActionResult } from "@/lib/api";
 import { isConnectPlatform } from "@/lib/connect";
 
-const NICE: Record<string, string> = { youtube: "Google", meta: "Meta", tiktok: "TikTok" };
+const NICE: Record<string, string> = { youtube: "Google", meta: "Meta", tiktok: "TikTok", instagram: "Instagram" };
 
 /** Step 1 of each box: save your app's id and secret (the server locks them). */
 export async function saveAppKeys(_prev: ActionResult, form: FormData): Promise<ActionResult> {
