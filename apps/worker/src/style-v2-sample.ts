@@ -66,7 +66,7 @@ const VISUALS = {
   flag: { q: ["nepal flag", "flag of nepal", "nepal flag waving"], must: "the national flag of NEPAL: two stacked crimson triangles with a blue border, a white moon and a white sun" },
   people: { q: ["nepali people flag", "nepal festival people", "nepal people"], must: "Nepali people in a real place in Nepal (ideally holding or near the Nepal flag)" },
   durbar: { q: ["kathmandu durbar square", "bhaktapur durbar square", "patan durbar square"], must: "a Durbar Square or old palace square in Kathmandu valley, Nepal" },
-  map: { q: ["nepal map", "map of nepal", "nepal satellite"], must: "a map of Nepal or Nepal seen from above (no other country's map alone)" },
+  map: { q: ["nepal map", "nepal aerial view", "himalaya aerial"], must: "a map of Nepal, or Nepal / the Himalayas seen from above (no other country's map alone)" },
   himalaya: { q: ["himalaya nepal", "everest", "himalayas snow mountains"], must: "snowy Himalayan mountain peaks" },
   religion: { q: ["boudhanath stupa", "swayambhunath", "pashupatinath temple", "nepal temple"], must: "a Buddhist stupa or Hindu temple in Nepal (such as Boudhanath, Swayambhunath or Pashupatinath)" },
   rhodo: { q: ["rhododendron", "rhododendron flower red", "rhododendron tree"], must: "red rhododendron flowers (poppies, roses or tulips fail)" },
@@ -230,6 +230,14 @@ async function make(language: "ne" | "en") {
         const found = await findCheckedMedia([...vis.q], vis.must, TOPIC, "SHORT", job.dir, `pick-${part.v}`, usedIds, (endMs - starts[pi]!) / 1000);
         picked.set(part.v, found ? { path: path.join(job.dir, found.file), kind: found.kind, durationSec: found.durationSec } : null);
         report.push(`${part.v}: ${found ? `${found.kind} ${found.sourceUrl}${found.checked ? " (checked)" : " (NOT checked)"}` : "nothing passed the check -> colour background"}`);
+      }
+      // Nothing passed for this line: borrow a variety picture of the same topic (never a plain colour).
+      if (!picked.get(part.v)) {
+        const k = brollNext++ % BROLL.length;
+        const b = BROLL[k]!;
+        const found = await findCheckedMedia([...b.q], b.must, TOPIC, "SHORT", job.dir, `pick-${part.v}-b`, usedIds, 3);
+        if (found) picked.set(part.v, { path: path.join(job.dir, found.file), kind: found.kind, durationSec: found.durationSec });
+        report.push(`${part.v} (variety instead): ${found ? `${found.kind} ${found.sourceUrl}` : "nothing"}`);
       }
       const p = picked.get(part.v);
       let media: Media | null = null;

@@ -402,6 +402,9 @@ Be STRICT. Say a picture passes ONLY if a viewer would instantly see that exact 
 - A flag must be exactly the right country's flag (any other country's flag fails).
 - A plant or animal must be the right species (for example poppies or roses are NOT rhododendrons).
 - Pictures about Nepal must look like Nepal (no other country's temples, cities or symbols).
+- FAIL a picture that also shows buildings, temples, castles, people or places that clearly belong to a
+  DIFFERENT country than the topic, even if the asked thing is in it (for example the moon over a
+  Japanese castle in a video about Nepal). Sky, moon, sun, nature and maps with no foreign landmarks are fine.
 - Text, logos or sports balls that only print the thing fail.
 - FAIL any "cut-out" picture: an object alone on a plain or single-colour background (white, black,
   green screen, blue screen, grey, any flat colour or simple gradient), 3D renders on a plain background,

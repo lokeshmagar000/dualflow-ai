@@ -294,6 +294,10 @@ const toAscii = (t: string) => t.replace(/[०-९]/g, (d) => String(DEVA.indexO
 /** Show digits in the same script the script writer used. */
 const digitsLike = (sample: string, t: string) => (/[०-९]/.test(sample) ? t.replace(/[0-9]/g, (d) => DEVA[Number(d)]!) : t);
 
+/** Khand draws Nepali digits (१९६२) like English ones, so Nepali digits use Baloo 2. */
+const numFont = (language: "ne" | "en", sample: string) =>
+  /[०-९]/.test(sample) ? '"Baloo 2", "Noto Sans Devanagari", sans-serif' : HEADLINE_FONT[language];
+
 /** The box every card sits in: springs in with a little turn, floats gently, fades out. */
 function CardShell({ frames, children, small, language }: { frames: number; children: React.ReactNode; small: string; language: "ne" | "en" }) {
   const frame = useCurrentFrame();
@@ -366,7 +370,7 @@ function CountUp({ big, language }: { big: string; language: "ne" | "en" }) {
     return raw.includes(",") ? v.toLocaleString("en-US") : String(v);
   });
   return (
-    <div style={{ fontFamily: HEADLINE_FONT[language], fontSize: 200, lineHeight: 1, color: LOGO.marigold, fontWeight: language === "en" ? 400 : 700 }}>
+    <div style={{ fontFamily: numFont(language, big), fontSize: 200, lineHeight: 1, color: LOGO.marigold, fontWeight: language === "en" ? 400 : 700 }}>
       {digitsLike(big, shown)}
     </div>
   );
@@ -398,7 +402,7 @@ function YearRoll({ big, language }: { big: string; language: "ne" | "en" }) {
   const size = 210;
   const [before, after] = [toAscii(big).slice(0, m.index), toAscii(big).slice(m.index! + m[0].length)];
   return (
-    <div style={{ fontFamily: HEADLINE_FONT[language], fontSize: size * 0.95, color: LOGO.marigold, fontWeight: language === "en" ? 400 : 700, display: "flex", alignItems: "flex-start" }}>
+    <div style={{ fontFamily: numFont(language, big), fontSize: size * 0.95, color: LOGO.marigold, fontWeight: language === "en" ? 400 : 700, display: "flex", alignItems: "flex-start" }}>
       {before.trim() ? <span style={{ lineHeight: `${size}px`, marginRight: 20, fontSize: size * 0.4 }}>{before.trim()}</span> : null}
       {m[0].split("").map((d, i) => (
         <RollDigit key={i} digit={Number(d)} delay={2 + i * 4} spins={1 + i} size={size} sample={big} />
@@ -441,7 +445,7 @@ function CalendarFlip({ big, language }: { big: string; language: "ne" | "en" })
     justifyContent: "center",
     background: "white",
     color: "#13203F",
-    fontFamily: font,
+    fontFamily: numFont(language, big),
     fontSize: 190,
     fontWeight: language === "en" ? 400 : 700,
     borderRadius: "0 0 24px 24px",
@@ -465,7 +469,7 @@ function CalendarFlip({ big, language }: { big: string; language: "ne" | "en" })
         ) : null}
       </div>
       {d.year ? (
-        <div style={{ marginTop: 12, fontFamily: font, fontSize: 80, color: LOGO.marigold, display: "flex", fontWeight: language === "en" ? 400 : 700, opacity: interpolate(frame, [pages * per, 4 + pages * per], [0, 1], clamp) }}>
+        <div style={{ marginTop: 12, fontFamily: numFont(language, big), fontSize: 80, color: LOGO.marigold, display: "flex", fontWeight: language === "en" ? 400 : 700, opacity: interpolate(frame, [pages * per, 4 + pages * per], [0, 1], clamp) }}>
           {d.year.split("").map((n, i) => (
             <RollDigit key={i} digit={Number(n)} delay={4 + pages * per + i * 3} spins={1} size={92} sample={big} />
           ))}
@@ -510,7 +514,7 @@ function ClockFace({ big, language }: { big: string; language: "ne" | "en" }) {
         <line x1={0} y1={18} x2={0} y2={-R * 0.78} stroke={LOGO.crimson} strokeWidth={8} strokeLinecap="round" transform={`rotate(${minuteDeg + tick})`} />
         <circle r={12} fill={LOGO.marigold} stroke="#13203F" strokeWidth={4} />
       </svg>
-      <div style={{ marginTop: 8, fontFamily: HEADLINE_FONT[language], fontSize: 96, color: LOGO.marigold, fontWeight: language === "en" ? 400 : 700 }}>
+      <div style={{ marginTop: 8, fontFamily: numFont(language, big), fontSize: 96, color: LOGO.marigold, fontWeight: language === "en" ? 400 : 700 }}>
         {p < 1 ? digitsLike(big, digital) : big}
       </div>
     </div>

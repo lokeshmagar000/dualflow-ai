@@ -358,7 +358,17 @@ const render: Step = async (data) => {
       const planned = shot.part === 0 ? [p?.visualQuery, p?.backupQuery] : [p?.backupQuery, p?.visualQuery];
       const queries = [...new Set([shot.visualQuery, ...planned, story.topic.title].map((q) => q?.trim() ?? "").filter(Boolean))];
       const mustShow = shot.mustShow || (shot.part === 0 ? p?.mustShow : "") || shot.visualQuery || p?.visualQuery || story.topic.title;
-      media.push(await findCheckedMedia(queries, mustShow, focus, format, job.dir, `shot-${i + 1}`, used, seconds));
+      let found = await findCheckedMedia(queries, mustShow, focus, format, job.dir, `shot-${i + 1}`, used, seconds);
+      if (!found && v2 && broll.length) {
+        // Nothing passed for this line: show a variety picture of the same topic instead of a plain colour.
+        const b = broll[nextBroll++ % broll.length]!;
+        found = await findCheckedMedia([b.query], b.mustShow || b.query, focus, format, job.dir, `shot-${i + 1}`, used, seconds);
+      }
+      media.push(found);
+    }
+    // Still nothing? Keep the picture before (or after) on screen: a plain colour looks cheap.
+    if (v2) {
+      for (let i = 0; i < media.length; i++) media[i] ??= media.slice(0, i).reverse().find(Boolean) ?? media.slice(i + 1).find(Boolean) ?? null;
     }
 
     // "Namaste Facts" in English videos, "नमस्ते फ्याक्ट्स" in Nepali videos (BRAND_NAME_* settings).
