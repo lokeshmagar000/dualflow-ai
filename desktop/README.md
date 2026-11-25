@@ -8,7 +8,7 @@ What it does:
 | Page | What you can do |
 | --- | --- |
 | 🎬 Make a video | Type your own idea (or leave it empty for an AI topic) and press the button. Shows what is running now. |
-| ⏱ Runs | Every run (automatic at 2 AM and 4 AM Nepal time, or yours). Get the finished videos with one click. |
+| ⏱ Runs | Every run (automatic at about 1-2 AM Nepal time, ready by 3 AM, or yours). Get the finished videos with one click. |
 | 📁 My videos | Play the downloaded Nepali + English videos, or show them in Finder (`~/Movies/DualFlow`). |
 | 💸 Free limits | GitHub minutes used this month, runs today, and the free plans you use. |
 | ⚙️ Settings | Your GitHub token (locked in the Mac Keychain), repo, branch, web dashboard address. |

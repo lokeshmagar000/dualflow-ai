@@ -1,6 +1,6 @@
 /**
  * "Run now": start the GitHub Actions pipeline run right away,
- * instead of waiting for the next scheduled run (2 AM and 4 AM Nepal time).
+ * instead of waiting for the next scheduled run (about 1-2 AM Nepal time).
  *
  * Settings (on Render, never in code):
  *   GITHUB_REPO            e.g. "lokeshmagar000/dualflow-ai"

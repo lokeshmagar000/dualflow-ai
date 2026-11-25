@@ -15,10 +15,10 @@ import { githubRunConfigured, triggerPipelineRun } from "../github";
 import { getDefaultWorkspace } from "../workspace";
 import { backupTick } from "../backup-timer";
 
-/** The scheduled times in .github/workflows/pipeline.yml, in UTC: 20:15 and 22:15 (= 2:00 and 4:00 AM Nepal). */
+/** The scheduled times in .github/workflows/pipeline.yml, in UTC: 19:20 and 19:50 (= 1:05 and 1:35 AM Nepal). */
 export const SCHEDULE_UTC = [
-  { hour: 20, minute: 15 },
-  { hour: 22, minute: 15 },
+  { hour: 19, minute: 20 },
+  { hour: 19, minute: 50 },
 ];
 
 /** The next `count` scheduled run times after `now`. */

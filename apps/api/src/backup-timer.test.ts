@@ -8,9 +8,10 @@ test("Nepal midnight", () => {
 
 test("videos due by Nepal time", () => {
   const tz = "Asia/Kathmandu";
-  assert.equal(videosDueNow(tz, 2, new Date("2026-11-23T20:40:00Z")), 0); // 2:25 AM
-  assert.equal(videosDueNow(tz, 2, new Date("2026-11-23T20:45:00Z")), 1); // 2:30 AM
-  assert.equal(videosDueNow(tz, 2, new Date("2026-11-23T22:44:00Z")), 1); // 4:29 AM
+  assert.equal(videosDueNow(tz, 2, new Date("2026-11-23T19:40:00Z")), 0); // 1:25 AM
+  assert.equal(videosDueNow(tz, 2, new Date("2026-11-23T19:45:00Z")), 1); // 1:30 AM
+  assert.equal(videosDueNow(tz, 2, new Date("2026-11-23T20:14:00Z")), 1); // 1:59 AM
+  assert.equal(videosDueNow(tz, 2, new Date("2026-11-23T20:15:00Z")), 2); // 2:00 AM
   assert.equal(videosDueNow(tz, 2, new Date("2026-11-24T02:32:00Z")), 2); // 8:17 AM
   assert.equal(videosDueNow(tz, 1, new Date("2026-11-24T02:32:00Z")), 1); // only 1 a day
   assert.equal(videosDueNow(tz, 0, new Date("2026-11-24T02:32:00Z")), 0); // automatic videos off

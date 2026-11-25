@@ -45,7 +45,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
       </nav>
 
       {tiles.length === 0 ? (
-        <EmptyState title="No finished videos yet">Videos appear here once they are made. New ones come after the 2 AM and 4 AM runs.</EmptyState>
+        <EmptyState title="No finished videos yet">Videos appear here once they are made. New ones are ready by 3 AM every night (Nepal time).</EmptyState>
       ) : (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
           {tiles.map(({ story, v }) => {

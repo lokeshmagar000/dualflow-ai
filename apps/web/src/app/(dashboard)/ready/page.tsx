@@ -108,7 +108,7 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
         <EmptyState title={show === "waiting" ? "Nothing waiting for upload" : "No videos here yet"}
           action={show === "waiting" ? <Link href="/ideas" className="btn">Make a video now</Link> : undefined}>
           {show === "waiting"
-            ? "New videos arrive after the 2 AM and 4 AM runs (Nepal time). You can also press Generate now on Ideas & auto mode."
+            ? "New videos are ready by 3 AM every night (Nepal time). You can also press Generate now on Ideas & auto mode."
             : "Videos show here once they are finished."}
         </EmptyState>
       )}

@@ -6,7 +6,7 @@
  * dashboard awake, so it opens fast. It also wakes the API behind it.
  * It shows no private data, so it works without logging in (see middleware.ts).
  *
- * It is also the BACKUP TIMER for the night videos: each visit checks whether a 2 AM / 4 AM
+ * It is also the BACKUP TIMER for the night videos: each visit checks whether a 1 AM / 2 AM
  * video is missing and, if so, starts the GitHub run (apps/api/src/backup-timer.ts).
  * Vercel opens it once between 2:45-3:45 AM and once between 4:45-5:45 AM Nepal by itself (apps/web/vercel.json "crons").
  */

@@ -6,11 +6,11 @@
   "crons": [
     {
       "path": "/healthz?night=1",
-      "schedule": "0 21 * * *"
+      "schedule": "0 20 * * *"
     },
     {
       "path": "/healthz?night=2",
-      "schedule": "0 23 * * *"
+      "schedule": "40 20 * * *"
     }
   ]
 }

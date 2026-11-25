@@ -14,7 +14,7 @@ export async function setAutoMode(_prev: AutoState, formData: FormData): Promise
   }
   revalidatePath("/ideas");
   revalidatePath("/");
-  return { ok: true, message: enabled ? "Auto mode is ON." : "Auto mode is OFF. No new videos at 2 AM / 4 AM." };
+  return { ok: true, message: enabled ? "Auto mode is ON." : "Auto mode is OFF. No new night videos." };
 }
 
 /** The "Generate now" button. */
