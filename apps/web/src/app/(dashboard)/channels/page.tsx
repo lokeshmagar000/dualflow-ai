@@ -5,6 +5,7 @@ import { ApiError, Card, LangBadge, Notice, PageHeader, SectionTitle } from "@/c
 import { ActionButton } from "@/components/ActionButton";
 import { CopyButton } from "@/components/CopyButton";
 import { AppKeysForm, TestButton, UploadSwitch } from "@/components/ConnectControls";
+import { UploadPostBox, type UploadPostInfo } from "@/components/UploadPostBox";
 import { disconnect, swapMetaLanguages } from "./actions";
 
 const PLATFORM: Record<string, string> = { YOUTUBE: "YouTube", FACEBOOK: "Facebook", INSTAGRAM: "Instagram", TIKTOK: "TikTok" };
@@ -15,12 +16,20 @@ interface ConnectStatus {
   keySource: string | null;
   switch: "off" | "practice" | "approval" | "auto" | null;
   apps: Record<ConnectPlatform, { saved: boolean; idHint: string | null; configId: string | null; problem: string | null }>;
-  channels: { id: string; platform: string; language: "ne" | "en"; name: string; connected: boolean }[];
+  uploadPost?: UploadPostInfo;
+  channels: { id: string; platform: string; language: "ne" | "en"; name: string; connected: boolean; via?: "direct" | "uploadpost" | null }[];
 }
 
 // Connect your accounts with one click, choose Auto upload, and see how many videos went where.
-export default async function ChannelsPage({ searchParams }: { searchParams: Promise<{ connect?: string; msg?: string }> }) {
+export default async function ChannelsPage({ searchParams }: { searchParams: Promise<{ connect?: string; msg?: string; uploadpost?: string }> }) {
   const q = await searchParams;
+  // Back from Upload-Post's "connect your accounts" page: look again what is connected.
+  let refreshed: { ok?: boolean; message?: string } | null = null;
+  if (q.uploadpost === "back") {
+    refreshed = await api<{ message: string }>("/connect/uploadpost/refresh", { method: "POST", body: "{}" })
+      .then((r) => ({ ok: true, message: r.message }))
+      .catch((e) => ({ message: (e as Error).message }));
+  }
   let status: ConnectStatus;
   let channels: ChannelInfo[];
   try {
@@ -30,7 +39,9 @@ export default async function ChannelsPage({ searchParams }: { searchParams: Pro
   }
   channels = Array.isArray(channels) ? channels : [];
   const anyConnected = status.channels.some((c) => c.connected);
-  const find = (platform: string, lang: "ne" | "en") => status.channels.find((c) => c.platform === platform && c.language === lang && c.connected);
+  // The direct Connect boxes show only accounts connected with their own button (not Upload-Post).
+  const find = (platform: string, lang: "ne" | "en") => status.channels.find((c) => c.platform === platform && c.language === lang && c.connected && c.via !== "uploadpost");
+  const up: UploadPostInfo = status.uploadPost ?? { saved: false, keyHint: null, users: { ne: "", en: "" }, platforms: { ne: [], en: [] }, accounts: { ne: {}, en: {} }, checkedAt: null, problem: null };
   const [ytBack, metaBack, ttBack, igBack] = await Promise.all([callbackUrl("youtube"), callbackUrl("meta"), callbackUrl("tiktok"), callbackUrl("instagram")]);
 
   return (
@@ -58,7 +69,21 @@ export default async function ChannelsPage({ searchParams }: { searchParams: Pro
         </p>
       </Card>
 
-      <SectionTitle>2. Connect your accounts</SectionTitle>
+      <SectionTitle>2. Connect your accounts: the easy way (Upload-Post)</SectionTitle>
+      <Card title="Upload-Post: one service for YouTube, Instagram, TikTok and Facebook" className="mb-4">
+        <p className="mb-3 text-sm text-fg2">
+          No developer apps and no app reviews. You sign in to each account once on Upload-Post&apos;s page, and DualFlow posts
+          every video through it. Free plan: 10 uploads a month, no TikTok. Basic plan: unlimited uploads with TikTok.
+          Steps: <code>docs/upload-post.md</code>.
+        </p>
+        <UploadPostBox info={up} refreshed={refreshed} />
+        <p className="mt-4 border-t border-stroke pt-3 text-xs text-fg3">
+          When Upload-Post has an account for a platform, it is used for that platform. The boxes below are only needed for
+          platforms you do not connect on Upload-Post. Facebook still needs a real Facebook Page (Meta&apos;s rule).
+        </p>
+      </Card>
+
+      <SectionTitle>Or connect each platform yourself (harder)</SectionTitle>
       <div className="grid gap-4 md:grid-cols-2">
         <PlatformCard
           title="YouTube"

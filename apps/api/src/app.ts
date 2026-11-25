@@ -17,6 +17,7 @@ import { bulkRoutes } from "./routes/bulk";
 import { readyRoutes } from "./routes/ready";
 import { autoRoutes } from "./routes/auto";
 import { connectRoutes } from "./routes/connect";
+import { uploadPostRoutes } from "./routes/uploadpost";
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
   const app = Fastify({ logger: opts.logger ?? true });
@@ -50,6 +51,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(readyRoutes);
   await app.register(autoRoutes);
   await app.register(connectRoutes);
+  await app.register(uploadPostRoutes);
 
   return app;
 }

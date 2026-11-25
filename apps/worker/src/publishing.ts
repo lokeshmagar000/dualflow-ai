@@ -203,6 +203,7 @@ export async function uploadDue(workspaceId: string, now = new Date()) {
           description: v.description ?? "",
           hashtags: v.hashtags,
           durationSec: v.durationSec,
+          requestKey: pub.id, // Upload-Post: a retry of this upload never posts twice
           // TikTok: the choices from the dashboard's upload window (none for Auto upload).
           tiktok: ch.platform === "TIKTOK" ? readTikTokOptions(pub.options) : null,
         });

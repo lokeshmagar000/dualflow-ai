@@ -161,7 +161,7 @@ Finished videos can go up by themselves: Nepali videos to your Nepali channels, 
 to your English channels, on YouTube, Facebook, Instagram and TikTok. Three modes (auto, approval,
 manual), a time-slot queue, retries, and files are deleted only after every upload worked.
 It is **off** until you set `PUBLISH_ENABLED=true`, and starts in practice mode (`PUBLISH_DRY_RUN=true`).
-Easiest way (free, buttons on the Channels page): **[docs/easy-auto-upload.md](docs/easy-auto-upload.md)**. Older manual setup: **[docs/social-setup.md](docs/social-setup.md)**. Complete beginner? Start with **[docs/channel-and-token-guide.md](docs/channel-and-token-guide.md)**. Code: `packages/publish`
+Easiest way, one service for every platform (no developer apps): **[docs/upload-post.md](docs/upload-post.md)**. Free direct buttons on the Channels page: **[docs/easy-auto-upload.md](docs/easy-auto-upload.md)**. Older manual setup: **[docs/social-setup.md](docs/social-setup.md)**. Complete beginner? Start with **[docs/channel-and-token-guide.md](docs/channel-and-token-guide.md)**. Code: `packages/publish`
 (uploaders) and `apps/worker/src/publishing.ts` (modes, queue, retries).
 
 **Bulk upload:** have your own finished video? Open **Bulk upload** in the dashboard, drop it once,

@@ -76,3 +76,41 @@ export async function testChannels(_prev: TestResult): Promise<TestResult> {
     return { message: problemText(e) };
   }
 }
+
+/* ---------- Upload-Post: one service for every platform ---------- */
+
+export async function saveUploadPost(_prev: ActionResult, form: FormData): Promise<ActionResult> {
+  const apiKey = String(form.get("apiKey") ?? "").trim();
+  const userNe = String(form.get("userNe") ?? "").trim();
+  const userEn = String(form.get("userEn") ?? "").trim();
+  try {
+    const r = await api<{ message: string }>("/connect/uploadpost/save", {
+      method: "POST",
+      body: JSON.stringify({ apiKey: apiKey || undefined, userNe: userNe || undefined, userEn: userEn || undefined }),
+    });
+    revalidatePath("/channels");
+    return { ok: true, message: r.message };
+  } catch (e) {
+    return { message: problemText(e), values: { userNe, userEn } };
+  }
+}
+
+export async function refreshUploadPost(_prev: ActionResult): Promise<ActionResult> {
+  try {
+    const r = await api<{ message: string }>("/connect/uploadpost/refresh", { method: "POST", body: "{}" });
+    revalidatePath("/channels");
+    return { ok: true, message: r.message };
+  } catch (e) {
+    return { message: problemText(e) };
+  }
+}
+
+export async function removeUploadPost(_prev: ActionResult): Promise<ActionResult> {
+  try {
+    await api("/connect/uploadpost/remove", { method: "POST", body: "{}" });
+  } catch (e) {
+    return { message: problemText(e) };
+  }
+  revalidatePath("/channels");
+  return { ok: true, message: "Removed. The direct Connect buttons below are used again." };
+}

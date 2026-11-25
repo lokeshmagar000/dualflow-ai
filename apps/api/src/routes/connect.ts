@@ -37,6 +37,7 @@ import {
   type PlatformName,
 } from "@dualflow/publish";
 import { getDefaultWorkspace } from "../workspace";
+import { loadUploadPost, uploadPostKeys, uploadPostStatus } from "./uploadpost";
 
 const APP_KEY: Record<ConnectPlatform, string> = { youtube: SETTING.youtubeApp, meta: SETTING.metaApp, tiktok: SETTING.tiktokApp, instagram: SETTING.instagramApp };
 const DB_PLATFORMS: Record<ConnectPlatform, Platform[]> = { youtube: ["YOUTUBE"], meta: ["FACEBOOK", "INSTAGRAM"], tiktok: ["TIKTOK"], instagram: ["INSTAGRAM"] };
@@ -120,6 +121,8 @@ export async function connectRoutes(app: FastifyInstance) {
       prisma.channel.findMany({ where: { workspaceId: ws.id }, orderBy: [{ platform: "asc" }, { language: "asc" }] }),
     ]);
     const byKey = new Map(settings.map((s) => [s.key, s.value]));
+    const uploadPost = await loadUploadPost(ws.id);
+    const viaUp = uploadPostKeys(uploadPost);
     const apps: Record<string, { saved: boolean; idHint: string | null; configId: string | null; problem: string | null }> = {};
     for (const p of CONNECT_PLATFORMS) {
       try {
@@ -135,14 +138,20 @@ export async function connectRoutes(app: FastifyInstance) {
       keyId: secretKeyId(), // the worker prints its own; if they differ, the keys differ
       switch: readSwitch(byKey.get(SETTING.uploadSwitch)), // null = never used: the GitHub variables decide
       apps,
-      channels: channels.map((c) => ({
-        id: c.id,
-        platform: c.platform,
-        language: c.language,
-        name: c.name,
-        connected: Boolean(c.accessTokenEnc || c.refreshTokenEnc), // connected with a Connect button
-        updatedAt: c.updatedAt,
-      })),
+      uploadPost: uploadPostStatus(uploadPost, byKey.get(SETTING.uploadPost) && !uploadPost ? "The saved Upload-Post key cannot be unlocked. Paste it again." : null),
+      channels: channels.map((c) => {
+        const direct = Boolean(c.accessTokenEnc || c.refreshTokenEnc); // connected with a Connect button
+        const up = viaUp.has(`${c.platform}-${c.language}`); // Upload-Post posts here (it wins over direct)
+        return {
+          id: c.id,
+          platform: c.platform,
+          language: c.language,
+          name: c.name,
+          connected: direct || up,
+          via: up ? "uploadpost" : direct ? "direct" : null,
+          updatedAt: c.updatedAt,
+        };
+      }),
     };
   });
 
@@ -264,7 +273,11 @@ export async function connectRoutes(app: FastifyInstance) {
     const { overlay, problems } = connectionsToEnv(settings, channels);
     const env = { ...process.env, ...overlay };
     const results: { platform: string; language: string; ok: boolean; message: string }[] = [];
-    for (const c of channels) {
+    // Channels Upload-Post posts to (they have no token of their own here).
+    const viaUp = uploadPostKeys(await loadUploadPost(ws.id));
+    const seen = new Set(channels.map((c) => `${c.platform}-${c.language}`));
+    const extra = (await prisma.channel.findMany({ where: { workspaceId: ws.id } })).filter((c) => viaUp.has(`${c.platform}-${c.language}`) && !seen.has(`${c.platform}-${c.language}`));
+    for (const c of [...channels, ...extra]) {
       const res = await getUploader(c.platform.toLowerCase() as PlatformName, c.language, env).check();
       results.push({ platform: c.platform, language: c.language, ok: res.ok, message: res.message });
     }

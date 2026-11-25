@@ -30,6 +30,14 @@ jobs:
       YOUTUBE_PRIVACY: ${{ vars.YOUTUBE_PRIVACY || 'private' }}
       YOUTUBE_CATEGORY_ID: ${{ vars.YOUTUBE_CATEGORY_ID }}
       TIKTOK_PRIVACY: ${{ vars.TIKTOK_PRIVACY }}
+      # Upload-Post (docs/upload-post.md): usually saved on the dashboard; these GitHub settings also work.
+      UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+      UPLOAD_POST_USER_NE: ${{ vars.UPLOAD_POST_USER_NE }}
+      UPLOAD_POST_USER_EN: ${{ vars.UPLOAD_POST_USER_EN }}
+      UPLOAD_POST_PLATFORMS_NE: ${{ vars.UPLOAD_POST_PLATFORMS_NE }}
+      UPLOAD_POST_PLATFORMS_EN: ${{ vars.UPLOAD_POST_PLATFORMS_EN }}
+      UPLOAD_POST_YOUTUBE_PRIVACY: ${{ vars.UPLOAD_POST_YOUTUBE_PRIVACY }}
+      UPLOAD_POST_TIKTOK_PRIVACY: ${{ vars.UPLOAD_POST_TIKTOK_PRIVACY }}
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN_NE: ${{ secrets.YOUTUBE_REFRESH_TOKEN_NE }}

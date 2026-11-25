@@ -22,8 +22,13 @@
  *              or INSTAGRAM_TOKEN_NE / _EN if you set one, or INSTAGRAM_LOGIN_TOKEN_NE / _EN from
  *              the dashboard's "Connect Instagram" button, which needs no Facebook Page)
  *   TikTok:    TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET (shared), TIKTOK_REFRESH_TOKEN_NE / _EN
+ *
+ * Or all of them through ONE service, Upload-Post (see uploadpost.ts):
+ *   UPLOAD_POST_API_KEY, UPLOAD_POST_USER_NE / _EN, UPLOAD_POST_PLATFORMS_NE / _EN
+ *   (the dashboard's Upload-Post box fills these in for you).
  */
 import type { Lang, PlatformName } from "./types";
+import { viaUploadPost } from "./uploadpost";
 
 export const PLATFORMS: PlatformName[] = ["youtube", "facebook", "instagram", "tiktok"];
 export const LANGS: Lang[] = ["ne", "en"];
@@ -70,6 +75,8 @@ export function requiredSettings(platform: PlatformName, lang: Lang): string[] {
 }
 
 export function missingSettings(platform: PlatformName, lang: Lang, env: Env = process.env): string[] {
+  // Posted through Upload-Post: its API key and profile are all it needs.
+  if (viaUploadPost(platform, lang, env)) return [];
   const missing = requiredSettings(platform, lang).filter((k) => !env[k]?.trim());
   // Instagram also needs a token: its own, or the Facebook page token of the same language.
   if (platform === "instagram" && !langSetting("INSTAGRAM_TOKEN", lang, env) && !langSetting("INSTAGRAM_LOGIN_TOKEN", lang, env) && !langSetting("FACEBOOK_PAGE_TOKEN", lang, env)) {

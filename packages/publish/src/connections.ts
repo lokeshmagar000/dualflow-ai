@@ -11,7 +11,8 @@
  * replaces the GitHub variables PUBLISH_ENABLED, PUBLISH_DRY_RUN and PUBLISH_MODE.
  */
 import { unlockSecret } from "./secret-box";
-import type { Lang } from "./types";
+import type { Lang, PlatformName } from "./types";
+import { parsePlatforms } from "./uploadpost";
 
 type Env = Record<string, string | undefined>;
 
@@ -40,6 +41,8 @@ export const SETTING = {
   tiktokApp: "app.tiktok", // locked JSON { id, secret }
   instagramApp: "app.instagram", // locked JSON { id, secret } (Instagram Login, no Facebook Page needed)
   uploadSwitch: "publish.switch", // plain JSON { mode: UploadSwitch }
+  uploadPost: "app.uploadpost", // locked JSON UploadPostSaved (one service for every platform)
+
 } as const;
 
 export interface AppKeys {
@@ -53,6 +56,41 @@ export function readAppKeys(value: string | undefined, env: Env = process.env): 
   if (!value) return null;
   const parsed = JSON.parse(unlockSecret(value, env)) as AppKeys;
   return parsed.id && parsed.secret ? parsed : null;
+}
+
+/** What the dashboard's Upload-Post box saved (locked, because of the API key). */
+export interface UploadPostSaved {
+  apiKey: string;
+  users: Record<Lang, string>;
+  /** Which accounts each profile had connected the last time we looked (Save or Refresh). */
+  platforms: Record<Lang, PlatformName[]>;
+  /** The connected account names, for the Channels page. */
+  accounts?: Record<Lang, Partial<Record<PlatformName, string>>>;
+  checkedAt?: string;
+}
+
+export function readUploadPost(value: string | undefined, env: Env = process.env): UploadPostSaved | null {
+  if (!value) return null;
+  const raw = JSON.parse(unlockSecret(value, env)) as Partial<UploadPostSaved>;
+  if (!raw.apiKey) return null;
+  return {
+    apiKey: raw.apiKey,
+    users: { ne: raw.users?.ne ?? "", en: raw.users?.en ?? "" },
+    platforms: { ne: parsePlatforms(raw.platforms?.ne?.join(",")), en: parsePlatforms(raw.platforms?.en?.join(",")) },
+    accounts: raw.accounts,
+    checkedAt: raw.checkedAt,
+  };
+}
+
+/** The settings names the uploaders read, from what the Upload-Post box saved. */
+export function uploadPostToEnv(saved: UploadPostSaved): Env {
+  const out: Env = { UPLOAD_POST_API_KEY: saved.apiKey };
+  for (const l of ["ne", "en"] as const) {
+    const L = l.toUpperCase();
+    if (saved.users[l]) out[`UPLOAD_POST_USER_${L}`] = saved.users[l];
+    out[`UPLOAD_POST_PLATFORMS_${L}`] = saved.platforms[l].join(",");
+  }
+  return out;
 }
 
 export function readSwitch(value: string | undefined): UploadSwitch | null {
@@ -135,6 +173,11 @@ export function connectionsToEnv(settings: StoredSetting[], channels: StoredChan
       }
     });
   }
+
+  tryRead("Upload-Post", () => {
+    const saved = readUploadPost(byKey.get(SETTING.uploadPost), env);
+    if (saved) Object.assign(overlay, uploadPostToEnv(saved));
+  });
 
   const mode = readSwitch(byKey.get(SETTING.uploadSwitch));
   if (mode) Object.assign(overlay, switchToEnv(mode));
