@@ -18,6 +18,8 @@ export interface UploadInput {
   description: string;
   hashtags: string[];
   durationSec?: number | null;
+  /** A stable id for this upload (the publication id), so a retry never posts twice (Upload-Post). */
+  requestKey?: string;
   /** TikTok only: the choices made in the dashboard's TikTok upload window. */
   tiktok?: TikTokPostOptions | null;
 }

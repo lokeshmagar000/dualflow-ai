@@ -8,9 +8,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma, type Prisma, type Variant } from "@dualflow/db";
-import { connectionsToEnv, readSwitch, SETTING, tiktokCreator, tiktokDefaultCaption, type TikTokPostOptions } from "@dualflow/publish";
+import { connectionsToEnv, readSwitch, SETTING, tiktokCreator, tiktokDefaultCaption, type TikTokCreator, type TikTokPostOptions } from "@dualflow/publish";
 import { startUploadRun } from "../github";
 import { getDefaultWorkspace } from "../workspace";
+import { loadUploadPost, uploadPostKeys } from "./uploadpost";
 
 export async function publishingRoutes(app: FastifyInstance) {
   /** The channels the worker found settings for (one per platform + language). */
@@ -81,6 +82,22 @@ export async function publishingRoutes(app: FastifyInstance) {
     if (!v) return reply.code(404).send({ error: "Video not found" });
     const channels = await uploadTargets(ws.id);
     if (!channels.some((c) => c.platform === "TIKTOK" && c.language === v.language)) return { tiktok: null };
+    const caption0 = tiktokDefaultCaption(v.title || v.story.topic.title, v.hashtags);
+    // TikTok through Upload-Post: the account name comes from Upload-Post. It does not tell us the
+    // account's allowed privacy choices, so all four are offered (TikTok refuses one it does not allow).
+    const up = await loadUploadPost(ws.id);
+    if (up?.platforms[v.language as "ne" | "en"]?.includes("tiktok")) {
+      const name = up.accounts?.[v.language as "ne" | "en"]?.tiktok;
+      const creator: TikTokCreator = {
+        username: name && name !== "connected" ? name : undefined,
+        nickname: name && name !== "connected" ? name : `Upload-Post profile ${up.users[v.language as "ne" | "en"]}`,
+        privacyOptions: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "FOLLOWER_OF_CREATOR", "SELF_ONLY"],
+        commentDisabled: false,
+        duetDisabled: false,
+        stitchDisabled: false,
+      };
+      return { tiktok: { creator, caption: caption0, durationSec: v.durationSec } };
+    }
     const settings = await prisma.appSetting.findMany({ where: { workspaceId: ws.id } });
     const { overlay } = connectionsToEnv(settings, channels.filter((c) => c.accessTokenEnc || c.refreshTokenEnc));
     const caption = tiktokDefaultCaption(v.title || v.story.topic.title, v.hashtags);
@@ -154,7 +171,9 @@ const tiktokOptions = z
  */
 async function uploadTargets(workspaceId: string) {
   const all = await prisma.channel.findMany({ where: { workspaceId } });
-  const connected = all.filter((c) => c.accessTokenEnc || c.refreshTokenEnc);
+  // Upload-Post counts as connected too (its accounts are connected on upload-post.com).
+  const viaUp = uploadPostKeys(await loadUploadPost(workspaceId));
+  const connected = all.filter((c) => c.accessTokenEnc || c.refreshTokenEnc || viaUp.has(`${c.platform}-${c.language}`));
   return connected.length > 0 ? connected : all;
 }
 
