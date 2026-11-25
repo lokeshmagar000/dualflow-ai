@@ -103,5 +103,6 @@ test("no Pages: the message names the missing Facebook permissions", () => {
   assert.match(msg, /pages_manage_posts/);
   assert.match(msg, /User access token/);
   assert.match(noPagesMessage([], true), /Full control/);
+  assert.match(noPagesMessage([], true, "Namaste Facts"), /logged in as "Namaste Facts".*personal profile/);
   assert.match(noPagesMessage(["pages_show_list", "pages_manage_posts", "pages_read_engagement", "instagram_basic", "instagram_content_publish"], true), /Full control/);
 });

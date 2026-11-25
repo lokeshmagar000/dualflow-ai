@@ -163,7 +163,7 @@ async function finishMeta(app: AppKeys, code: string, redirectUri: string, env: 
   //    token's "granted Page ids" or through the business itself. Ask those two places too.
   const info = await tokenInfo(g, app, userToken);
   if (pages.length === 0) pages = await pagesFromOtherPlaces(g, userToken, info.pageIds);
-  if (pages.length === 0) throw new ConnectError(noPagesMessage(info.scopes, Boolean(app.configId)));
+  if (pages.length === 0) throw new ConnectError(noPagesMessage(info.scopes, Boolean(app.configId), await whoAmI(g, userToken)));
   const { ne, en } = pickPages(pages);
   const out: ConnectedAccount[] = [];
   for (const [language, page] of [["ne", ne], ["en", en]] as const) {
@@ -206,7 +206,7 @@ export function missingMetaScopes(granted: string[]): string[] {
 }
 
 /** A clear "what to fix" message when Facebook gives back no Pages. */
-export function noPagesMessage(granted: string[], usesConfigId: boolean): string {
+export function noPagesMessage(granted: string[], usesConfigId: boolean, who?: string): string {
   const missing = missingMetaScopes(granted);
   if (granted.length > 0 && missing.length > 0) {
     const where = usesConfigId
@@ -214,7 +214,10 @@ export function noPagesMessage(granted: string[], usesConfigId: boolean): string
       : `Facebook only gave: ${granted.join(", ")}. Press Connect again and allow everything.`;
     return `Facebook shows no Pages, because it did not give these permissions: ${missing.join(", ")}. ${where}`;
   }
-  return 'Facebook shows no Pages. Make sure you are a full admin ("Full control") of both Pages, choose "Opt in to all current and future Pages" in the Facebook window, then press Connect again.';
+  const as = who
+    ? ` Facebook says you were logged in as "${who}". If that is a Page (not your own personal profile), click your picture on facebook.com, switch to your personal profile, then press Connect again.`
+    : "";
+  return `Facebook shows no Pages.${as} Make sure you are a full admin ("Full control") of both Pages, choose "Opt in to all current and future Pages" in the Facebook window, then press Connect again.`;
 }
 
 /** Ask Facebook what this token may do: its permissions and the Page ids it was given. */
@@ -259,4 +262,15 @@ async function pagesFromOtherPlaces(g: string, token: string, grantedIds: string
     }
   }
   return pages;
+}
+
+/** The name of the Facebook profile that pressed Allow (it can be a Page profile by mistake). */
+async function whoAmI(g: string, token: string): Promise<string | undefined> {
+  try {
+    const r = await http(`${g}/me?fields=name`, { headers: { authorization: `Bearer ${token}` } });
+    const j = await readJson(r);
+    return r.ok && typeof j.name === "string" ? j.name : undefined;
+  } catch {
+    return undefined;
+  }
 }
