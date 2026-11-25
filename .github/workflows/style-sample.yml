@@ -1,16 +1,11 @@
 # STYLE V2 SAMPLE: renders the same story in today's style ("before") and the
 # proposed new style ("after"), English + Nepali, with the real voice and real stock clips.
 # The videos are committed to this branch under samples/style-v2/ so they can be watched.
-# Uses 2 Gemini voice requests (one per language). Runs only on the sample branch.
+# Uses 2 Gemini voice requests (one per language) + about 11 picture-check requests.
+# Run it from the GitHub "Actions" tab -> "Style sample" -> "Run workflow" (choose a branch).
 name: Style sample
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/project-thread-tq5boj]
-    paths:
-      - .github/workflows/style-sample.yml
-      - apps/worker/src/style-v2-sample.ts
-      - packages/video/src/**
 permissions:
   contents: write
 concurrency: { group: style-sample, cancel-in-progress: true }
@@ -20,7 +15,6 @@ jobs:
     timeout-minutes: 40
     env:
       VOICE_PROVIDER: gemini
-      STOCK_VISION_CHECK: "on"
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_TTS_STYLE: "Read this aloud like an energetic, curious YouTube Shorts storyteller sharing a surprising secret: lively and a little fast, with clear stress on the key words. Pause clearly (about half a second) at every blank line. Read only the text"
       PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
