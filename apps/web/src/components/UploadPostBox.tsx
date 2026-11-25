@@ -11,7 +11,11 @@
 import { useActionState } from "react";
 import { refreshUploadPost, removeUploadPost, saveUploadPost } from "@/app/(dashboard)/channels/actions";
 import type { ActionResult } from "@/lib/api";
-import { LangBadge } from "./ui";
+
+/** The same look as LangBadge in ui.tsx (that file is server-only, so this client box has its own). */
+function LangBadge({ lang }: { lang: "ne" | "en" }) {
+  return lang === "ne" ? <span className="badge bg-ne-tint text-ne" lang="ne">नेपाली</span> : <span className="badge bg-en-tint text-en">English</span>;
+}
 
 export interface UploadPostInfo {
   saved: boolean;
