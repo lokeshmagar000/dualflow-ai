@@ -7,7 +7,7 @@
  * next free slot, so a channel never gets ten videos at once.
  *
  * Note: on the free plan the uploads happen during the GitHub run that comes
- * after the slot time (automatic runs are at 2 AM and 4 AM Nepal time), so a video can go up late.
+ * after the slot time (automatic runs are at about 1-2 AM Nepal time), so a video can go up late.
  */
 export const DEFAULT_TIMES = "07:00,12:30,19:00";
 export const DEFAULT_TIMEZONE = "Asia/Kathmandu";

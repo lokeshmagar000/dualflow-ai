@@ -86,7 +86,7 @@ function NextRunCard({ auto, paused }: { auto: AutoStatus | null; paused: boolea
         <div className="min-w-0">
           <p className="text-fg3">{on ? "Next automatic videos" : "Automatic videos"}</p>
           <p className="mt-1 text-[28px] font-semibold leading-9 sm:text-[32px] sm:leading-10">
-            {paused ? "Paused" : !auto ? "Every night, 2 AM and 4 AM" : on && next ? nepalTime(next) : "Auto mode is off"}
+            {paused ? "Paused" : !auto ? "Every night, ready by 3 AM" : on && next ? nepalTime(next) : "Auto mode is off"}
           </p>
           <p className="mt-1 text-fg3">
             {paused

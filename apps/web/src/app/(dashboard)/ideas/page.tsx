@@ -93,7 +93,7 @@ function AutoCard({ auto }: { auto: AutoStatus }) {
           <h2 className="text-lg font-semibold">Automatic videos</h2>
           <p className="mt-1 text-fg2">
             When auto mode is on, the AI picks a topic and makes a Nepali and an English video every night at
-            <b> 2:00 AM</b> and <b>4:00 AM</b> Nepal time ({auto.perDay} a day). You only download and upload them.
+            <b> 1:05 AM</b> and <b>1:35 AM</b> Nepal time (ready by 3 AM) ({auto.perDay} a day). You only download and upload them.
           </p>
         </div>
         <AutoSwitch enabled={auto.enabled} />

@@ -29,7 +29,7 @@ export default async function CostsPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Video making">
-          <p className="text-fg2">GitHub Actions makes videos every night at 2 AM and 4 AM Nepal time. Run now starts the waiting jobs at once.</p>
+          <p className="text-fg2">GitHub Actions makes videos every night at about 1-2 AM Nepal time (ready by 3 AM). Run now starts the waiting jobs at once.</p>
           <dl className="mt-4 grid grid-cols-3 gap-2 rounded-md bg-subtle p-3 text-center">
             <div><dt className="text-xs text-fg3">Ready to make</dt><dd className="text-xl font-semibold tabular-nums">{queue.readyNow}</dd></div>
             <div><dt className="text-xs text-fg3">Running</dt><dd className="text-xl font-semibold tabular-nums">{queue.running}</dd></div>

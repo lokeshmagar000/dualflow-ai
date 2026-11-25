@@ -5,7 +5,7 @@
  * free accounts: on 2026-11-23 the 2 AM run started 4.5 hours late, and on 2026-11-24 the
  * night runs did not start at all. So the dashboard checks too:
  *
- *   After 2:30 AM Nepal time, if today has no automatic story yet (and after 4:30 AM, fewer
+ *   After 1:30 AM Nepal time, if today has no automatic story yet (and after 2:00 AM, fewer
  *   than 2), and no Pipeline run is waiting or running, it starts one itself
  *   ("Run workflow" with auto_slot), the same as GitHub's timer would have.
  *
@@ -16,10 +16,16 @@
 import { prisma } from "@dualflow/db";
 import { githubRunConfigured, latestPipelineRuns, triggerPipelineRun } from "./github";
 
-/** Minutes after Nepal midnight when each video of the day is due (2:30 AM and 4:30 AM: 30 minutes after GitHub's time). */
-export const SLOT_DUE_MINUTES = [2 * 60 + 30, 4 * 60 + 30];
-/** Do not start another backup run within this many minutes of the last one (a run takes about 15-20 minutes). */
-const COOLDOWN_MINUTES = 60;
+/**
+ * Minutes after Nepal midnight when each video of the day is due: 1:30 AM and 2:00 AM
+ * (about 25 minutes after GitHub's 1:05 / 1:35 AM times), so both are ready by 3 AM.
+ */
+export const SLOT_DUE_MINUTES = [1 * 60 + 30, 2 * 60];
+/**
+ * Do not start another backup run within this many minutes of the last one. A run takes about
+ * 15-20 minutes, and while it is waiting or running we never start another anyway.
+ */
+const COOLDOWN_MINUTES = 20;
 
 /** Midnight of today in the given time zone, as a UTC Date (same as apps/worker/src/auto-ideas.ts). */
 export function startOfLocalDay(timeZone: string, now = new Date()): Date {

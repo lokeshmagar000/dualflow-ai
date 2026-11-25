@@ -15,9 +15,9 @@
  * The "Generate now" button sets AUTO_FORCE=true: it adds one story even when Auto mode
  * is off or today already has enough.
  *
- * Scheduled runs pass AUTO_SLOT: "1" for the 2 AM run and its 3 AM backup, "2" for the
- * 4 AM run and its 5 AM backup. A run only adds a story while today has fewer than its
- * slot number, so a backup run adds one only when GitHub skipped the main run.
+ * Scheduled runs pass AUTO_SLOT: "1" for the 1:05 AM run, "2" for the 1:35 AM run and the
+ * 2:05 / 2:35 AM backups. A run only adds a story while today has fewer than its slot
+ * number, so a backup run adds one only when an earlier run did not.
  *
  * It waits (adds nothing) while another story is still being made, while the
  * kill switch is on, or when today's free Gemini requests would not be enough

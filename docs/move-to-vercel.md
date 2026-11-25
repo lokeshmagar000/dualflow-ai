@@ -9,7 +9,7 @@
 | Keep-awake checker needed? | Yes (UptimeRobot) | No |
 | Cost | $0 | $0 |
 
-Nothing else changes: your videos are still made by GitHub at 2 AM and 4 AM, still stored in Cloudflare R2,
+Nothing else changes: your videos are still made by GitHub every night (ready by 3 AM), still stored in Cloudflare R2,
 and the database is still Neon. Only the **dashboard** (the website you click in) moves.
 
 ## Honest limits of the free Vercel plan

@@ -51,7 +51,7 @@ Without it, sending stops with "The video could not be sent".
 
 If `GITHUB_REPO` and `GITHUB_DISPATCH_TOKEN` are set on Render (the same ones as the "Run now" button),
 pressing **Send everywhere** starts the small *Upload now* run at once. Without them the video goes up
-with the next Pipeline run (2 AM or 4 AM Nepal time).
+with the next Pipeline run (about 1-2 AM Nepal time).
 
 ## Good to know
 
