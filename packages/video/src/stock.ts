@@ -352,7 +352,7 @@ export async function findPhoto(
 
 const VISION_API = "https://generativelanguage.googleapis.com/v1beta/models";
 const VISION_MODELS = [
-  ...new Set([process.env.GEMINI_VISION_MODEL || "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite"]),
+  ...new Set([process.env.GEMINI_VISION_MODEL || "gemini-flash-latest", "gemini-flash-lite-latest"]),
 ];
 /** Free Gemini is sometimes busy (503) or allows only a few requests a minute (429): wait and try again. */
 const VISION_WAITS_MS = [0, 8_000, 20_000, 40_000];
@@ -401,6 +401,7 @@ Be STRICT. Say a picture passes ONLY if a viewer would instantly see that exact 
 - A plant or animal must be the right species (for example poppies or roses are NOT rhododendrons).
 - Pictures about Nepal must look like Nepal (no other country's temples, cities or symbols).
 - Text, logos or sports balls that only print the thing fail.
+- Raw green-screen or blue-screen footage (a plain bright green or blue background) fails.
 Answer with the numbers of the pictures that pass, best first.`,
   });
   const body = {
