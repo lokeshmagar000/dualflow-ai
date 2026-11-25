@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 40
     env:
       VOICE_PROVIDER: gemini
+      STOCK_VISION_CHECK: "on"
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_TTS_STYLE: "Read this aloud like an energetic, curious YouTube Shorts storyteller sharing a surprising secret: lively and a little fast, with clear stress on the key words. Pause clearly (about half a second) at every blank line. Read only the text"
       PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}

@@ -41,6 +41,7 @@ export function stockProvider(): "pixabay" | "pexels" | null {
 type PexelsVideo = {
   id: number;
   url: string;
+  image?: string;
   duration: number;
   video_files: { link: string; width: number | null; height: number | null; file_type: string }[];
 };
@@ -70,6 +71,8 @@ export type Candidate = {
   rightShape: boolean;
   downloadUrl: string;
   sourceUrl: string;
+  /** A small picture of the clip/photo, so the picture check can look at it before we download. */
+  preview?: string;
 };
 
 const STOP_WORDS = new Set(["a", "an", "the", "of", "in", "on", "at", "with", "and", "or", "to", "for", "from", "by"]);
@@ -133,6 +136,7 @@ async function search(
         rightShape: true,
         downloadUrl: i.largeImageURL,
         sourceUrl: i.pageURL,
+        preview: i.webformatURL ?? i.previewURL,
       }));
     }
     const { hits } = await pixabay<{ hits: PixabayVideo[] }>(
@@ -152,6 +156,7 @@ async function search(
           rightShape: best.height > best.width === tall,
           downloadUrl: best.url,
           sourceUrl: v.pageURL,
+          preview: best.thumbnail ?? v.videos?.tiny?.thumbnail ?? v.videos?.small?.thumbnail,
         },
       ];
     });
@@ -175,6 +180,7 @@ async function search(
       rightShape: true,
       downloadUrl: p.src[orientation] ?? p.src.large2x ?? p.src.original!,
       sourceUrl: p.url,
+      preview: p.src.medium ?? p.src.small,
     }));
   }
   const { videos } = await pexels<{ videos: PexelsVideo[] }>(
@@ -195,6 +201,7 @@ async function search(
         rightShape: (best.height ?? 0) > (best.width ?? 0) === tall,
         downloadUrl: best.link,
         sourceUrl: v.url,
+        preview: v.image,
       },
     ];
   });
@@ -205,13 +212,15 @@ type PixabayVideo = {
   pageURL: string;
   tags?: string;
   duration: number;
-  videos: Record<string, { url: string; width: number; height: number; size: number }>;
+  videos: Record<string, { url: string; width: number; height: number; size: number; thumbnail?: string }>;
 };
 type PixabayImage = {
   id: number;
   pageURL: string;
   tags?: string;
   largeImageURL: string;
+  webformatURL?: string;
+  previewURL?: string;
   imageWidth: number;
   imageHeight: number;
 };
@@ -328,4 +337,147 @@ export async function findPhoto(
     console.warn(`${provider}: no thumbnail photo for "${query}" (${(err as Error).message}).`);
     return null;
   }
+}
+
+/* ------------------------------------------------------------------------------------------
+ * PICTURE CHECK (STOCK_VISION_CHECK=on, needs GEMINI_API_KEY)
+ *
+ * Stock tags are often wrong: "flag" finds the US flag, "rhododendron" finds poppies.
+ * So before we use a clip, Gemini LOOKS at a small picture of it and says whether it
+ * really shows the thing the narrator is talking about (`mustShow`).
+ * Wrong pictures are never used: if nothing passes, the caller gets null and can try
+ * other words (or use a colour background), because a wrong picture is worse than none.
+ * One Gemini request looks at up to 8 pictures at once (free tier friendly).
+ * ---------------------------------------------------------------------------------------- */
+
+const VISION_API = "https://generativelanguage.googleapis.com/v1beta/models";
+const VISION_MODELS = [process.env.GEMINI_VISION_MODEL || "gemini-flash-latest", "gemini-flash-lite-latest"];
+const CHECK_BATCH = 8;
+
+export function visionCheckOn(): boolean {
+  return /^(on|yes|true|1)$/i.test(process.env.STOCK_VISION_CHECK ?? "") && Boolean(process.env.GEMINI_API_KEY);
+}
+
+async function previewPart(url: string): Promise<{ inline_data: { mime_type: string; data: string } } | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) return null;
+    const type = res.headers.get("content-type")?.split(";")[0] || "image/jpeg";
+    if (!type.startsWith("image/")) return null;
+    return { inline_data: { mime_type: type, data: Buffer.from(await res.arrayBuffer()).toString("base64") } };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ask Gemini which pictures clearly show `mustShow`. Returns the candidates that pass, best first.
+ * `topic` = what the whole video is about (e.g. "Nepal's national flag"), so Gemini can be strict.
+ */
+export async function checkPictures(candidates: Candidate[], mustShow: string, topic: string): Promise<Candidate[]> {
+  const withPictures: { c: Candidate; part: NonNullable<Awaited<ReturnType<typeof previewPart>>> }[] = [];
+  for (const c of candidates) {
+    if (!c.preview) continue;
+    const part = await previewPart(c.preview);
+    if (part) withPictures.push({ c, part });
+  }
+  if (withPictures.length === 0) return [];
+  const parts: unknown[] = [];
+  withPictures.forEach(({ part }, i) => parts.push({ text: `Picture ${i + 1}:` }, part));
+  parts.push({
+    text: `This is for a short educational video about: ${topic}.
+The narrator is saying a line, and the picture on screen must clearly show: ${mustShow}.
+Be STRICT. Say a picture passes ONLY if a viewer would instantly see that exact thing.
+- A flag must be exactly the right country's flag (any other country's flag fails).
+- A plant or animal must be the right species (for example poppies or roses are NOT rhododendrons).
+- Pictures about Nepal must look like Nepal (no other country's temples, cities or symbols).
+- Text, logos or sports balls that only print the thing fail.
+Answer with the numbers of the pictures that pass, best first.`,
+  });
+  const body = {
+    contents: [{ role: "user", parts }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseJsonSchema: {
+        type: "object",
+        properties: { pass: { type: "array", items: { type: "integer" } }, note: { type: "string" } },
+        required: ["pass"],
+      },
+    },
+  };
+  for (const model of VISION_MODELS) {
+    try {
+      const res = await fetch(`${VISION_API}/${encodeURIComponent(model)}:generateContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY! },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (!res.ok) {
+        console.warn(`Picture check: ${model} said ${res.status}, trying the next model.`);
+        continue;
+      }
+      const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+      const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
+      const { pass } = JSON.parse(text) as { pass: number[] };
+      return pass.map((n) => withPictures[n - 1]?.c).filter((c): c is Candidate => Boolean(c));
+    } catch (err) {
+      console.warn(`Picture check: ${model} failed (${(err as Error).message}).`);
+    }
+  }
+  // The check itself did not work: say so, and let the caller decide (we do NOT guess).
+  throw new Error("Picture check unavailable");
+}
+
+/**
+ * Like findMedia, but every picture is checked by Gemini first (see above).
+ * Searches clips AND photos for all `queries`, puts the best-tagged first, and keeps the
+ * first one that passes the check (a clip wins over a photo when both pass).
+ * Returns null when nothing passes: never a wrong picture.
+ */
+export async function findCheckedMedia(
+  queries: string[],
+  mustShow: string,
+  topic: string,
+  format: VideoFormat,
+  dir: string,
+  name: string,
+  used: Set<number>,
+  minSeconds = 0,
+): Promise<(FoundMedia & { checked: boolean }) | null> {
+  const provider = stockProvider();
+  if (!provider) return null;
+  if (!visionCheckOn()) {
+    const found = await findMedia(queries, format, dir, name, used, minSeconds);
+    return found ? { ...found, checked: false } : null;
+  }
+  const pool = new Map<number, Candidate & { score: number }>();
+  for (const query of queries) {
+    for (const photos of [false, true]) {
+      try {
+        const found = (await search(provider, query, format, photos)).filter((c) => !used.has(c.id));
+        // Keep the 6 best of each search, so every query gets a fair chance.
+        for (const c of rankCandidates(query, found, minSeconds).slice(0, 6)) {
+          const prev = pool.get(c.id);
+          if (!prev || prev.score < c.score) pool.set(c.id, c);
+        }
+      } catch (err) {
+        console.warn(`${provider}: search "${query}" failed (${(err as Error).message}).`);
+      }
+    }
+  }
+  const ordered = [...pool.values()].sort((a, b) => b.score - a.score);
+  for (let i = 0; i < Math.min(ordered.length, CHECK_BATCH * 3); i += CHECK_BATCH) {
+    const batch = ordered.slice(i, i + CHECK_BATCH);
+    const passed = await checkPictures(batch, mustShow, topic);
+    const pick = passed.find((c) => c.kind === "video") ?? passed[0];
+    if (pick) {
+      const file = `${name}.${pick.kind === "video" ? "mp4" : "jpg"}`;
+      await download(pick.downloadUrl, path.join(dir, file));
+      used.add(pick.id);
+      return { file, kind: pick.kind, sourceUrl: pick.sourceUrl, provider, id: pick.id, checked: true };
+    }
+  }
+  console.warn(`Picture check: nothing showed "${mustShow}" (${ordered.length} looked at).`);
+  return null;
 }

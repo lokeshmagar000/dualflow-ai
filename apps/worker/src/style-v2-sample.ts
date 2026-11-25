@@ -9,13 +9,13 @@
  * Uses ONE Gemini voice request per language.
  */
 import { execFileSync } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { BRAND_COLORS, brandFor } from "@dualflow/shared";
 import { buildCues, edgeVoice, getVoiceProvider, pcmDurationMs, pcmToWav, silence, type SpeechResult, type WordTiming } from "@dualflow/voice";
 import {
   closeRenderer,
-  findMedia,
+  findCheckedMedia,
   makeJobFolder,
   plain,
   prepareIntro,
@@ -33,7 +33,7 @@ const { ding, hit, musicBed, pop, riser, toWav, whoosh } = sounds;
 const out = path.resolve(process.argv[2] ?? "style-v2-out");
 const only = process.argv[3] as "ne" | "en" | undefined;
 
-type Part = { text: string; q: string };
+type Part = { text: string; v: keyof typeof VISUALS };
 type Line = { parts: Part[] };
 type Story = {
   lines: Line[];
@@ -52,32 +52,44 @@ type Story = {
   followText: string;
 };
 
+/** What the whole video is about (the picture check uses it to be strict). */
+const TOPIC = "Nepal's national flag (the only non-rectangular national flag in the world)";
+
+/**
+ * The pictures, shared by both languages. Every search stays ON the topic (Nepal), and
+ * `must` says exactly what the picture has to show; the picture check rejects anything else.
+ * "World" lines show a world map / globe, never a random country's flag.
+ */
+const VISUALS = {
+  world: { q: ["world map", "globe earth rotating", "world flags"], must: "a world map or a globe of the Earth (no single country's flag)" },
+  flag: { q: ["nepal flag", "flag of nepal", "nepal flag waving"], must: "the national flag of NEPAL: two stacked crimson triangles with a blue border, a white moon and a white sun" },
+  flag2: { q: ["nepal flag waving", "nepal flag", "nepal flag wind"], must: "the national flag of NEPAL: two stacked crimson triangles with a blue border, a white moon and a white sun" },
+  flag3: { q: ["nepal flag kathmandu", "nepal flag", "nepal flag pole"], must: "the national flag of NEPAL (two stacked crimson triangles with a blue border)" },
+  himalaya: { q: ["himalaya nepal", "everest", "himalayas snow mountains"], must: "snowy Himalayan mountain peaks" },
+  religion: { q: ["boudhanath stupa", "swayambhunath", "pashupatinath temple", "nepal temple"], must: "a Buddhist stupa or Hindu temple in Nepal (such as Boudhanath, Swayambhunath or Pashupatinath)" },
+  rhodo: { q: ["rhododendron", "rhododendron flower red", "rhododendron tree"], must: "red rhododendron flowers (poppies, roses or tulips fail)" },
+  moon: { q: ["moon night sky", "full moon", "crescent moon"], must: "the moon in the sky" },
+  sun: { q: ["sunrise himalaya", "sunrise mountains", "sun rising"], must: "the sun rising or shining over mountains" },
+  geometry: { q: ["geometry compass drawing", "drawing triangle ruler", "geometry construction"], must: "a hand drawing geometry with a compass or a ruler, or geometric construction lines" },
+  flagEnd: { q: ["nepal flag wind", "nepal flag", "nepal flag sky"], must: "the national flag of NEPAL: two stacked crimson triangles with a blue border, a white moon and a white sun" },
+} as const;
+
 // Facts checked: Nepal's flag is the only non-rectangular national flag; its construction is
 // set out step by step in Schedule 1 of the Constitution; crimson = rhododendron (national
-// flower) and colour of victory; the moon and sun express the wish that the nation lasts as
-// long as they do; the two pennants are commonly said to stand for the Himalayas and for
-// Hinduism and Buddhism. 193 = UN member states.
+// flower); the moon and sun express the wish that the nation lasts as long as they do; the two
+// pennants are commonly said to stand for the Himalayas and for Hinduism and Buddhism.
+// 193 = UN member states.
 const STORIES: Record<"en" | "ne", Story> = {
   en: {
     lines: [
-      { parts: [{ text: "Every country's flag is a rectangle.", q: "flags of the world" }, { text: "Except one.", q: "nepal flag" }] },
-      { parts: [{ text: "Out of one hundred ninety-three countries, only Nepal's flag looks like this.", q: "nepal flag waving" }] },
-      { parts: [{ text: "But the shape isn't even the strangest part.", q: "flag pole sky" }] },
-      {
-        parts: [
-          { text: "Its two triangles stand for the Himalayas,", q: "himalaya mountains snow" },
-          { text: "and for Hinduism and Buddhism.", q: "boudhanath stupa" },
-        ],
-      },
-      { parts: [{ text: "The crimson red is the colour of the rhododendron, Nepal's national flower.", q: "red rhododendron flower" }] },
-      {
-        parts: [
-          { text: "The moon and the sun?", q: "moon night sky" },
-          { text: "A wish that Nepal lasts as long as they do.", q: "sunrise mountains" },
-        ],
-      },
-      { parts: [{ text: "And the constitution explains exactly how to draw it, step by step, like a geometry test.", q: "geometry drawing compass" }] },
-      { parts: [{ text: "That's why it's the only flag on Earth that breaks the rule.", q: "nepal flag wind" }] },
+      { parts: [{ text: "Every country's flag is a rectangle.", v: "world" }, { text: "Except one.", v: "flag" }] },
+      { parts: [{ text: "Out of one hundred ninety-three countries, only Nepal's flag looks like this.", v: "flag2" }] },
+      { parts: [{ text: "But the shape isn't even the strangest part.", v: "flag3" }] },
+      { parts: [{ text: "Its two triangles stand for the Himalayas,", v: "himalaya" }, { text: "and for Hinduism and Buddhism.", v: "religion" }] },
+      { parts: [{ text: "The crimson red is the colour of the rhododendron, Nepal's national flower.", v: "rhodo" }] },
+      { parts: [{ text: "The moon and the sun?", v: "moon" }, { text: "A wish that Nepal lasts as long as they do.", v: "sun" }] },
+      { parts: [{ text: "And the constitution explains exactly how to draw it, step by step, like a geometry test.", v: "geometry" }] },
+      { parts: [{ text: "That's why it's the only flag on Earth that breaks the rule.", v: "flagEnd" }] },
     ],
     oldCta: "Like and follow for more amazing facts!",
     oldTitle: "Why Nepal's flag is so unique",
@@ -91,24 +103,14 @@ const STORIES: Record<"en" | "ne", Story> = {
   },
   ne: {
     lines: [
-      { parts: [{ text: "संसारका सबै देशको झण्डा चार कुने हुन्छ।", q: "flags of the world" }, { text: "एउटा बाहेक।", q: "nepal flag" }] },
-      { parts: [{ text: "एक सय त्रियानब्बे देशमध्ये, यस्तो आकारको झण्डा नेपालको मात्र छ।", q: "nepal flag waving" }] },
-      { parts: [{ text: "तर आकार मात्र अचम्मको कुरा होइन।", q: "flag pole sky" }] },
-      {
-        parts: [
-          { text: "यसका दुई त्रिकोणले हिमाललाई जनाउँछन्,", q: "himalaya mountains snow" },
-          { text: "अनि हिन्दू र बौद्ध धर्मलाई पनि।", q: "boudhanath stupa" },
-        ],
-      },
-      { parts: [{ text: "यसको सिम्रिक रातो रङ राष्ट्रिय फूल लालीगुराँसको रङ हो।", q: "red rhododendron flower" }] },
-      {
-        parts: [
-          { text: "अनि चन्द्र र सूर्य?", q: "moon night sky" },
-          { text: "नेपाल तिनीहरू रहुन्जेल रहोस् भन्ने कामना।", q: "sunrise mountains" },
-        ],
-      },
-      { parts: [{ text: "अझ अचम्म, संविधानमै यो झण्डा कसरी कोर्ने भनेर, ज्यामितिको प्रश्नजस्तै, एक एक चरण लेखिएको छ।", q: "geometry drawing compass" }] },
-      { parts: [{ text: "त्यसैले यो संसारको एक मात्र झण्डा हो, जसले नियम तोड्छ।", q: "nepal flag wind" }] },
+      { parts: [{ text: "संसारका सबै देशको झण्डा चार कुने हुन्छ।", v: "world" }, { text: "एउटा बाहेक।", v: "flag" }] },
+      { parts: [{ text: "एक सय त्रियानब्बे देशमध्ये, यस्तो आकारको झण्डा नेपालको मात्र छ।", v: "flag2" }] },
+      { parts: [{ text: "तर आकार मात्र अचम्मको कुरा होइन।", v: "flag3" }] },
+      { parts: [{ text: "यसका दुई त्रिकोणले हिमाललाई जनाउँछन्,", v: "himalaya" }, { text: "अनि हिन्दू र बौद्ध धर्मलाई पनि।", v: "religion" }] },
+      { parts: [{ text: "यसको सिम्रिक रातो रङ राष्ट्रिय फूल लालीगुराँसको रङ हो।", v: "rhodo" }] },
+      { parts: [{ text: "अनि चन्द्र र सूर्य?", v: "moon" }, { text: "नेपाल तिनीहरू रहुन्जेल रहोस् भन्ने कामना।", v: "sun" }] },
+      { parts: [{ text: "अझ अचम्म, संविधानमै यो झण्डा कसरी कोर्ने भनेर, ज्यामितिको प्रश्नजस्तै, एक एक चरण लेखिएको छ।", v: "geometry" }] },
+      { parts: [{ text: "त्यसैले यो संसारको एक मात्र झण्डा हो, जसले नियम तोड्छ।", v: "flagEnd" }] },
     ],
     oldCta: "भिडियो मन पर्यो भने लाइक र फलो गर्नुहोस्।",
     oldTitle: "नेपालको झण्डा किन फरक छ?",
@@ -121,6 +123,11 @@ const STORIES: Record<"en" | "ne", Story> = {
     followText: "भाग २ का लागि फलो गर्नुहोस्",
   },
 };
+
+/** Checked pictures, found once and shared by both languages (fewer Gemini requests). */
+const picked = new Map<string, { path: string; kind: "video" | "image" } | null>();
+const usedIds = new Set<number>();
+const report: string[] = [];
 
 /** Join voice pieces with a gap; returns the audio and where each line and word is. */
 function glue(pieces: SpeechResult[], gapMs: number) {
@@ -194,8 +201,19 @@ async function make(language: "ne" | "en") {
     const starts = partStarts(line, newVoice.lines[li]!);
     for (const [pi, part] of line.parts.entries()) {
       const endMs = pi + 1 < line.parts.length ? starts[pi + 1]! : li + 1 < story.lines.length ? newVoice.lines[li + 1]!.startMs : newVoice.durationMs;
-      const found = await findMedia([part.q, part.q.split(" ").slice(-1)[0]!], "SHORT", job.dir, `clip-${n}`, used, (endMs - starts[pi]!) / 1000);
-      const media: Media | null = found ? { src: job.url(found.file), kind: found.kind } : null;
+      if (!picked.has(part.v)) {
+        const vis = VISUALS[part.v];
+        const found = await findCheckedMedia([...vis.q], vis.must, TOPIC, "SHORT", job.dir, `pick-${part.v}`, usedIds, (endMs - starts[pi]!) / 1000);
+        picked.set(part.v, found ? { path: path.join(job.dir, found.file), kind: found.kind } : null);
+        report.push(`${part.v}: ${found ? `${found.kind} ${found.sourceUrl}${found.checked ? " (checked)" : " (NOT checked)"}` : "nothing passed the check -> colour background"}`);
+      }
+      const p = picked.get(part.v);
+      let media: Media | null = null;
+      if (p) {
+        const file = `clip-${n}${path.extname(p.path)}`;
+        await copyFile(p.path, path.join(job.dir, file));
+        media = { src: job.url(file), kind: p.kind };
+      }
       mediaByPart.push(media);
       shotsNew.push({ startMs: starts[pi]!, endMs, media });
       n++;
@@ -273,10 +291,11 @@ async function make(language: "ne" | "en") {
   };
   console.log(`[${language}] rendering BEFORE...`);
   await renderVideo(before, path.join(out, `before-${language}.mp4`));
-  await job.remove();
 }
 
 await mkdir(out, { recursive: true });
 for (const language of only ? [only] : (["en", "ne"] as const)) await make(language);
 await closeRenderer();
+await writeFile(path.join(out, "pictures.txt"), report.join("\n") + "\n");
+console.log(report.join("\n"));
 console.log(`Done: ${out}`);
