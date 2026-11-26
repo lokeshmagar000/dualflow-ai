@@ -77,11 +77,19 @@ export async function createPoliticsTopic(workspaceId: string, settings: Politic
         news ??= await fetchNepalPoliticsNews();
         console.log(`Politics: ${news.length} recent news headline(s) found.`);
       }
-      const { idea, sources, costs } = await suggestPoliticsTopic({
-        series,
-        recentTitles: recent.map((t) => t.title),
-        news: news ?? [],
-      });
+      // Gemini's free tier is often "busy" (HTTP 503) for a minute: wait and ask again (3 tries).
+      const ask = () => suggestPoliticsTopic({ series, recentTitles: recent.map((t) => t.title), news: news ?? [] });
+      let answer: Awaited<ReturnType<typeof ask>> | null = null;
+      for (let attempt = 1; !answer; attempt++) {
+        try {
+          answer = await ask();
+        } catch (err) {
+          if (attempt >= 3 || !/busy|503|overloaded|unavailable/i.test((err as Error).message)) throw err;
+          console.log(`Politics: Gemini is busy, trying again in ${30 * attempt} s (try ${attempt + 1} of 3).`);
+          await new Promise((r) => setTimeout(r, 30_000 * attempt));
+        }
+      }
+      const { idea, sources, costs } = answer;
       if (costs.length) await prisma.costEvent.createMany({ data: costs.map((c) => ({ workspaceId, ...c })) });
       const topic = await prisma.topic.create({
         data: {
