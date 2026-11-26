@@ -18,5 +18,11 @@ export const dynamic = "force-dynamic"; // never cached: it must really reach th
 export async function GET() {
   const api = await apiRaw("/health").then((r) => r.ok).catch(() => false);
   const timer = api ? await checkBackupTimer() : null;
-  return Response.json({ ok: true, api, nightVideos: timer?.started ? "started a missing night video" : "ok" }, { headers: { "cache-control": "no-store" } });
+  // nightVideos = "started a missing night video" or "ok"; timer = the backup timer's reason in plain words
+  // (e.g. "no video due yet today" or "GITHUB_REPO / GITHUB_DISPATCH_TOKEN not set"), so you can see why it did nothing.
+  // It holds no private data (no keys, no topics).
+  return Response.json(
+    { ok: true, api, nightVideos: timer?.started ? "started a missing night video" : "ok", timer: timer?.reason ?? (api ? "no answer" : "API not reachable") },
+    { headers: { "cache-control": "no-store" } },
+  );
 }

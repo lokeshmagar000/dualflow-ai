@@ -38,7 +38,10 @@ If it says the key is missing, add both values first (see [automatic-videos.md](
    2:00 AM video 2. Both are ready before 3 AM.
 6. Press **Create**.
 7. Test it: press **Test run** on the job. The answer should look like
-   `{"ok":true,"api":true,"nightVideos":"ok"}`.
+   `{"ok":true,"api":true,"nightVideos":"ok","timer":"no video due yet today"}`.
+   - `"timer"` tells you in plain words what the backup timer decided. If it says
+     `GITHUB_REPO / GITHUB_DISPATCH_TOKEN not set` or `GitHub said 401` / `403`, the dashboard cannot start runs:
+     add or renew those two settings (see [automatic-videos.md](automatic-videos.md)).
    - `"api":false` means the dashboard cannot reach its API. See [fix-dashboard-connection.md](fix-dashboard-connection.md).
 
 ## How do I know it worked?
