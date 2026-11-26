@@ -52,7 +52,7 @@ import {
 } from "../budget";
 import { planStory } from "../publishing";
 import { planShots, type ScenePart } from "./shots";
-import { fetchFlag, findCommonsPhoto, type V2NewsCard } from "@dualflow/video";
+import { fetchFlag, findCommonsPhoto, type CommonsPhoto, type NewsCardInput, type V2NewsCard } from "@dualflow/video";
 
 type Step = (data: PipelineJobData) => Promise<void>;
 
@@ -188,6 +188,7 @@ const script: Step = async (data) => {
           cards: script.cards,
           followText: script.followText,
           newsCards: script.newsCards,
+          people: script.people,
         } satisfies V2Text as unknown as Prisma.InputJsonValue,
       },
     }),
@@ -609,13 +610,25 @@ async function prepareNews(
     if (!flagCache.has(code)) flagCache.set(code, await fetchFlag(code, dir));
     return flagCache.get(code) ? url(flagCache.get(code)!) : null;
   };
-  const cards: (Omit<V2NewsCard, "startMs" | "endMs"> & { order: number })[] = [];
-  let photos = 0;
+  // One photo per person (the same file is used each time they are named).
+  const photoCache = new Map<string, Promise<CommonsPhoto | null>>();
+  const photoOf = (person: string) => {
+    const key = person.toLowerCase();
+    if (!photoCache.has(key)) photoCache.set(key, findCommonsPhoto(person, dir, photoCache.size));
+    return photoCache.get(key)!;
+  };
+  const cards: NewsCardInput[] = [];
+  // People: their real photo shows at the moment the narration says their name.
+  for (const p of text?.people ?? []) {
+    const found = await photoOf(p.person);
+    if (!found) continue;
+    cards.push({ order: p.order, kind: "photo", title: p.role, by: p.name, date: "", from: "", to: "", flags: [], points: [], say: p.name, photo: { src: url(found.file), credit: found.credit } });
+  }
   for (const c of text?.newsCards ?? []) {
     const flags = (await Promise.all(c.countries.map(flag))).filter((f): f is string => Boolean(f));
     let photo: V2NewsCard["photo"] = null;
     if (c.kind === "photo") {
-      const found = await findCommonsPhoto(c.person, dir, photos++);
+      const found = await photoOf(c.person);
       if (!found) continue;
       photo = { src: url(found.file), credit: found.credit };
     }

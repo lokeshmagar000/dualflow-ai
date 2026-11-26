@@ -89,5 +89,6 @@ export function mockScript(input: { language: Language; title: string; research:
           { order: 6, kind: "quote", title: isNe ? "यो अभ्यास उद्धरण हो।" : "This is a practice quote.", by: isNe ? "अभ्यास वक्ता" : "Practice speaker", person: "", date: "", from: "", to: "", countries: [], points: [] },
         ]
       : [],
+    people: input.politics ? [{ order: 3, person: "Narendra Modi", name: isNe ? "मोदी" : "Modi", role: isNe ? "भारतका प्रधानमन्त्री" : "Prime Minister of India" }] : [],
   };
 }

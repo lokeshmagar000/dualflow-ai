@@ -105,3 +105,15 @@ test("trustedNewsCards drops invented quotes and swaps in the REAL headline", ()
   assert.equal(out[0]!.title, "Nepal PM meets Modi");
   assert.equal(out[0]!.by, "Reuters");
 });
+
+test("trustedPeople keeps full names only, once per scene", async () => {
+  const { trustedPeople } = await import("./script");
+  const out = trustedPeople([
+    { order: 2, person: "Narendra Modi", name: "मोदी", role: "प्रधानमन्त्री" },
+    { order: 2, person: "narendra  modi", name: "मोदी", role: "" },
+    { order: 3, person: "Modi", name: "मोदी", role: "" },
+    { order: 4, person: "Balendra Shah", name: "", role: "" },
+    { order: 5, person: "Balendra Shah", name: "बालेन", role: "" },
+  ]);
+  assert.deepEqual(out.map((p) => `${p.order}:${p.person}`), ["2:Narendra Modi", "5:Balendra Shah"]);
+});

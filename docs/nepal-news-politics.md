@@ -23,8 +23,13 @@ history, prime ministers, the constitution and numbers. Turn it on in the dashbo
 - **News graphics** drawn by code (stock sites have no politicians or meetings):
   red news bar with the date, the real headline as a newspaper clipping, quotes (only quotes that
   the research really found), a timeline, a trip map (city → city with flags), waving flags,
-  and photos of public people from **Wikimedia Commons** (free licence only, the file name must
-  have the person's first and last name, credit shown on the photo). `NEWS_PHOTOS=off` turns photos off.
+  and photos of public people (credit shown on the photo). `NEWS_PHOTOS=off` turns photos off.
+- **Real photo when a name is said**: the script lists every person the narration names. Their photo
+  pops up on the exact word where the voice says the name (about 3 seconds). The photo is the main
+  picture of the person's Wikipedia article (free licence only); if that has no free photo, a
+  Wikimedia Commons search is tried (the file name must have the first and last name).
+  Real video clips of leaders are not used: TV news footage is owned by the channels and would
+  get copyright (Content ID) claims. The photo slowly zooms instead.
 - **Calm news-reader voice** (`GEMINI_TTS_STYLE_NEWS` changes it), a news sting on the first frame and
   a serious ticking news music bed. All sounds are made by code: no licence, no Content ID claims.
 

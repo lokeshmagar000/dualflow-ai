@@ -204,7 +204,7 @@ function Photo({ card, language }: { card: V2NewsCard; language: Lang }) {
   if (!card.photo) return null;
   const zoom = 1 + frame * 0.0012;
   return (
-    <div style={{ width: 600, background: PANEL, borderRadius: 22, overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.55)", border: `5px solid ${LOGO.marigold}` }}>
+    <div style={{ width: 620, background: PANEL, borderRadius: 22, overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.55)", border: `5px solid ${LOGO.marigold}` }}>
       <div style={{ width: "100%", height: 560, overflow: "hidden", position: "relative" }}>
         <Img src={card.photo.src} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 22%", transform: `scale(${zoom})` }} />
         <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "6px 12px", background: "rgba(0,0,0,0.55)", color: "rgba(255,255,255,0.9)", fontFamily: WORD_POP_FONT.en, fontSize: 18, lineHeight: 1.25 }}>

@@ -95,6 +95,17 @@ export const ScriptSchema = z.object({
     )
     .default([])
     .describe("NEWS / POLITICS videos only (otherwise empty): 2-5 news graphics, at most one per scene"),
+  people: z
+    .array(
+      z.object({
+        order: z.number().int().describe("Scene number where the narration says this person's name"),
+        person: z.string().describe("The person's full name in ENGLISH as written on Wikipedia, e.g. 'Narendra Modi'"),
+        name: z.string().describe("The name EXACTLY as the narration says it in that scene (target language), e.g. 'मोदी' or 'Modi'"),
+        role: z.string().default("").describe("1-3 word role, target language, e.g. 'प्रधानमन्त्री' / 'Prime Minister'"),
+      }),
+    )
+    .default([])
+    .describe("NEWS / POLITICS videos only: EVERY scene where a real public person (leader, official, celebrity, player) is named. Their real photo shows when the name is said."),
 });
 export type Script = z.infer<typeof ScriptSchema>;
 
@@ -194,7 +205,7 @@ On-screen text (target language):
 - cards: for each striking number, year, date or time in the narration (0-3 in total), an animated card
   on that scene: kind "number" (counts up), "year" (digits roll), "date" (calendar flips), "time" (clock turns).
 - followText: a short "Follow for Part 2" message.
-${input.politics ? NEWS_CARD_RULES(input) : "- newsCards: leave empty."}
+${input.politics ? NEWS_CARD_RULES(input) : "- newsCards and people: leave empty."}
 
 Summary:
 ${research.summary}
@@ -236,8 +247,11 @@ ${heads || "  (no headline: do not use this kind)"}
   timeline: 2-4 dates from the facts, oldest first.
   trip: a visit or journey from the facts (from city, to city, the date, country codes).
   flags: the countries involved (2-letter codes, e.g. np, in, cn, us).
-  photo: a named public person the scene talks about (full English name in "person"; the photo comes from Wikimedia Commons).
-  All words on cards come from the facts. Same neutral rules.`;
+  Do NOT use "photo" in newsCards: people photos come from "people" below.
+  All words on cards come from the facts. Same neutral rules.
+- people: list EVERY scene where the narration names a real public person (leader, minister, official, celebrity, player).
+  One entry per person per scene. "person" = full English name as on Wikipedia; "name" = the exact words the narration uses for them.
+  Their real photo appears on screen at the moment the name is spoken.`;
 }
 
 /** Share of letters in Devanagari (0-1). Latin brand names inside a Nepali line are fine. */
@@ -337,6 +351,7 @@ function normalise(script: Script): Script {
         countries: c.countries.map((x) => x.trim().toLowerCase()).filter((x) => /^[a-z]{2}$/.test(x)).slice(0, 4),
         points: c.points.map((p) => ({ when: nfc(p.when).trim(), label: nfc(p.label).trim() })).filter((p) => p.when).slice(0, 4),
       })),
+    people: trustedPeople(script.people ?? []),
   };
 }
 
@@ -376,6 +391,26 @@ export function trustedNewsCards(
   return out;
 }
 
+/**
+ * People named in the narration: a full English name (2+ words) is needed to find the right photo.
+ * One entry per person per scene, at most 8.
+ */
+export function trustedPeople(people: Script["people"]): Script["people"] {
+  const seen = new Set<string>();
+  const out: Script["people"] = [];
+  for (const p of people) {
+    const person = p.person.replace(/\s+/g, " ").trim();
+    const name = p.name.normalize("NFC").trim();
+    if (p.order <= 0 || person.split(" ").filter((w) => w.length > 1).length < 2 || !name) continue;
+    const key = `${p.order}|${person.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ order: p.order, person, name, role: p.role.normalize("NFC").trim() });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 /** Tidy the AI's answer: Unicode, clean lines, and each line matched to its picture. */
 function finish(script: Script, planLength: number, language: Language): Script {
   const tidy = normalise(script);
@@ -388,6 +423,7 @@ export async function writeScript(input: ScriptInput): Promise<{ script: Script;
   const result = await writeScriptChecked(input);
   // News graphics only for news / politics videos, and only the ones we can trust.
   result.script.newsCards = input.politics && !isMockAI() ? trustedNewsCards(result.script.newsCards, input.research, input.headlines) : input.politics ? result.script.newsCards : [];
+  if (!input.politics) result.script.people = [];
   return result;
 }
 
