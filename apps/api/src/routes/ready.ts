@@ -12,7 +12,7 @@ import type { FastifyInstance } from "fastify";
 import archiver from "archiver";
 import { prisma, type Prisma } from "@dualflow/db";
 import { contentTypeFor, downloadUrlFor, fileExists, fileSize, readFile, readStream, storageDriver, storageLabel, storageProblem } from "@dualflow/storage";
-import { THUMBNAIL_SIZE_NAMES, thumbnailKeyFor, type ThumbnailSizeName } from "@dualflow/shared";
+import { POLITICS_CATEGORY, politicsSeries, sourceName, THUMBNAIL_SIZE_NAMES, thumbnailKeyFor, type ThumbnailSizeName } from "@dualflow/shared";
 import { getDefaultWorkspace } from "../workspace";
 
 const KINDS = ["video", "thumbnail", "srt"] as const;
@@ -82,7 +82,8 @@ export async function readyRoutes(app: FastifyInstance) {
           id: true,
           status: true,
           createdAt: true,
-          topic: { select: { title: true, source: true } },
+          topic: { select: { title: true, source: true, category: true, series: true, sources: true } },
+          research: true, // only read for politics videos (their sources)
           variants: {
             orderBy: { language: "asc" }, // "en" first, then "ne"
             select: {
@@ -113,8 +114,11 @@ export async function readyRoutes(app: FastifyInstance) {
     // picture went browser -> dashboard -> API -> R2, which made the page slow to fill.
     // (Making the address is quick: it is signed here, without asking R2.)
     const withPictures = await Promise.all(
-      stories.map(async (s) => ({
+      stories.map(async ({ research, topic: { sources, ...topic }, ...s }) => ({
         ...s,
+        topic,
+        // Nepal News & Politics: the series and the sources to check before you approve it.
+        politics: politicsInfo(topic, sources, research),
         variants: await Promise.all(
           s.variants.map(async ({ thumbnails, ...v }) => ({
             ...v,
@@ -301,4 +305,20 @@ function addAndWait(zip: archiver.Archiver, stream: NodeJS.ReadableStream | null
     stream.once("error", reject);
     zip.append(stream as NodeJS.ReadableStream & import("node:stream").Readable, { name });
   });
+}
+
+/** Series name and up to 8 sources (news first, then the research's facts) of a politics video. */
+function politicsInfo(topic: { category: string | null; series: string | null }, sources: unknown, research: unknown) {
+  if (topic.category !== POLITICS_CATEGORY) return null;
+  const list: { name: string; url: string }[] = [];
+  const add = (url: string | undefined | null, name?: string | null) => {
+    if (!url || list.some((l) => l.url === url) || list.length >= 8) return;
+    list.push({ url, name: name || sourceName(url) || url });
+  };
+  for (const n of (sources as { url: string; publisher?: string; title?: string }[] | null) ?? []) add(n.url, n.publisher ? `${n.publisher}: ${n.title ?? ""}` : n.title);
+  const r = (research ?? {}) as { facts?: { sourceUrl?: string }[]; sources?: { url: string; title: string }[] };
+  for (const f of r.facts ?? []) add(f.sourceUrl);
+  for (const x of r.sources ?? []) add(x.url, sourceName(x.url, x.title));
+  const series = politicsSeries(topic.series);
+  return { series: series?.nameEn ?? "Nepal News & Politics", sources: list };
 }

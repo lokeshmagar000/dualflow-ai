@@ -52,6 +52,10 @@ export type V2Input = {
   fallbackHook: string;
   brand: string;
   brandTag: string;
+  /** Politics videos: small "Source: ..." line shown under the topic chip. */
+  source?: string;
+  /** Politics videos: the series name shown as a small label above the topic chip, e.g. "PM Files". */
+  seriesChip?: string;
 };
 
 const DEFAULT_FOLLOW = { en: "Follow for Part 2", ne: "भाग २ का लागि फलो गर्नुहोस्" };
@@ -118,6 +122,8 @@ export async function prepareV2(input: V2Input): Promise<V2Props> {
     musicVolume: Number(process.env.MUSIC_VOLUME ?? 0.28),
     brand: input.brand,
     brandTag: input.brandTag,
+    source: input.source ?? "",
+    series: input.seriesChip ?? "",
     follow: loop && loop.startMs > 3000 ? { atMs: loop.startMs, text: t.followText || DEFAULT_FOLLOW[language] } : null,
   };
 }

@@ -50,6 +50,10 @@ on:
         description: "Backup timer only (the dashboard fills this): make night video 1 or 2 if it is still missing"
         type: string
         default: ""
+      politics_series:
+        description: "Nepal News & Politics video now: a series id (news-explained, today-in-history, pm-files, constitution-60, politics-in-numbers, politics-quiz) or auto"
+        type: string
+        default: ""
       demo_story:
         description: "Add a practice story first (Mount Everest, Nepali + English)"
         type: boolean
@@ -209,6 +213,10 @@ jobs:
           # Which video of the night this scheduled run is for: the 1:05 AM run makes video 1,
           # the 1:35 AM run video 2, and the backups (2:05, 2:35 AM) make whichever is missing.
           # The nightly scheduled task and the dashboard's backup timer pass it as the auto_slot input.
+          # "Generate politics video now" (Ideas page): makes a Nepal News & Politics video.
+          POLITICS_SERIES: ${{ inputs.politics_series }}
+          POLITICS_NEWS_DAYS: ${{ vars.POLITICS_NEWS_DAYS || '5' }}
+          POLITICS_NEWS_QUERIES: ${{ vars.POLITICS_NEWS_QUERIES }}
           AUTO_SLOT: ${{ inputs.auto_slot || github.event.schedule == '20 19 * * *' && '1' || github.event.schedule && '2' || '' }}
       - name: Remake the newest video
         if: inputs.remake_latest

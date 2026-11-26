@@ -11,7 +11,8 @@ import { claudeCost, type CostLine } from "./cost";
 import { isMockAI, mockResearch } from "./mock";
 import { aiProvider } from "./provider";
 import { askGemini, askGeminiJson } from "./gemini";
-import { videoStyle } from "@dualflow/shared";
+import { NEUTRAL_RULES, videoStyle } from "@dualflow/shared";
+import type { TopicSource } from "./politics";
 
 export const ResearchSchema = z.object({
   summary: z.string().describe("3-5 sentence summary of what the video should explain"),
@@ -121,18 +122,51 @@ const V2_PLAN_RULES = `How to build the visual plan (the pictures must match the
   "That's why it's the only flag on Earth that breaks the rule."). NO "like and follow", no goodbye.
 ${PICTURE_RULES}`;
 
-type ResearchInput = { title: string; notes?: string | null; format: "SHORT" | "LONG" };
+type ResearchInput = {
+  title: string;
+  notes?: string | null;
+  format: "SHORT" | "LONG";
+  /** Nepal Politics videos: the series and the real news the topic came from. */
+  politics?: { seriesName: string; sources: TopicSource[] } | null;
+};
+
+/** The research system prompt; politics videos add the neutral rules. */
+function systemFor(input: ResearchInput) {
+  return input.politics ? `${RESEARCH_SYSTEM}\n${NEUTRAL_RULES}` : RESEARCH_SYSTEM;
+}
+
+/** Politics: the facts the video may use must come with sources. */
+export const MIN_POLITICS_SOURCES = 3;
+export function checkPoliticsSources(research: Pick<Research, "facts">, found: { url: string }[] = []) {
+  const withSource = research.facts.filter((f) => f.sourceUrl.trim()).length;
+  if (Math.max(withSource, found.length) < MIN_POLITICS_SOURCES) {
+    throw new Error(
+      `Politics video stopped: only ${Math.max(withSource, found.length)} source(s) were found (at least ${MIN_POLITICS_SOURCES} needed). Nothing is made without sources.`,
+    );
+  }
+  // Facts without a source are dropped: a politics video only says what a source supports.
+  research.facts = research.facts.filter((f) => f.sourceUrl.trim());
+}
 
 /** The same two prompts are used by Claude and by Gemini. */
 function notesPrompt(input: ResearchInput) {
-  return `Research this video topic: "${input.title}".${input.notes ? `\nCreator notes: ${input.notes}` : ""}
+  const p = input.politics;
+  const news = p?.sources.length
+    ? `\nThis topic comes from this REAL news (read it and other reports of the same event; never add events that are not reported):\n${p.sources
+        .map((s) => `- ${s.title} (${s.publisher}${s.publishedAt ? `, ${s.publishedAt.slice(0, 10)}` : ""}) ${s.url}`)
+        .join("\n")}`
+    : "";
+  const politics = p
+    ? `\nThis is a "${p.seriesName}" video of a Nepal politics series. Use official sources first (Election Commission, parliament, the constitution, government press releases), then major news. Only write facts that a source states.`
+    : "";
+  return `Research this video topic: "${input.title}".${input.notes ? `\nCreator notes: ${input.notes}` : ""}${news}${politics}
 Write research notes: key facts (each with its source URL), useful numbers, and anything specific to Nepal or Nepali viewers.`;
 }
 function planPrompt(input: ResearchInput, notes: string) {
   return `Topic: "${input.title}". Video format: ${input.format === "SHORT" ? (videoStyle() === "v2" ? "vertical short, 30-45 seconds" : "vertical short, about 60 seconds") : "long video, 8-12 minutes"}.
 Using ONLY these research notes, produce the facts list and the visual plan.
 
-${videoStyle() === "v2" ? V2_PLAN_RULES : CLASSIC_PLAN_RULES}
+${videoStyle() === "v2" ? V2_PLAN_RULES : CLASSIC_PLAN_RULES}${input.politics ? `\n${NEUTRAL_RULES}\n- Every fact MUST have its sourceUrl. Drop any fact without one.\n- Pictures: no photos of politicians (stock sites do not have them); show places, buildings, flags, maps, documents, ballot boxes, people voting.\n` : ""}
 <research_notes>
 ${notes}
 </research_notes>`;
@@ -143,19 +177,33 @@ ${notes}
  * call 2 turns the notes into facts + the visual plan (as checked JSON).
  * Set GEMINI_SEARCH=off if your free key does not allow Google Search.
  */
-async function researchWithGemini(input: ResearchInput): Promise<{ research: Research; costs: CostLine[] }> {
+async function researchWithGemini(input: ResearchInput): Promise<ResearchResult> {
   const search = (process.env.GEMINI_SEARCH ?? "on").toLowerCase() !== "off";
-  const notes = await askGemini({ system: RESEARCH_SYSTEM, prompt: notesPrompt(input), search });
+  const notes = await askGemini({ system: systemFor(input), prompt: notesPrompt(input), search });
   const sourceList = notes.sources.map((s) => `- ${s.title}: ${s.url}`).join("\n");
   const allNotes = sourceList ? `${notes.text}\n\nSources found by search:\n${sourceList}` : notes.text;
 
-  const plan = await askGeminiJson(ResearchSchema, { system: RESEARCH_SYSTEM, prompt: planPrompt(input, allNotes) });
-  return { research: plan.value, costs: [notes.cost, plan.cost] };
+  const plan = await askGeminiJson(ResearchSchema, { system: systemFor(input), prompt: planPrompt(input, allNotes) });
+  return { research: plan.value, costs: [notes.cost, plan.cost], sources: notes.sources };
 }
 
-export async function researchTopic(input: ResearchInput): Promise<{ research: Research; costs: CostLine[] }> {
+/** `sources` = the web pages the search really used (saved for the on-screen "Source:" line). */
+type ResearchResult = { research: Research; costs: CostLine[]; sources: { url: string; title: string }[] };
+
+export async function researchTopic(input: ResearchInput): Promise<ResearchResult> {
+  const result = await researchAny(input);
+  if (input.politics) {
+    // Practice mode has no real sources: only the real AI must pass this check.
+    if (!isMockAI()) checkPoliticsSources(result.research, result.sources);
+    // Keep the news the topic came from too.
+    for (const s of input.politics.sources) result.sources.unshift({ url: s.url, title: s.publisher || s.title });
+  }
+  return result;
+}
+
+async function researchAny(input: ResearchInput): Promise<ResearchResult> {
   // Practice mode: no API call, no cost.
-  if (isMockAI()) return { research: mockResearch(input), costs: [] };
+  if (isMockAI()) return { research: mockResearch(input), costs: [], sources: [] };
   if (aiProvider() === "gemini") return researchWithGemini(input);
 
   const ai = claude();
@@ -174,7 +222,7 @@ export async function researchTopic(input: ResearchInput): Promise<{ research: R
     max_tokens: 16000,
     ...fallbackOptions(),
     output_config: { effort: "medium" },
-    system: RESEARCH_SYSTEM,
+    system: systemFor(input),
     tools: [webSearchTool()],
     messages,
   });
@@ -191,7 +239,7 @@ export async function researchTopic(input: ResearchInput): Promise<{ research: R
       max_tokens: 16000,
       ...fallbackOptions(),
       output_config: { effort: "medium" },
-      system: RESEARCH_SYSTEM,
+      system: systemFor(input),
       tools: [webSearchTool()],
       messages: [...messages, { role: "assistant", content: notesResponse.content }],
     });
@@ -209,7 +257,7 @@ export async function researchTopic(input: ResearchInput): Promise<{ research: R
     max_tokens: 16000,
     ...fallbackOptions(),
     output_config: { effort: "medium", format: betaZodOutputFormat(ResearchSchema) },
-    system: RESEARCH_SYSTEM,
+    system: systemFor(input),
     messages: [
       {
         role: "user",
@@ -221,5 +269,5 @@ export async function researchTopic(input: ResearchInput): Promise<{ research: R
   costs.push(claudeCost(model, planned.usage));
   if (!planned.parsed_output) throw new Error("Could not read the research plan from the model.");
 
-  return { research: planned.parsed_output, costs };
+  return { research: planned.parsed_output, costs, sources: [] };
 }

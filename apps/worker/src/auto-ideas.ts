@@ -19,6 +19,10 @@
  * 2:05 / 2:35 AM backups. A run only adds a story while today has fewer than its slot
  * number, so a backup run adds one only when an earlier run did not.
  *
+ * Nepal Politics series (Ideas page): when it is on, the day's LAST video(s) are politics
+ * videos (politics.perDay, default 1 of the 2). "Generate politics video now" passes
+ * POLITICS_SERIES (a series id or "auto") and always makes a politics video.
+ *
  * It waits (adds nothing) while another story is still being made, while the
  * kill switch is on, or when today's free Gemini requests would not be enough
  * for a whole story. Then the next run tries again.
@@ -30,6 +34,7 @@ import { enqueue } from "@dualflow/queue";
 import { JOB_NAMES, LANGUAGES } from "@dualflow/shared";
 import { aiProvider, currentQuotaDayStart, suggestTopic } from "@dualflow/ai";
 import { geminiDailyLimit } from "./budget";
+import { createPoliticsTopic, isPoliticsTurn, politicsSettings } from "./politics-topic";
 
 /** Gemini requests one whole story needs: 1 topic + 2 research + 2 scripts, plus room for one retry. */
 const GEMINI_REQUESTS_PER_STORY = 6;
@@ -136,25 +141,44 @@ async function main() {
     return;
   }
 
-  for (let i = 0; i < room; i++) {
-    // 1. Your own ideas that are not made yet.
-    let topic = await prisma.topic.findFirst({
-      where: { workspaceId: workspace.id, status: { in: ["NEW", "ACCEPTED"] }, source: { not: "UPLOAD" } },
-      orderBy: { createdAt: "asc" },
-    });
+  const politics = await politicsSettings(workspace.id);
+  const politicsWanted = (process.env.POLITICS_SERIES ?? "").trim(); // "Generate politics video now"
 
-    // 2. Otherwise the AI picks one.
-    if (!topic) {
-      if (aiProvider() === "gemini") {
-        const used = await prisma.costEvent.aggregate({
-          _sum: { units: true },
-          where: { workspaceId: workspace.id, provider: { startsWith: "gemini:" }, createdAt: { gte: currentQuotaDayStart() } },
+  for (let i = 0; i < room; i++) {
+    const politicsTurn =
+      Boolean(politicsWanted) ||
+      (!force && politics.enabled && isPoliticsTurn({ videoNumber: today + i + 1, perDay, politicsPerDay: politics.perDay }));
+
+    // 1. Your own ideas that are not made yet (not for "Generate politics video now").
+    let topic = politicsWanted
+      ? null
+      : await prisma.topic.findFirst({
+          where: { workspaceId: workspace.id, status: { in: ["NEW", "ACCEPTED"] }, source: { not: "UPLOAD" } },
+          orderBy: { createdAt: "asc" },
         });
-        if ((used._sum.units ?? 0) + GEMINI_REQUESTS_PER_STORY > geminiDailyLimit()) {
-          console.log("Not enough free Gemini requests left today for a whole story. Trying again after the reset.");
-          return;
-        }
+
+    if (!topic && aiProvider() === "gemini") {
+      const used = await prisma.costEvent.aggregate({
+        _sum: { units: true },
+        where: { workspaceId: workspace.id, provider: { startsWith: "gemini:" }, createdAt: { gte: currentQuotaDayStart() } },
+      });
+      if ((used._sum.units ?? 0) + GEMINI_REQUESTS_PER_STORY > geminiDailyLimit()) {
+        console.log("Not enough free Gemini requests left today for a whole story. Trying again after the reset.");
+        return;
       }
+    }
+
+    // 2. A Nepal Politics video, when it is its turn (or you asked for one).
+    if (!topic && politicsTurn) {
+      topic = await createPoliticsTopic(workspace.id, politics, politicsWanted || undefined);
+      if (!topic && politicsWanted) {
+        console.log("No politics topic could be made now (see the lines above). Nothing added.");
+        return;
+      }
+    }
+
+    // 3. Otherwise the AI picks one.
+    if (!topic) {
       const recent = await prisma.topic.findMany({
         where: { workspaceId: workspace.id, source: { not: "UPLOAD" } },
         orderBy: { createdAt: "desc" },
@@ -185,7 +209,8 @@ async function main() {
     });
     await prisma.topic.update({ where: { id: topic.id }, data: { status: "USED" } });
     await enqueue(JOB_NAMES.research, { storyId: story.id, run: story.run });
-    console.log(`Automatic story added: "${topic.title}" (${topic.source === "DIRECTOR" ? "picked by AI" : "from your ideas"})`);
+    const from = topic.category === "politics" ? `Nepal Politics: ${topic.series}` : topic.source === "DIRECTOR" ? "picked by AI" : "from your ideas";
+    console.log(`Automatic story added: "${topic.title}" (${from})`);
   }
 }
 

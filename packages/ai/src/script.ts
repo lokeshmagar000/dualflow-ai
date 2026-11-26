@@ -5,7 +5,7 @@
  */
 import { z } from "zod/v4";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { videoStyle, type Language } from "@dualflow/shared";
+import { judgementWordsIn, NEUTRAL_RULES, videoStyle, type Language } from "@dualflow/shared";
 import { claude, currentModel, fallbackOptions } from "./client";
 import { claudeCost, type CostLine } from "./cost";
 import type { Research } from "./research";
@@ -100,7 +100,16 @@ const V2_SCRIPT_RULES = `- Scene 1 is the hook: one sentence under 10 words, spo
   NO call to action, no "like and follow", no goodbye.
 - No filler ("interestingly", "let's find out"). Each fact only once. Energetic, curious, spoken style.`;
 
-type ScriptInput = { language: Language; title: string; format: "SHORT" | "LONG"; research: Research };
+type ScriptInput = {
+  language: Language;
+  title: string;
+  format: "SHORT" | "LONG";
+  research: Research;
+  /** Nepal Politics video: strictly neutral words (checked after writing). */
+  politics?: boolean;
+  /** Added at the end of the prompt (used to ask again). */
+  extraNote?: string;
+};
 
 /** The same prompt is used by Claude and by Gemini. */
 function scriptPrompt(input: ScriptInput): { system: string; prompt: string } {
@@ -120,7 +129,7 @@ function scriptPrompt(input: ScriptInput): { system: string; prompt: string } {
   return {
     system: `You are a scriptwriter for a bilingual (Nepali + English) educational video channel.
 Only use facts from the research. Never invent numbers.
-${STYLE[language]}`,
+${STYLE[language]}${input.politics ? `\n${NEUTRAL_RULES}\n- Hooks may be curious but never sensational or one-sided. Attribute claims ("according to ...").` : ""}`,
     prompt: `Write the ${language === "ne" ? "NEPALI" : "ENGLISH"} narration for this video.
 Topic: ${input.title}
 ${length}
@@ -166,8 +175,13 @@ ${factsText}
 Scenes:
 ${scenesText}
 
-${LANGUAGE_REMINDER[language]}`,
+${LANGUAGE_REMINDER[language]}${input.extraNote ? `\n\n${input.extraNote}` : ""}`,
   };
+}
+
+/** All the words a viewer hears or reads, for the neutral-words check. */
+export function scriptText(script: Pick<Script, "title" | "description" | "scenes" | "hookLines" | "thumbnailHeadline">): string {
+  return [script.title, script.description, script.thumbnailHeadline, ...(script.hookLines ?? []), ...script.scenes.map((s) => s.text)].join("\n");
 }
 
 /**
@@ -278,6 +292,22 @@ function finish(script: Script, planLength: number, language: Language): Script 
 }
 
 export async function writeScript(input: ScriptInput): Promise<{ script: Script; costs: CostLine[] }> {
+  const first = await writeScriptOnce(input);
+  if (!input.politics) return first;
+  // Politics: no judgement words ("corrupt", "failed", "hero" ...). Found some? Ask once more.
+  const found = judgementWordsIn(scriptText(first.script));
+  if (found.length === 0) return first;
+  console.warn(`Script (${input.language}): not neutral (${found.join(", ")}). Asking again.`);
+  const again = await writeScriptOnce({
+    ...input,
+    extraNote: `Your last answer used judgement words (${found.join(", ")}). This is a NEUTRAL politics video: write it again with only facts and neutral words.`,
+  });
+  const still = judgementWordsIn(scriptText(again.script));
+  if (still.length) throw new Error(`The ${input.language} politics script was not neutral twice (${still.join(", ")}). Will retry later.`);
+  return { script: again.script, costs: [...first.costs, ...again.costs] };
+}
+
+async function writeScriptOnce(input: ScriptInput): Promise<{ script: Script; costs: CostLine[] }> {
   // Practice mode: no API call, no cost.
   if (isMockAI()) return { script: mockScript(input), costs: [] };
   const { system, prompt } = scriptPrompt(input);

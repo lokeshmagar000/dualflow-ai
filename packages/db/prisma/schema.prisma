@@ -181,6 +181,12 @@ model Topic {
   source      TopicSource @default(MANUAL)
   score       Float?
   status      TopicStatus @default(NEW)
+  // "politics" = a Nepal Politics series video (always needs your approval before upload).
+  category    String?
+  // Which series, e.g. "news-explained", "pm-files" (packages/shared/src/politics.ts).
+  series      String?
+  // Real news this topic came from: [{ title, url, publisher, publishedAt }].
+  sources     Json?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
@@ -189,6 +195,7 @@ model Topic {
   stories       Story[]
 
   @@index([workspaceId, status])
+  @@index([workspaceId, category])
 }
 
 model ResearchNote {

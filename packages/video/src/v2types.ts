@@ -41,6 +41,10 @@ export type V2Props = {
   musicVolume: number;
   brand: string;
   brandTag: string;
+  /** Politics videos: small "Source: ..." line under the topic chip ("" = none). */
+  source?: string;
+  /** Politics videos: series label above the topic chip, e.g. "PM Files" ("" = none). */
+  series?: string;
   /** A small "follow for part 2" pill in the middle of the video (not at the end). */
   follow: { atMs: number; text: string } | null;
 };

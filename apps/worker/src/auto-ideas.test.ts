@@ -25,3 +25,18 @@ test("backup runs add a video only when the main run was skipped", async () => {
   assert.equal(roomForRun({ ...base, today: 5, force: true }), 1); // Generate now
   assert.equal(roomForRun({ ...base, perDay: 0, today: 0, slot: 1 }), 0); // automatic videos off
 });
+
+import { isPoliticsTurn } from "./politics-topic";
+import { needsApproval } from "./publishing";
+
+test("politics takes the LAST video(s) of the day", () => {
+  assert.equal(isPoliticsTurn({ videoNumber: 1, perDay: 2, politicsPerDay: 1 }), false);
+  assert.equal(isPoliticsTurn({ videoNumber: 2, perDay: 2, politicsPerDay: 1 }), true);
+  assert.equal(isPoliticsTurn({ videoNumber: 1, perDay: 2, politicsPerDay: 2 }), true);
+  assert.equal(isPoliticsTurn({ videoNumber: 2, perDay: 2, politicsPerDay: 0 }), false);
+});
+
+test("politics videos always wait for approval", () => {
+  assert.equal(needsApproval({ category: "politics" }), true);
+  assert.equal(needsApproval({ category: null }), false);
+});

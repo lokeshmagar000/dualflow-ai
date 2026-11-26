@@ -10,8 +10,8 @@
  * Phase 1C: render makes the real .mp4 and thumbnail (Remotion + free Pexels clips).
  */
 import { prisma, Prisma } from "@dualflow/db";
-import { findHashtags, researchTopic, writeScript, type Research } from "@dualflow/ai";
-import { BRAND_COLORS, brandFor, JOB_NAMES, THUMBNAIL_SIZE_NAMES, thumbnailKeyFor, videoStyle, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
+import { findHashtags, researchTopic, writeScript, type Research, type TopicSource } from "@dualflow/ai";
+import { BRAND_COLORS, brandFor, politicsSeries, POLITICS_CATEGORY, sourceLine, JOB_NAMES, THUMBNAIL_SIZE_NAMES, thumbnailKeyFor, videoStyle, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
 import { AIQuotaError, nextQuotaReset } from "@dualflow/ai";
 import {
   buildCues,
@@ -75,10 +75,15 @@ const research: Step = async ({ storyId, run = 1 }) => {
   await assertBudget(story.workspaceId);
   await assertGeminiQuota(story.workspaceId, 2); // research = 2 requests
 
-  const { research, costs } = await researchTopic({
+  const series = story.topic.category === POLITICS_CATEGORY ? politicsSeries(story.topic.series) : undefined;
+  const { research, costs, sources } = await researchTopic({
     title: story.topic.title,
     notes: story.topic.notes,
     format: story.format,
+    // Nepal Politics: neutral rules, the real news it came from, and at least 3 sources.
+    politics: story.topic.category === POLITICS_CATEGORY
+      ? { seriesName: series?.nameEn ?? "Nepal Politics", sources: (story.topic.sources as TopicSource[] | null) ?? [] }
+      : null,
   });
   await recordCosts(story.workspaceId, story.id, costs);
 
@@ -103,6 +108,8 @@ const research: Step = async ({ storyId, run = 1 }) => {
           thumbnailQuery: research.thumbnailQuery,
           focus: research.focus,
           broll: research.broll,
+          // The web pages the research used (shown as "Source:" in politics videos).
+          sources: sources.slice(0, 12),
         } as unknown as Prisma.InputJsonValue,
       },
     }),
@@ -131,6 +138,7 @@ const script: Step = async (data) => {
     title: story.topic.title,
     format: story.format,
     research: { ...saved, thumbnailQuery: saved.thumbnailQuery ?? "", focus: saved.focus ?? "", broll: saved.broll ?? [], visualPlan },
+    politics: story.topic.category === POLITICS_CATEGORY,
   });
   await recordCosts(story.workspaceId, story.id, costs);
 
@@ -395,6 +403,7 @@ const render: Step = async (data) => {
         fallbackHook: variant.thumbnailHeadline || variant.title || story.topic.title,
         brand,
         brandTag: brandInfo.tag,
+        ...politicsOnScreen(story, language),
       });
       const raw = path.join(job.dir, "video-raw.mp4");
       await renderVideoV2(props, raw);
@@ -540,3 +549,23 @@ async function markStoryReadyIfDone(storyId: string) {
 }
 
 export const steps: Record<JobName, Step> = { research, script, voice, thumbnail, render, publish };
+
+/**
+ * Nepal Politics videos: the series name as the topic chip ("PM Files") and a small
+ * "Source: ..." line, from the news the topic came from and the research's sources.
+ */
+function politicsOnScreen(
+  story: { research: Prisma.JsonValue; topic: { category: string | null; series: string | null; sources: Prisma.JsonValue } },
+  language: Language,
+): { source?: string; seriesChip?: string } {
+  if (story.topic.category !== POLITICS_CATEGORY) return {};
+  const saved = (story.research ?? {}) as { facts?: { sourceUrl?: string }[]; sources?: { url: string; title: string }[] };
+  const news = (story.topic.sources as TopicSource[] | null) ?? [];
+  const line = sourceLine(language, [
+    ...news.map((n) => ({ publisher: n.publisher, url: n.url })),
+    ...(saved.sources ?? []).map((s) => ({ url: s.url, title: s.title })),
+    ...(saved.facts ?? []).map((f) => ({ url: f.sourceUrl })),
+  ], 2); // 2 names fit on one line; the Ready page lists all of them
+  const series = politicsSeries(story.topic.series);
+  return { source: line, seriesChip: series ? (language === "ne" ? series.nameNe : series.nameEn) : undefined };
+}

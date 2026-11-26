@@ -78,6 +78,7 @@ export function VideoV2(props: V2Props) {
 
       <Brand name={props.brand} tag={props.brandTag} scale={0.95} opacity={0.88} />
       <Hook props={props} />
+      <SourceRow props={props} />
       {props.cards.map((card, i) => (
         <Sequence key={i} from={ms(card.startMs)} durationInFrames={Math.max(1, ms(card.endMs - card.startMs))}>
           <Card card={card} language={props.language} frames={Math.max(1, ms(card.endMs - card.startMs))} />
@@ -203,6 +204,49 @@ function Hook({ props }: { props: V2Props }) {
       >
         {props.topic}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Politics videos: a small row under the topic chip with the series label (red pill)
+ * and the sources ("Source: Election Commission Nepal · The Kathmandu Post").
+ * Shows after the hook, for the rest of the video. Nothing when both are empty.
+ */
+function SourceRow({ props }: { props: V2Props }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  if (!props.source && !props.series) return null;
+  const appear = interpolate(frame, [fps * HOOK_HOLD + 10, fps * HOOK_HOLD + 22], [0, 1], clamp);
+  const font = props.language === "ne" ? WORD_POP_FONT.ne : "Inter, Arial, sans-serif";
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 250,
+        left: 50,
+        right: 50,
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 10,
+        opacity: appear,
+        fontFamily: font,
+        fontSize: 28,
+        lineHeight: 1.2,
+      }}
+    >
+      {props.series ? (
+        <span style={{ background: LOGO.crimson, color: "white", fontWeight: 800, padding: "5px 14px 3px", borderRadius: 8, letterSpacing: 0.5, whiteSpace: "nowrap" }}>
+          {props.series}
+        </span>
+      ) : null}
+      {props.source ? (
+        <span style={{ color: "rgba(255,255,255,0.92)", background: "rgba(0,0,0,0.5)", padding: "5px 14px 3px", borderRadius: 8, fontWeight: 600, textAlign: "center", maxWidth: 820 }}>
+          {props.source}
+        </span>
+      ) : null}
     </div>
   );
 }
