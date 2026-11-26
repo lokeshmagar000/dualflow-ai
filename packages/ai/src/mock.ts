@@ -57,7 +57,7 @@ const LINES: Record<Language, (t: string) => string[]> = {
   ],
 };
 
-export function mockScript(input: { language: Language; title: string; research: Research }): Script {
+export function mockScript(input: { language: Language; title: string; research: Research; politics?: boolean }): Script {
   const lines = LINES[input.language](input.title);
   const isNe = input.language === "ne";
   return {
@@ -79,5 +79,15 @@ export function mockScript(input: { language: Language; title: string; research:
     emphasis: [],
     cards: [],
     followText: isNe ? "भाग २ का लागि फलो गर्नुहोस्" : "Follow for Part 2",
+    // Practice news graphics (only for news / politics videos), so the layout can be checked without a key.
+    newsCards: input.politics
+      ? [
+          { order: 2, kind: "headline", title: "Nepal PM Balendra Shah meets PM Modi in New Delhi", by: "Practice News", person: "", date: "23 Nov 2026", from: "", to: "", countries: [], points: [] },
+          { order: 3, kind: "trip", title: isNe ? "भारत भ्रमण" : "State visit", by: "", person: "", date: isNe ? "२२–२३ नोभेम्बर" : "22–23 Nov", from: isNe ? "काठमाडौँ" : "Kathmandu", to: isNe ? "नयाँ दिल्ली" : "New Delhi", countries: ["np", "in"], points: [] },
+          { order: 4, kind: "timeline", title: isNe ? "मुख्य मितिहरू" : "Key dates", by: "", person: "", date: "", from: "", to: "", countries: [], points: [{ when: "2015", label: isNe ? "नयाँ संविधान" : "New constitution" }, { when: "2026", label: isNe ? "चुनाव" : "Election" }, { when: "Nov 2026", label: isNe ? "भारत भ्रमण" : "Visit to India" }] },
+          { order: 5, kind: "flags", title: isNe ? "नेपाल र भारत" : "Nepal and India", by: "", person: "", date: "", from: "", to: "", countries: ["np", "in"], points: [] },
+          { order: 6, kind: "quote", title: isNe ? "यो अभ्यास उद्धरण हो।" : "This is a practice quote.", by: isNe ? "अभ्यास वक्ता" : "Practice speaker", person: "", date: "", from: "", to: "", countries: [], points: [] },
+        ]
+      : [],
   };
 }

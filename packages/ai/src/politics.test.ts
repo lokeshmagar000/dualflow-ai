@@ -91,3 +91,17 @@ test("nextSeries picks the ticked series used longest ago", () => {
   assert.equal(nextSeries(["pm-files", "news-explained"], {}), "news-explained"); // all new: the list order
   assert.equal(nextSeries([], {}), null);
 });
+
+import { trustedNewsCards } from "./script";
+test("trustedNewsCards drops invented quotes and swaps in the REAL headline", () => {
+  const card = (kind: string, extra = {}) => ({ order: 1, kind, title: "x", by: "y", person: "", date: "", from: "", to: "", countries: [], points: [], ...extra }) as never;
+  const research = { facts: [{ claim: "The PM visited Delhi.", sourceUrl: "https://s" }], summary: "No quotes here." };
+  const out = trustedNewsCards(
+    [card("quote"), { ...(card("headline") as object), order: 2, title: "nepal pm meets modi" } as never, { ...(card("timeline") as object), order: 3 } as never],
+    research,
+    [{ title: "Nepal PM meets Modi", publisher: "Reuters" }],
+  );
+  assert.deepEqual(out.map((c) => c.kind), ["headline"]); // quote invented, timeline has no points
+  assert.equal(out[0]!.title, "Nepal PM meets Modi");
+  assert.equal(out[0]!.by, "Reuters");
+});

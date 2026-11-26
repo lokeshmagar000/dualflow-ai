@@ -9,4 +9,4 @@ export { suggestTopic, TopicIdeaSchema, DEFAULT_NICHE, type TopicIdea } from "./
 export { findHashtags, mergeHashtags, parseHashtags, cleanTag, MAX_HASHTAGS } from "./hashtags";
 export { suggestPoliticsTopic, PoliticsIdeaSchema, dayMonth, type TopicSource } from "./politics";
 export { fetchNepalPoliticsNews, parseNewsRss, dedupeNews, type NewsItem } from "./news";
-export { scriptText } from "./script";
+export { scriptText, trustedNewsCards } from "./script";

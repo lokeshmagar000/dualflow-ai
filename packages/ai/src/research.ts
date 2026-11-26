@@ -122,6 +122,30 @@ const V2_PLAN_RULES = `How to build the visual plan (the pictures must match the
   "That's why it's the only flag on Earth that breaks the rule."). NO "like and follow", no goodbye.
 ${PICTURE_RULES}`;
 
+/**
+ * NEWS / POLITICS story shape (overrides the hook and ending rules above).
+ * Tested ideas: a curious "why?" question as the hook, then 3 clear parts, and a neutral question at the end.
+ */
+function NEWS_STORY_RULES(seriesName: string) {
+  const news = /news/i.test(seriesName);
+  return `NEWS VIDEO SHAPE (these override the hook, open loop and ending rules above). 7-9 scenes, 30-45 seconds:
+- Scene 1 (purpose "hook"): a curious, neutral "why / what / how" question under 10 words that the video answers,
+  e.g. "Why did Nepal's Prime Minister fly to Delhi this week?". No hype words ("shocking", "you won't believe").
+${
+  news
+    ? `- Then 3 parts, in order: WHAT HAPPENED (who, what, where, when: 2-3 scenes, purpose "point"),
+  WHY IT MATTERS (background and numbers from the facts: 2 scenes, purpose "example"; the strongest fact is purpose "payoff"),
+  WHAT HAPPENS NEXT (only what official sources or the news say: 1 scene, purpose "point").`
+    : `- Then "3 things you probably didn't know" about the topic: say "number one", "number two", "number three"
+  (purpose "point", "example", and "payoff" for the third and most surprising one), each with its fact and date or number.`
+}
+- No "open_loop" scene.
+- The last scene (purpose "loop_back") asks viewers ONE neutral question for the comments, with no opinion in it,
+  e.g. "Which agreement should we explain next? Tell us in the comments."
+- Pictures (visualQuery): real places and things only: "kathmandu city", "nepal parliament building singha durbar",
+  "new delhi india gate", "nepal flag waving", "ballot box voting", "hydropower dam nepal". Never ask for a politician.`;
+}
+
 type ResearchInput = {
   title: string;
   notes?: string | null;
@@ -166,7 +190,7 @@ function planPrompt(input: ResearchInput, notes: string) {
   return `Topic: "${input.title}". Video format: ${input.format === "SHORT" ? (videoStyle() === "v2" ? "vertical short, 30-45 seconds" : "vertical short, about 60 seconds") : "long video, 8-12 minutes"}.
 Using ONLY these research notes, produce the facts list and the visual plan.
 
-${videoStyle() === "v2" ? V2_PLAN_RULES : CLASSIC_PLAN_RULES}${input.politics ? `\n${NEUTRAL_RULES}\n- Every fact MUST have its sourceUrl. Drop any fact without one.\n- Pictures: no photos of politicians (stock sites do not have them); show places, buildings, flags, maps, documents, ballot boxes, people voting.\n` : ""}
+${videoStyle() === "v2" ? V2_PLAN_RULES : CLASSIC_PLAN_RULES}${input.politics ? `\n${NEWS_STORY_RULES(input.politics.seriesName)}\n${NEUTRAL_RULES}\n- Every fact MUST have its sourceUrl. Drop any fact without one.\n- Pictures: no photos of politicians (stock sites do not have them); show places, buildings, flags, maps, documents, ballot boxes, people voting.\n` : ""}
 <research_notes>
 ${notes}
 </research_notes>`;

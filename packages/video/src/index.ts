@@ -8,4 +8,5 @@ export { prepareIntro, introSettings, introSoundWav } from "./intro";
 export * from "./types";
 export * from "./v2types";
 export * as sfx from "./sfx";
-export { prepareV2, normaliseLoudness, splitLongShots, cardKind, type V2Text } from "./v2build";
+export { prepareV2, normaliseLoudness, splitLongShots, cardKind, timeNewsCards, type V2Text } from "./v2build";
+export { fetchFlag, findCommonsPhoto, pickCommonsPhoto, nameMatches, type CommonsPhoto } from "./newsmedia";

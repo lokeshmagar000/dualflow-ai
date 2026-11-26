@@ -15,6 +15,19 @@ history, prime ministers, the constitution and numbers. Turn it on in the dashbo
 | Strictly neutral | Extra rules in every prompt (no good/bad words, same tone for every party, attribute claims). After writing, a word check looks for judgement words ("corrupt", "hero", "असफल", "गद्दार" …). If it finds one, the AI writes it again; twice = stopped. |
 | Your approval | These videos are **never uploaded by themselves**, even when Auto upload is "Fully automatic". On **Ready to upload** they show a yellow "Check before you post" box with all the sources. |
 
+## The news look (round 2)
+
+- **Story shape**: a curious, neutral "why / what?" question as the hook, then 3 parts
+  (what happened → why it matters → what happens next), or "3 things you didn't know" for the
+  other series. The last line asks viewers one neutral question for the comments. No "Part 2" pill.
+- **News graphics** drawn by code (stock sites have no politicians or meetings):
+  red news bar with the date, the real headline as a newspaper clipping, quotes (only quotes that
+  the research really found), a timeline, a trip map (city → city with flags), waving flags,
+  and photos of public people from **Wikimedia Commons** (free licence only, the file name must
+  have the person's first and last name, credit shown on the photo). `NEWS_PHOTOS=off` turns photos off.
+- **Calm news-reader voice** (`GEMINI_TTS_STYLE_NEWS` changes it), a news sting on the first frame and
+  a serious ticking news music bed. All sounds are made by code: no licence, no Content ID claims.
+
 ## The series
 
 | Series | नेपाली | What it makes |

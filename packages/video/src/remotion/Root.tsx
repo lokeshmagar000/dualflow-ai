@@ -64,6 +64,7 @@ const sampleV2: V2Props = {
   // Remotion fills missing props from these defaults: keep them empty (only politics videos set them).
   source: "",
   series: "",
+  news: null,
   follow: null,
 };
 

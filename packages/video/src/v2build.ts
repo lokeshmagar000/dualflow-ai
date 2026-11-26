@@ -13,9 +13,9 @@ import { execFile } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { ding, hit, musicBed, pop, riser, toWav, whoosh } from "./sfx";
+import { ding, hit, musicBed, newsBed, newsSting, pop, riser, toWav, whoosh } from "./sfx";
 import type { Media, VideoWord } from "./types";
-import { plain, type V2Card, type V2CardKind, type V2Props } from "./v2types";
+import { plain, type V2Card, type V2CardKind, type V2NewsCard, type V2Props } from "./v2types";
 
 /** The on-screen text the script step saves for each video (Variant.style). */
 export type V2Text = {
@@ -28,6 +28,19 @@ export type V2Text = {
   /** Older scripts saved one number card here. */
   numberCard?: { order: number; big: string; small: string };
   followText: string;
+  /** News / politics videos: the news graphics the script asked for (pictures not downloaded yet). */
+  newsCards?: {
+    order: number;
+    kind: V2NewsCard["kind"];
+    title: string;
+    by: string;
+    person: string;
+    date: string;
+    from: string;
+    to: string;
+    countries: string[];
+    points: { when: string; label: string }[];
+  }[];
 };
 
 /** Guess the card kind from its text when the script did not say. */
@@ -54,6 +67,8 @@ export type V2Input = {
   brandTag: string;
   /** Politics videos: small "Source: ..." line shown under the topic chip. */
   source?: string;
+  /** News / politics videos: the bar label, the date and the graphics (media already downloaded). */
+  news?: { label: string; date: string; cards: (Omit<V2NewsCard, "startMs" | "endMs"> & { order: number })[] } | null;
   /** Politics videos: the series name shown as a small label above the topic chip, e.g. "PM Files". */
   seriesChip?: string;
 };
@@ -66,7 +81,9 @@ export async function prepareV2(input: V2Input): Promise<V2Props> {
 
   const fx = { whoosh: whoosh(), pop: pop(), hit: hit(), riser: riser(), ding: ding() };
   for (const [name, s] of Object.entries(fx)) await writeFile(path.join(job.dir, `${name}.wav`), toWav(s));
-  await writeFile(path.join(job.dir, "music.wav"), toWav(musicBed(input.durationMs / 1000 + 1)));
+  const isNews = Boolean(input.news);
+  await writeFile(path.join(job.dir, "music.wav"), toWav((isNews ? newsBed : musicBed)(input.durationMs / 1000 + 1)));
+  if (isNews) await writeFile(path.join(job.dir, "sting.wav"), toWav(newsSting()));
 
   // Key words: only the ones really spoken (the AI sometimes changes a word).
   const spoken = new Set(words.map((w) => plain(w.text)));
@@ -97,7 +114,7 @@ export async function prepareV2(input: V2Input): Promise<V2Props> {
   const emphasisSet = new Set(emphasis);
 
   const sfx: V2Props["sfx"] = [
-    { atMs: 0, src: job.url("hit.wav"), volume: 0.55 },
+    isNews ? { atMs: 0, src: job.url("sting.wav"), volume: 0.5 } : { atMs: 0, src: job.url("hit.wav"), volume: 0.55 },
     ...input.shots.slice(1).map((s) => ({ atMs: s.startMs - 120, src: job.url("whoosh.wav"), volume: 0.35 })),
     ...words.filter((w) => emphasisSet.has(plain(w.text)) && w.startMs > 900).map((w) => ({ atMs: w.startMs, src: job.url("pop.wav"), volume: 0.3 })),
   ];
@@ -122,10 +139,35 @@ export async function prepareV2(input: V2Input): Promise<V2Props> {
     musicVolume: Number(process.env.MUSIC_VOLUME ?? 0.28),
     brand: input.brand,
     brandTag: input.brandTag,
+    news: input.news ? { label: input.news.label, date: input.news.date, cards: timeNewsCards(input.news.cards, lines, cards) } : null,
     source: input.source ?? "",
     series: input.seriesChip ?? "",
-    follow: loop && loop.startMs > 3000 ? { atMs: loop.startMs, text: t.followText || DEFAULT_FOLLOW[language] } : null,
+    // News videos have no "Part 2" promise (they end with a question for the comments).
+    follow: !isNews && loop && loop.startMs > 3000 ? { atMs: loop.startMs, text: t.followText || DEFAULT_FOLLOW[language] } : null,
   };
+}
+
+/**
+ * Show each news graphic during its spoken line (from 2.8 s, after the hook text).
+ * A news graphic never shows at the same time as a number card: the number card wins.
+ */
+export function timeNewsCards(
+  wanted: (Omit<V2NewsCard, "startMs" | "endMs"> & { order: number })[],
+  lines: { order: number; startMs: number; endMs: number }[],
+  numberCards: { startMs: number; endMs: number }[] = [],
+): V2NewsCard[] {
+  const out: V2NewsCard[] = [];
+  for (const { order, ...c } of wanted) {
+    const line = lines.find((l) => l.order === order);
+    if (!line) continue;
+    const startMs = Math.max(line.startMs + 150, 2800);
+    const endMs = Math.max(line.endMs + 250, startMs + 2600);
+    if (startMs > line.endMs + 400) continue;
+    if (numberCards.some((n) => n.startMs < endMs && n.endMs > startMs)) continue;
+    if (out.some((o) => o.startMs < endMs && o.endMs > startMs)) continue;
+    out.push({ ...c, startMs, endMs });
+  }
+  return out;
 }
 
 /**

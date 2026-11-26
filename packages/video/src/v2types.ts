@@ -18,6 +18,25 @@ export type V2CardKind = "number" | "year" | "date" | "time";
  */
 export type V2Card = { startMs: number; endMs: number; big: string; small: string; kind?: V2CardKind };
 
+/** A news graphic (Nepal News & Politics videos). Pictures are file URLs in the job folder. */
+export type V2NewsCard = {
+  startMs: number;
+  endMs: number;
+  kind: "headline" | "quote" | "timeline" | "trip" | "flags" | "photo";
+  title: string;
+  by: string;
+  date: string;
+  from: string;
+  to: string;
+  /** Flag pictures, in order. */
+  flags: string[];
+  points: { when: string; label: string }[];
+  photo?: { src: string; credit: string } | null;
+};
+
+/** News look: the red bar at the top ("NEWS EXPLAINED · 23 Nov 2026") and the graphics. */
+export type V2News = { label: string; date: string; cards: V2NewsCard[] };
+
 /** One sound effect: which file, when, how loud (0-1). */
 export type V2Sfx = { atMs: number; src: string; volume: number };
 
@@ -45,6 +64,8 @@ export type V2Props = {
   source?: string;
   /** Politics videos: series label above the topic chip, e.g. "PM Files" ("" = none). */
   series?: string;
+  /** News / politics videos: news bar + news graphics (null = a normal facts video). */
+  news?: V2News | null;
   /** A small "follow for part 2" pill in the middle of the video (not at the end). */
   follow: { atMs: number; text: string } | null;
 };

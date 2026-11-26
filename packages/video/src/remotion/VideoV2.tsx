@@ -22,6 +22,7 @@ import { plain, type V2Card, type V2Props } from "../v2types";
 import { Background, Brand, HEADLINE_FONT, useFonts } from "./common";
 import { LOGO } from "./Logo";
 import { WORD_POP_FONT, buildPages } from "./WordPop";
+import { NewsCardView } from "./NewsV2";
 
 const ms = (t: number) => Math.round((t / 1000) * FPS);
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
@@ -82,6 +83,11 @@ export function VideoV2(props: V2Props) {
       {props.cards.map((card, i) => (
         <Sequence key={i} from={ms(card.startMs)} durationInFrames={Math.max(1, ms(card.endMs - card.startMs))}>
           <Card card={card} language={props.language} frames={Math.max(1, ms(card.endMs - card.startMs))} />
+        </Sequence>
+      ))}
+      {(props.news?.cards ?? []).map((card, i) => (
+        <Sequence key={`n${i}`} from={ms(card.startMs)} durationInFrames={Math.max(1, ms(card.endMs - card.startMs))}>
+          <NewsCardView card={card} language={props.language} frames={Math.max(1, ms(card.endMs - card.startMs))} />
         </Sequence>
       ))}
       <Captions props={props} emphasis={emphasis} />
@@ -216,9 +222,11 @@ function Hook({ props }: { props: V2Props }) {
 function SourceRow({ props }: { props: V2Props }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  if (!props.source && !props.series) return null;
+  const label = props.news?.label || props.series;
+  if (!props.source && !label) return null;
   const appear = interpolate(frame, [fps * HOOK_HOLD + 10, fps * HOOK_HOLD + 22], [0, 1], clamp);
   const font = props.language === "ne" ? WORD_POP_FONT.ne : "Inter, Arial, sans-serif";
+  const pill = { padding: "5px 14px 3px", borderRadius: 8, whiteSpace: "nowrap" } as const;
   return (
     <div
       style={{
@@ -237,11 +245,14 @@ function SourceRow({ props }: { props: V2Props }) {
         lineHeight: 1.2,
       }}
     >
-      {props.series ? (
-        <span style={{ background: LOGO.crimson, color: "white", fontWeight: 800, padding: "5px 14px 3px", borderRadius: 8, letterSpacing: 0.5, whiteSpace: "nowrap" }}>
-          {props.series}
+      {label ? (
+        // News look: a red label (with a blinking "live" dot) and the date, like a TV news bar.
+        <span style={{ ...pill, background: LOGO.crimson, color: "white", fontWeight: 800, letterSpacing: 0.5, display: "inline-flex", alignItems: "center", gap: 10 }}>
+          {props.news ? <span style={{ width: 12, height: 12, borderRadius: 6, background: "white", opacity: 0.55 + 0.45 * Math.sin(frame / 5) }} /> : null}
+          {label}
         </span>
       ) : null}
+      {props.news?.date ? <span style={{ ...pill, background: "white", color: "#13203F", fontWeight: 800 }}>{props.news.date}</span> : null}
       {props.source ? (
         <span style={{ color: "rgba(255,255,255,0.92)", background: "rgba(0,0,0,0.5)", padding: "5px 14px 3px", borderRadius: 8, fontWeight: 600, textAlign: "center", maxWidth: 820 }}>
           {props.source}
