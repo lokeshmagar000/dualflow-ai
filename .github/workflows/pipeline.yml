@@ -227,14 +227,8 @@ jobs:
       - name: Upload to social channels
         if: always()
         run: pnpm --filter @dualflow/worker upload
-      # Download the finished videos from the bottom of the run page ("videos").
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: videos
-          path: videos/
-          if-no-files-found: ignore
-          retention-days: 7
+      # No "videos" run file on purpose: the repo is public, so anyone could download it.
+      # Finished videos live in R2 storage; get them from the dashboard's Ready page.
       - name: Delete old files (keeps storage under 10 GB)
         if: always()
         # A short Cloudflare hiccup here must not turn a good video run red.
