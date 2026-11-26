@@ -85,3 +85,5 @@ export function videoStyle(
 ): VideoStyleName {
   return (env.VIDEO_STYLE ?? "").toLowerCase() === "classic" ? "classic" : "v2";
 }
+
+export * from "./politics";

@@ -14,11 +14,12 @@ import { geminiVoice } from "./gemini";
 import type { VoiceProvider } from "./types";
 
 /** `seed` (the story id) lets Gemini pick between several voices, one per story. */
-export function getVoiceProvider(seed?: string): VoiceProvider {
+/** `mood` "news" = calm news-reader voice (Gemini only; other voices ignore it). */
+export function getVoiceProvider(seed?: string, mood: VoiceMood = "default"): VoiceProvider {
   const choice = (process.env.VOICE_PROVIDER ?? "mock").toLowerCase();
   if (choice === "azure") return azureVoice();
   if (choice === "edge") return edgeVoice();
-  if (choice === "gemini") return geminiVoice(seed);
+  if (choice === "gemini") return geminiVoice(seed, mood);
   if (choice === "mock") return mockVoice;
   throw new VoiceConfigError(`Unknown VOICE_PROVIDER "${choice}". Use "mock", "azure", "edge" or "gemini".`);
 }
@@ -26,7 +27,8 @@ export function getVoiceProvider(seed?: string): VoiceProvider {
 export { VoiceConfigError, escapeXml } from "./azure";
 export { mockVoice, estimateWords } from "./mock";
 export { edgeVoice, decodeToPcm } from "./edge";
-export { geminiVoice, pickVoice, VoiceQuotaError, splitAtPauses, fitWords } from "./gemini";
+export { geminiVoice, pickVoice, VoiceQuotaError, splitAtPauses, fitWords, newsStyle, type VoiceMood } from "./gemini";
+import type { VoiceMood } from "./gemini";
 export { makeVoiceover, SCENE_GAP_MS, type Voiceover, type SceneTiming } from "./voiceover";
 export { buildCues, toSrt, toVtt, formatTime, type Cue } from "./subtitles";
 export { pcmToWav, wavToPcm, silence, pcmDurationMs } from "./wav";

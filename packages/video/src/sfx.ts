@@ -175,3 +175,85 @@ export function musicBed(seconds: number): Float32Array {
   }
   return out;
 }
+
+/**
+ * NEWS STING (news / politics videos, frame 1): the "headline" sound of a TV news show.
+ * A deep timpani-like boom, a bright brass-like chord (D major, saw waves softened) and a
+ * short shimmer. About 1.6 s. Made by code, so there is no licence and no Content ID claim.
+ */
+export function newsSting(seconds = 1.6): Float32Array {
+  const out = buf(seconds);
+  const midi = (n: number) => 440 * 2 ** ((n - 69) / 12);
+  const noise = noiseMaker(11);
+  const chord = [62, 66, 69, 74]; // D, F#, A, D
+  let low = 0;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    // Boom: falling sine + a little noise.
+    const boomF = 55 + 70 * Math.exp(-t * 12);
+    let s = Math.sin(2 * Math.PI * boomF * t) * Math.exp(-t * 3.2) * 0.9;
+    low += 0.08 * (noise() - low);
+    s += low * Math.exp(-t * 18) * 0.7;
+    // Brass chord: soft saw (first 5 harmonics), quick attack, slow fade.
+    const att = Math.min(1, t / 0.03);
+    const env = att * Math.exp(-t * 1.6);
+    for (const n of chord) {
+      const f = midi(n);
+      let saw = 0;
+      for (let h = 1; h <= 5; h++) saw += Math.sin(2 * Math.PI * f * h * t) / h;
+      s += saw * env * 0.07;
+    }
+    // Shimmer on top (high bell partials).
+    s += Math.sin(2 * Math.PI * midi(86) * t) * Math.exp(-t * 3) * 0.05 * att;
+    out[i] = s;
+  }
+  const fade = Math.round(RATE * 0.2);
+  for (let i = 0; i < fade; i++) out[out.length - 1 - i]! *= i / fade;
+  return out;
+}
+
+/**
+ * NEWS BED (news / politics videos): a steady, serious background like a news programme.
+ * A ticking pulse (clock-like, 120 BPM), a low pulsing bass on D, and a calm pad (Dm - Bb - F - C).
+ * No melody, so it never competes with the voice. Mixed low and ducked under the voice.
+ */
+export function newsBed(seconds: number): Float32Array {
+  const out = buf(seconds);
+  const bpm = 120;
+  const beat = 60 / bpm;
+  const bar = beat * 4;
+  const midi = (n: number) => 440 * 2 ** ((n - 69) / 12);
+  const chords = [
+    [62, 65, 69], // D minor
+    [58, 62, 65], // Bb
+    [53, 57, 60], // F
+    [60, 64, 67], // C
+  ];
+  const bass = [38, 34, 41, 36];
+  const noise = noiseMaker(13);
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    const barIndex = Math.floor(t / (bar * 2)) % 4; // a chord every 2 bars
+    let s = 0;
+    for (const n of chords[barIndex]!) s += Math.sin(2 * Math.PI * midi(n) * t) * 0.045;
+    // Pulsing bass on 8th notes.
+    const eighth = beat / 2;
+    const since8 = t % eighth;
+    s += Math.sin(2 * Math.PI * midi(bass[barIndex]!) * t) * Math.exp(-since8 * 10) * 0.18;
+    // Ticking hi-hat on 16th notes, accent on the beat.
+    const sixteenth = beat / 4;
+    const since16 = t % sixteenth;
+    const accent = Math.floor(t / sixteenth) % 4 === 0 ? 1 : 0.45;
+    s += noise() * Math.exp(-since16 * 160) * 0.08 * accent;
+    // Soft low drum on beats 1 and 3.
+    const sinceHalf = t % (beat * 2);
+    s += Math.sin(2 * Math.PI * (45 + 40 * Math.exp(-sinceHalf * 25)) * sinceHalf) * Math.exp(-sinceHalf * 9) * 0.2;
+    out[i] = s;
+  }
+  const fade = Math.round(RATE * 0.6);
+  for (let i = 0; i < fade && i < out.length; i++) {
+    out[i]! *= i / fade;
+    out[out.length - 1 - i]! *= i / fade;
+  }
+  return out;
+}

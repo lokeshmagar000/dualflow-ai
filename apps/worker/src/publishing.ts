@@ -40,6 +40,7 @@ import {
   type TikTokPostOptions,
 } from "@dualflow/publish";
 import { contentTypeFor, readFile } from "@dualflow/storage";
+import { POLITICS_CATEGORY } from "@dualflow/shared";
 
 const MINUTE = 60_000;
 /** Shown on an upload while PUBLISH_DRY_RUN=true. */
@@ -96,6 +97,11 @@ async function activeChannels(workspaceId: string) {
  * Put a ready story into the upload queue (or the approval list), depending on the mode.
  * Safe to run many times: an upload that already exists is left alone.
  */
+/** Politics / news videos are never uploaded by the robot: a person must press Approve or Upload. */
+export function needsApproval(topic: { category: string | null }): boolean {
+  return topic.category === POLITICS_CATEGORY;
+}
+
 export async function planStory(storyId: string) {
   if (!publishEnabled()) return;
   const story = await prisma.story.findUniqueOrThrow({ where: { id: storyId }, include: { variants: true, topic: true } });
@@ -109,7 +115,8 @@ export async function planStory(storyId: string) {
     if (!v.outputKey || !["READY", "SCHEDULED"].includes(v.status)) continue;
     for (const ch of channels.filter((c) => c.language === v.language)) {
       if (ch.mode === "MANUAL") continue;
-      const status = ch.mode === "AUTO" ? "SCHEDULED" : "READY";
+      // Nepal News & Politics videos ALWAYS wait for your approval, even in "Fully automatic".
+      const status = ch.mode === "AUTO" && !needsApproval(story.topic) ? "SCHEDULED" : "READY";
       const exists = await prisma.publication.findUnique({ where: { variantId_channelId: { variantId: v.id, channelId: ch.id } } });
       if (exists) continue;
       await prisma.publication.create({ data: { variantId: v.id, channelId: ch.id, status, scheduledAt: null } });

@@ -43,10 +43,22 @@ export interface ManyResult {
 }
 
 /** Ask Gemini to read `text` aloud. Returns raw 24 kHz 16-bit mono PCM. */
-async function requestAudio(text: string, language: Language, voice: string): Promise<Buffer> {
+/** "news" = calm, clear news reader (Nepal News & Politics videos). */
+export type VoiceMood = "default" | "news";
+
+/** How Gemini should speak for a news video (GEMINI_TTS_STYLE_NEWS changes it). */
+export function newsStyle(language: Language) {
+  return (
+    process.env.GEMINI_TTS_STYLE_NEWS ||
+    `Read this aloud in clear, standard ${LANGUAGE_NAME[language]} like a calm, trustworthy TV news presenter: steady pace, neutral tone, no excitement or drama, clear stress on names, dates and numbers. Pause clearly (about half a second) at every blank line. Read only the text`
+  );
+}
+
+async function requestAudio(text: string, language: Language, voice: string, mood: VoiceMood = "default"): Promise<Buffer> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new VoiceConfigError("VOICE_PROVIDER=gemini needs GEMINI_API_KEY (free from Google AI Studio).");
   const style =
+    mood === "news" ? newsStyle(language) :
     process.env.GEMINI_TTS_STYLE ||
     (process.env.VIDEO_STYLE?.toLowerCase() === "classic"
       ? `Read this aloud in natural, warm ${LANGUAGE_NAME[language]}, like a friendly YouTube storyteller. Pause clearly (about half a second) at every blank line. Read only the text`
@@ -304,6 +316,7 @@ export function pickVoice(list: string, seed?: string): string {
 /** `seed` = the story id, used to choose between several voices. */
 export function geminiVoice(
   seed?: string,
+  mood: VoiceMood = "default",
 ): VoiceProvider & { speakMany(texts: string[], language: Language): Promise<ManyResult> } {
   const voiceFor = (language: Language) =>
     pickVoice((language === "ne" ? process.env.GEMINI_VOICE_NE : process.env.GEMINI_VOICE_EN) || DEFAULT_VOICES, seed);
@@ -314,7 +327,7 @@ export function geminiVoice(
     costUsd: () => 0, // free tier
 
     async speak(text: string, language: Language): Promise<SpeechResult> {
-      const pcm = await requestAudio(text, language, voiceFor(language));
+      const pcm = await requestAudio(text, language, voiceFor(language), mood);
       const durationMs = pcmDurationMs(pcm);
       return { pcm, words: fitWords(text, language, durationMs), durationMs };
     },
@@ -326,7 +339,7 @@ export function geminiVoice(
       for (const group of groups) {
         // A blank line between scenes makes the voice pause there, so we can cut.
         const joined = group.map((i) => texts[i]!.trim()).join("\n\n");
-        const pcm = await requestAudio(joined, language, voiceFor(language));
+        const pcm = await requestAudio(joined, language, voiceFor(language), mood);
         const parts = splitAtPauses(
           pcm,
           group.map((i) => speakingWeight(texts[i]!, language)),

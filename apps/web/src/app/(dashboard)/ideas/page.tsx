@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { api, type AutoStatus, type Topic } from "@/lib/api";
+import { api, type AutoStatus, type PoliticsStatus, type Topic } from "@/lib/api";
 import { ApiError, Card, EmptyState, Notice, PageHeader, SectionTitle, StatusBadge } from "@/components/ui";
 import { AutoSwitch, GenerateNowButton } from "@/components/AutoControls";
+import { PoliticsGenerateNow, PoliticsSeriesForm, PoliticsSwitch } from "@/components/PoliticsControls";
 import { ActionButton } from "@/components/ActionButton";
 import { IdeaForm } from "@/components/IdeaForm";
 import { nepalTime } from "@/components/UploadStatus";
@@ -10,9 +11,14 @@ import { makeVideo } from "./actions";
 export default async function IdeasPage() {
   let topics: Topic[] = [];
   let auto: AutoStatus | null = null;
+  let politics: PoliticsStatus | null = null;
   try {
-    // Both at the same time. If the automatic-videos part fails (older API), the page still works.
-    [topics, auto] = await Promise.all([api<Topic[]>("/topics"), api<AutoStatus>("/auto").catch(() => null)]);
+    // All at the same time. If the automatic-videos part fails (older API), the page still works.
+    [topics, auto, politics] = await Promise.all([
+      api<Topic[]>("/topics"),
+      api<AutoStatus>("/auto").catch(() => null),
+      api<PoliticsStatus>("/politics").catch(() => null),
+    ]);
   } catch (e) {
     return (<><PageHeader title="Ideas & auto mode" /><ApiError error={e} /></>);
   }
@@ -29,6 +35,8 @@ export default async function IdeasPage() {
           The API server runs an older version. Redeploy it on Render, or turn on one server mode (see Settings).
         </Notice>
       )}
+
+      {politics && <PoliticsCard status={politics} />}
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         <Card title="Add your own idea">
@@ -147,6 +155,59 @@ function AutoCard({ auto }: { auto: AutoStatus }) {
             ))}
           </ul>
         )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * "Nepal News & Politics": trending Nepal news and politics facts, strictly neutral,
+ * every fact with a source, and always waiting for your approval before upload.
+ */
+function PoliticsCard({ status }: { status: PoliticsStatus }) {
+  const names = Object.fromEntries(status.allSeries.map((s) => [s.id, s.nameEn]));
+  return (
+    <section className="card mt-6 overflow-hidden">
+      <div className="flex flex-wrap items-start justify-between gap-4 p-4 sm:p-5">
+        <div className="min-w-[15rem] max-w-2xl flex-1">
+          <h2 className="text-lg font-semibold">Nepal News &amp; Politics <span className="text-fg3">· नेपाल समाचार र राजनीति</span></h2>
+          <p className="mt-1 text-fg2">
+            Fact videos about what is <b>trending in Nepal right now</b> (read from real news, never made up), plus history, PMs, the constitution and numbers.
+            Strictly neutral: no opinions, every fact has a source, and the source is shown in the video.
+          </p>
+          <p className="mt-2 text-xs text-fg3">These videos are never uploaded by themselves. They wait on Ready to upload with their sources for you to check.</p>
+        </div>
+        <PoliticsSwitch enabled={status.enabled} />
+      </div>
+
+      <div className="border-t border-stroke p-4 sm:p-5">
+        <PoliticsSeriesForm status={status} />
+      </div>
+
+      <div className="grid gap-px border-t border-stroke bg-stroke md:grid-cols-2">
+        <div className="bg-surface p-4 sm:p-5">
+          <p className="mb-2 text-fg3">Make a news / politics video now</p>
+          <PoliticsGenerateNow status={status} />
+          <p className="mt-2 text-xs text-fg3">Works even when the series is off. Ready in about 15 to 20 minutes.</p>
+        </div>
+        <div className="bg-surface p-4 sm:p-5">
+          <p className="mb-2 text-fg3">Recent news &amp; politics videos</p>
+          {status.recent.length === 0 ? (
+            <p className="text-fg2">None yet.</p>
+          ) : (
+            <ul className="divide-y divide-stroke">
+              {status.recent.slice(0, 5).map((t) => (
+                <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <span className="min-w-0 flex-1">
+                    {t.storyId ? <Link href={`/content/${t.storyId}`} className="link">{t.title}</Link> : t.title}
+                    <span className="block text-xs text-fg3">{names[t.series ?? ""] ?? "Politics"} · {nepalTime(t.createdAt)}</span>
+                  </span>
+                  {t.storyStatus ? <StatusBadge status={t.storyStatus} /> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </section>
   );

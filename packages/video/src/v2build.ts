@@ -13,9 +13,9 @@ import { execFile } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { ding, hit, musicBed, pop, riser, toWav, whoosh } from "./sfx";
+import { ding, hit, musicBed, newsBed, newsSting, pop, riser, toWav, whoosh } from "./sfx";
 import type { Media, VideoWord } from "./types";
-import { plain, type V2Card, type V2CardKind, type V2Props } from "./v2types";
+import { plain, type V2Card, type V2CardKind, type V2NewsCard, type V2Props } from "./v2types";
 
 /** The on-screen text the script step saves for each video (Variant.style). */
 export type V2Text = {
@@ -28,7 +28,25 @@ export type V2Text = {
   /** Older scripts saved one number card here. */
   numberCard?: { order: number; big: string; small: string };
   followText: string;
+  /** News / politics videos: the news graphics the script asked for (pictures not downloaded yet). */
+  newsCards?: {
+    order: number;
+    kind: V2NewsCard["kind"];
+    title: string;
+    by: string;
+    person: string;
+    date: string;
+    from: string;
+    to: string;
+    countries: string[];
+    points: { when: string; label: string }[];
+  }[];
+  /** News / politics videos: people named in the narration (their photo shows when the name is said). */
+  people?: { order: number; person: string; name: string; role: string }[];
 };
+
+/** A news graphic before it is timed: `order` = its spoken line; `say` = (photos) the name to wait for. */
+export type NewsCardInput = Omit<V2NewsCard, "startMs" | "endMs"> & { order: number; say?: string };
 
 /** Guess the card kind from its text when the script did not say. */
 export function cardKind(big: string, kind?: string): V2CardKind {
@@ -52,6 +70,12 @@ export type V2Input = {
   fallbackHook: string;
   brand: string;
   brandTag: string;
+  /** Politics videos: small "Source: ..." line shown under the topic chip. */
+  source?: string;
+  /** News / politics videos: the bar label, the date and the graphics (media already downloaded). */
+  news?: { label: string; date: string; cards: NewsCardInput[] } | null;
+  /** Politics videos: the series name shown as a small label above the topic chip, e.g. "PM Files". */
+  seriesChip?: string;
 };
 
 const DEFAULT_FOLLOW = { en: "Follow for Part 2", ne: "भाग २ का लागि फलो गर्नुहोस्" };
@@ -62,7 +86,9 @@ export async function prepareV2(input: V2Input): Promise<V2Props> {
 
   const fx = { whoosh: whoosh(), pop: pop(), hit: hit(), riser: riser(), ding: ding() };
   for (const [name, s] of Object.entries(fx)) await writeFile(path.join(job.dir, `${name}.wav`), toWav(s));
-  await writeFile(path.join(job.dir, "music.wav"), toWav(musicBed(input.durationMs / 1000 + 1)));
+  const isNews = Boolean(input.news);
+  await writeFile(path.join(job.dir, "music.wav"), toWav((isNews ? newsBed : musicBed)(input.durationMs / 1000 + 1)));
+  if (isNews) await writeFile(path.join(job.dir, "sting.wav"), toWav(newsSting()));
 
   // Key words: only the ones really spoken (the AI sometimes changes a word).
   const spoken = new Set(words.map((w) => plain(w.text)));
@@ -93,7 +119,7 @@ export async function prepareV2(input: V2Input): Promise<V2Props> {
   const emphasisSet = new Set(emphasis);
 
   const sfx: V2Props["sfx"] = [
-    { atMs: 0, src: job.url("hit.wav"), volume: 0.55 },
+    isNews ? { atMs: 0, src: job.url("sting.wav"), volume: 0.5 } : { atMs: 0, src: job.url("hit.wav"), volume: 0.55 },
     ...input.shots.slice(1).map((s) => ({ atMs: s.startMs - 120, src: job.url("whoosh.wav"), volume: 0.35 })),
     ...words.filter((w) => emphasisSet.has(plain(w.text)) && w.startMs > 900).map((w) => ({ atMs: w.startMs, src: job.url("pop.wav"), volume: 0.3 })),
   ];
@@ -118,8 +144,66 @@ export async function prepareV2(input: V2Input): Promise<V2Props> {
     musicVolume: Number(process.env.MUSIC_VOLUME ?? 0.28),
     brand: input.brand,
     brandTag: input.brandTag,
-    follow: loop && loop.startMs > 3000 ? { atMs: loop.startMs, text: t.followText || DEFAULT_FOLLOW[language] } : null,
+    news: input.news ? { label: input.news.label, date: input.news.date, cards: timeNewsCards(input.news.cards, lines, cards, words) } : null,
+    source: input.source ?? "",
+    series: input.seriesChip ?? "",
+    // News videos have no "Part 2" promise (they end with a question for the comments).
+    follow: !isNews && loop && loop.startMs > 3000 ? { atMs: loop.startMs, text: t.followText || DEFAULT_FOLLOW[language] } : null,
   };
+}
+
+/**
+ * Show each news graphic during its spoken line (from 2.8 s, after the hook text).
+ * People photos come first: each one appears on the word where the narration says the
+ * person's name (e.g. "Modi"), for about 3 seconds. They win over number cards and other
+ * news graphics; the other graphics never overlap a photo or a number card.
+ */
+export function timeNewsCards(
+  wanted: NewsCardInput[],
+  lines: { order: number; startMs: number; endMs: number }[],
+  numberCards: { startMs: number; endMs: number }[] = [],
+  words: VideoWord[] = [],
+): V2NewsCard[] {
+  const out: V2NewsCard[] = [];
+  const overlaps = (a: { startMs: number; endMs: number }, startMs: number, endMs: number) => a.startMs < endMs && a.endMs > startMs;
+  const photos = wanted.filter((c) => c.kind === "photo");
+  const others = wanted.filter((c) => c.kind !== "photo");
+  for (const { order, say, ...c } of photos) {
+    const line = lines.find((l) => l.order === order);
+    if (!line) continue;
+    const at = say ? nameSpokenAt(say, words, line) : null;
+    const startMs = Math.max((at ?? line.startMs + 150) - 120, 1800);
+    const endMs = startMs + 3000;
+    if (startMs > line.endMs + 400) continue;
+    if (out.some((o) => overlaps(o, startMs, endMs))) continue;
+    out.push({ ...c, startMs, endMs });
+  }
+  for (const { order, say: _say, ...c } of others) {
+    const line = lines.find((l) => l.order === order);
+    if (!line) continue;
+    const startMs = Math.max(line.startMs + 150, 2800);
+    const endMs = Math.max(line.endMs + 250, startMs + 2600);
+    if (startMs > line.endMs + 400) continue;
+    if (numberCards.some((n) => overlaps(n, startMs, endMs))) continue;
+    if (out.some((o) => overlaps(o, startMs, endMs))) continue;
+    out.push({ ...c, startMs, endMs });
+  }
+  return out.sort((a, b) => a.startMs - b.startMs);
+}
+
+/**
+ * When is `name` said inside this line? Matches the first word of the name that the voice
+ * really spoke ("Modi" matches "Modi's"; Nepali "मोदी" matches "मोदीले"). Null = not found.
+ */
+export function nameSpokenAt(name: string, words: VideoWord[], line: { startMs: number; endMs: number }): number | null {
+  const parts = name.split(/\s+/).map(plain).filter((p) => p.length > 1);
+  if (parts.length === 0) return null;
+  const inLine = words.filter((w) => w.startMs >= line.startMs - 200 && w.startMs <= line.endMs + 200);
+  for (const w of inLine) {
+    const said = plain(w.text);
+    if (said && parts.some((p) => said.startsWith(p) || (said.length > 2 && p.startsWith(said)))) return w.startMs;
+  }
+  return null;
 }
 
 /**

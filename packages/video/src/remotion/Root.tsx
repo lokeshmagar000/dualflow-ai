@@ -61,6 +61,10 @@ const sampleV2: V2Props = {
   musicVolume: 0.2,
   brand: "Namaste Facts",
   brandTag: "",
+  // Remotion fills missing props from these defaults: keep them empty (only politics videos set them).
+  source: "",
+  series: "",
+  news: null,
   follow: null,
 };
 

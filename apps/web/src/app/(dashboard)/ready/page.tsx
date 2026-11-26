@@ -120,7 +120,10 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stroke px-4 py-3 sm:px-5">
               <div className="min-w-0">
                 <Link href={`/content/${s.id}`} className="font-semibold hover:text-brand-fg">{s.topic?.title ?? "Untitled"}</Link>
-                <p className="text-xs text-fg3">Made {nepalTime(s.createdAt)}, {s.topic?.source === "DIRECTOR" ? "topic picked by AI" : "your idea"}</p>
+                <p className="text-xs text-fg3">
+                  {s.politics && <span className="mr-1.5 rounded bg-[#C8102E] px-1.5 py-0.5 font-semibold text-white">{s.politics.series}</span>}
+                  Made {nepalTime(s.createdAt)}, {s.politics ? "Nepal News & Politics" : s.topic?.source === "DIRECTOR" ? "topic picked by AI" : "your idea"}
+                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {/* Only THIS topic: its Nepali + English video, thumbnails, subtitles and text files. */}
@@ -132,6 +135,24 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
                 <DeleteStoryButton storyId={s.id} title={s.topic?.title ?? "this video"} />
               </div>
             </div>
+            {/* Politics / news: check the sources before you post. The robot never uploads these. */}
+            {s.politics && (
+              <div className="border-b border-stroke bg-warn-tint px-4 py-3 text-sm sm:px-5">
+                <p className="font-semibold text-warn">Check before you post: this is a news / politics video</p>
+                <p className="mt-0.5 text-fg2">Watch it once and open the sources. Auto upload never posts these by itself; it waits for you.</p>
+                {s.politics.sources.length > 0 ? (
+                  <ul className="mt-2 space-y-0.5">
+                    {s.politics.sources.map((src) => (
+                      <li key={src.url} className="truncate">
+                        <a href={src.url} target="_blank" rel="noopener noreferrer" className="link">{src.name}</a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-bad">No sources were saved. Do not post it until you have checked the facts yourself.</p>
+                )}
+              </div>
+            )}
             {/* Nepali first, then English. */}
             <div className="grid gap-px bg-stroke xl:grid-cols-2">
               {[...(s.variants ?? [])].sort((a, b) => (a.language === "ne" ? -1 : b.language === "ne" ? 1 : 0)).map((v) => (

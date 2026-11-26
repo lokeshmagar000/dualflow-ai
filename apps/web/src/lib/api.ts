@@ -317,6 +317,8 @@ export interface ReadyStory {
   status: string;
   createdAt: string;
   topic: { title: string; source: string };
+  /** Nepal News & Politics video: series name + sources to check (null for other videos). */
+  politics?: { series: string; sources: { name: string; url: string }[] } | null;
   variants: ReadyVariant[];
 }
 export interface ReadyPage {
@@ -325,6 +327,16 @@ export interface ReadyPage {
   page: number;
   pageSize: number;
   videoCount: number; // video files "Download all" puts in the zip
+}
+
+/* ---------- Nepal News & Politics (Ideas page) ---------- */
+export interface PoliticsStatus {
+  enabled: boolean;
+  series: string[]; // the ticked series ids
+  perDay: number; // 0, 1 or 2 of the day's automatic videos
+  allSeries: { id: string; nameEn: string; nameNe: string; about: string; needsNews: boolean }[];
+  generateNowAvailable: boolean;
+  recent: { id: string; title: string; series: string | null; createdAt: string; storyId: string | null; storyStatus: string | null }[];
 }
 
 /* ---------- Automatic videos (Ideas page) ---------- */

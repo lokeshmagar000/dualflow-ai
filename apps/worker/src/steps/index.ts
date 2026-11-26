@@ -10,8 +10,8 @@
  * Phase 1C: render makes the real .mp4 and thumbnail (Remotion + free Pexels clips).
  */
 import { prisma, Prisma } from "@dualflow/db";
-import { findHashtags, researchTopic, writeScript, type Research } from "@dualflow/ai";
-import { BRAND_COLORS, brandFor, JOB_NAMES, THUMBNAIL_SIZE_NAMES, thumbnailKeyFor, videoStyle, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
+import { findHashtags, researchTopic, writeScript, type Research, type TopicSource } from "@dualflow/ai";
+import { BRAND_COLORS, brandFor, politicsSeries, POLITICS_CATEGORY, sourceLine, JOB_NAMES, THUMBNAIL_SIZE_NAMES, thumbnailKeyFor, videoStyle, type JobName, type Language, type PipelineJobData } from "@dualflow/shared";
 import { AIQuotaError, nextQuotaReset } from "@dualflow/ai";
 import {
   buildCues,
@@ -52,6 +52,7 @@ import {
 } from "../budget";
 import { planStory } from "../publishing";
 import { planShots, type ScenePart } from "./shots";
+import { fetchFlag, findCommonsPhoto, type CommonsPhoto, type NewsCardInput, type V2NewsCard } from "@dualflow/video";
 
 type Step = (data: PipelineJobData) => Promise<void>;
 
@@ -75,10 +76,15 @@ const research: Step = async ({ storyId, run = 1 }) => {
   await assertBudget(story.workspaceId);
   await assertGeminiQuota(story.workspaceId, 2); // research = 2 requests
 
-  const { research, costs } = await researchTopic({
+  const series = story.topic.category === POLITICS_CATEGORY ? politicsSeries(story.topic.series) : undefined;
+  const { research, costs, sources } = await researchTopic({
     title: story.topic.title,
     notes: story.topic.notes,
     format: story.format,
+    // Nepal Politics: neutral rules, the real news it came from, and at least 3 sources.
+    politics: story.topic.category === POLITICS_CATEGORY
+      ? { seriesName: series?.nameEn ?? "Nepal Politics", sources: (story.topic.sources as TopicSource[] | null) ?? [] }
+      : null,
   });
   await recordCosts(story.workspaceId, story.id, costs);
 
@@ -103,6 +109,8 @@ const research: Step = async ({ storyId, run = 1 }) => {
           thumbnailQuery: research.thumbnailQuery,
           focus: research.focus,
           broll: research.broll,
+          // The web pages the research used (shown as "Source:" in politics videos).
+          sources: sources.slice(0, 12),
         } as unknown as Prisma.InputJsonValue,
       },
     }),
@@ -131,6 +139,8 @@ const script: Step = async (data) => {
     title: story.topic.title,
     format: story.format,
     research: { ...saved, thumbnailQuery: saved.thumbnailQuery ?? "", focus: saved.focus ?? "", broll: saved.broll ?? [], visualPlan },
+    politics: story.topic.category === POLITICS_CATEGORY,
+    headlines: ((story.topic.sources as TopicSource[] | null) ?? []).map((h) => ({ title: h.title, publisher: h.publisher })),
   });
   await recordCosts(story.workspaceId, story.id, costs);
 
@@ -177,6 +187,8 @@ const script: Step = async (data) => {
           emphasis: script.emphasis,
           cards: script.cards,
           followText: script.followText,
+          newsCards: script.newsCards,
+          people: script.people,
         } satisfies V2Text as unknown as Prisma.InputJsonValue,
       },
     }),
@@ -195,7 +207,7 @@ const script: Step = async (data) => {
 const voice: Step = async (data) => {
   const variant = await prisma.variant.findUniqueOrThrow({
     where: { id: data.variantId },
-    include: { story: true, scenes: { orderBy: { order: "asc" } } },
+    include: { story: { include: { topic: true } }, scenes: { orderBy: { order: "asc" } } },
   });
   const { story } = variant;
   if (variant.scenes.length === 0) throw new Error("The script has no scenes to read.");
@@ -205,7 +217,9 @@ const voice: Step = async (data) => {
   // A different voice on every video: count the stories made before this one, and give
   // the English video the other voice. Story 1: Nepali Aoede, English Charon; story 2: the opposite...
   const storiesBefore = await prisma.story.count({ where: { createdAt: { lt: story.createdAt } } });
-  let provider = getVoiceProvider(`#${storiesBefore + (language === "en" ? 1 : 0)}`);
+  // Nepal News & Politics: a calm news-reader voice instead of the lively storyteller.
+  const mood = story.topic.category === POLITICS_CATEGORY ? "news" : "default";
+  let provider = getVoiceProvider(`#${storiesBefore + (language === "en" ? 1 : 0)}`, mood);
   if (provider.name !== "mock") await assertBudget(story.workspaceId); // kill switch + budget
   if (provider.name === "azure") await assertAzureFreeQuota(story.workspaceId, characters);
 
@@ -395,6 +409,8 @@ const render: Step = async (data) => {
         fallbackHook: variant.thumbnailHeadline || variant.title || story.topic.title,
         brand,
         brandTag: brandInfo.tag,
+        ...politicsOnScreen(story, language),
+        news: await prepareNews(story, language, variant.style as Partial<V2Text> | null, job.dir, job.url),
       });
       const raw = path.join(job.dir, "video-raw.mp4");
       await renderVideoV2(props, raw);
@@ -540,3 +556,88 @@ async function markStoryReadyIfDone(storyId: string) {
 }
 
 export const steps: Record<JobName, Step> = { research, script, voice, thumbnail, render, publish };
+
+/**
+ * Nepal Politics videos: the series name as the topic chip ("PM Files") and a small
+ * "Source: ..." line, from the news the topic came from and the research's sources.
+ */
+function politicsOnScreen(
+  story: { research: Prisma.JsonValue; topic: { category: string | null; series: string | null; sources: Prisma.JsonValue } },
+  language: Language,
+): { source?: string; seriesChip?: string } {
+  if (story.topic.category !== POLITICS_CATEGORY) return {};
+  const saved = (story.research ?? {}) as { facts?: { sourceUrl?: string }[]; sources?: { url: string; title: string }[] };
+  const news = (story.topic.sources as TopicSource[] | null) ?? [];
+  const line = sourceLine(language, [
+    ...news.map((n) => ({ publisher: n.publisher, url: n.url })),
+    ...(saved.sources ?? []).map((s) => ({ url: s.url, title: s.title })),
+    ...(saved.facts ?? []).map((f) => ({ url: f.sourceUrl })),
+  ], 2); // 2 names fit on one line; the Ready page lists all of them
+  const series = politicsSeries(story.topic.series);
+  return { source: line, seriesChip: series ? (language === "ne" ? series.nameNe : series.nameEn) : undefined };
+}
+
+/** "23 Nov 2026" / "२३ नोभेम्बर २०२६" (Nepal time). */
+export function newsDate(date: Date, language: Language): string {
+  const parts = new Intl.DateTimeFormat(language === "ne" ? "ne-NP" : "en-GB", {
+    timeZone: "Asia/Kathmandu",
+    day: "numeric",
+    month: language === "ne" ? "long" : "short",
+    year: "numeric",
+  }).formatToParts(date);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("day")} ${get("month")} ${get("year")}`; // day month year in both languages
+}
+
+/**
+ * News / politics videos: the news bar (series name + date of the news) and the news graphics,
+ * with their flags (flagcdn.com) and Wikimedia Commons photos downloaded into the job folder.
+ * A card whose picture cannot be found is left out. Normal videos: null.
+ */
+async function prepareNews(
+  story: { createdAt: Date; topic: { category: string | null; series: string | null; sources: Prisma.JsonValue } },
+  language: Language,
+  text: Partial<V2Text> | null,
+  dir: string,
+  url: (name: string) => string,
+) {
+  if (story.topic.category !== POLITICS_CATEGORY) return null;
+  const series = politicsSeries(story.topic.series);
+  const news = (story.topic.sources as TopicSource[] | null) ?? [];
+  const when = news[0]?.publishedAt ? new Date(news[0].publishedAt) : story.createdAt;
+  const flagCache = new Map<string, string | null>();
+  const flag = async (code: string) => {
+    if (!flagCache.has(code)) flagCache.set(code, await fetchFlag(code, dir));
+    return flagCache.get(code) ? url(flagCache.get(code)!) : null;
+  };
+  // One photo per person (the same file is used each time they are named).
+  const photoCache = new Map<string, Promise<CommonsPhoto | null>>();
+  const photoOf = (person: string) => {
+    const key = person.toLowerCase();
+    if (!photoCache.has(key)) photoCache.set(key, findCommonsPhoto(person, dir, photoCache.size));
+    return photoCache.get(key)!;
+  };
+  const cards: NewsCardInput[] = [];
+  // People: their real photo shows at the moment the narration says their name.
+  for (const p of text?.people ?? []) {
+    const found = await photoOf(p.person);
+    if (!found) continue;
+    cards.push({ order: p.order, kind: "photo", title: p.role, by: p.name, date: "", from: "", to: "", flags: [], points: [], say: p.name, photo: { src: url(found.file), credit: found.credit } });
+  }
+  for (const c of text?.newsCards ?? []) {
+    const flags = (await Promise.all(c.countries.map(flag))).filter((f): f is string => Boolean(f));
+    let photo: V2NewsCard["photo"] = null;
+    if (c.kind === "photo") {
+      const found = await photoOf(c.person);
+      if (!found) continue;
+      photo = { src: url(found.file), credit: found.credit };
+    }
+    if (c.kind === "flags" && flags.length === 0) continue;
+    cards.push({ order: c.order, kind: c.kind, title: c.title, by: c.by, date: c.date, from: c.from, to: c.to, flags, points: c.points, photo });
+  }
+  return {
+    label: series ? (language === "ne" ? series.nameNe : series.nameEn).toUpperCase() : language === "ne" ? "समाचार" : "NEWS",
+    date: newsDate(when, language),
+    cards,
+  };
+}

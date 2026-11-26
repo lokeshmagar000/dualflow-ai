@@ -5,7 +5,7 @@
  */
 import { z } from "zod/v4";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { videoStyle, type Language } from "@dualflow/shared";
+import { judgementWordsIn, NEUTRAL_RULES, videoStyle, type Language } from "@dualflow/shared";
 import { claude, currentModel, fallbackOptions } from "./client";
 import { claudeCost, type CostLine } from "./cost";
 import type { Research } from "./research";
@@ -68,6 +68,44 @@ export const ScriptSchema = z.object({
     .default([])
     .describe("0-3 animated cards for striking numbers, years, dates or times that the narration says (at most one per scene)"),
   followText: z.string().default("").describe("Short follow message, target language, e.g. 'Follow for Part 2'"),
+  newsCards: z
+    .array(
+      z.object({
+        order: z.number().int().describe("Scene number where the card shows"),
+        kind: z
+          .enum(["headline", "quote", "timeline", "trip", "flags", "photo"])
+          .describe(
+            "headline = a real news headline as a newspaper clipping; quote = words a named person really said (from the facts); timeline = 2-4 dates in order; trip = travel from one city to another; flags = the countries involved; photo = a photo of a named public person",
+          ),
+        title: z
+          .string()
+          .default("")
+          .describe("headline: the real headline, copied EXACTLY in its original language; quote: the quoted words; trip/flags/timeline: a 2-5 word label in the target language; photo: the person's role, target language, e.g. 'Prime Minister'"),
+        by: z.string().default("").describe("headline: the paper's name; quote: who said it (name + role, target language); photo: the person's name, target language"),
+        person: z.string().default("").describe("photo only: the person's full name in ENGLISH as written on Wikipedia, e.g. 'Narendra Modi'"),
+        date: z.string().default("").describe("A date shown on the card, target language, e.g. '23 Nov 2026' (headline, quote, trip)"),
+        from: z.string().default("").describe("trip only: start city, target language"),
+        to: z.string().default("").describe("trip only: end city, target language"),
+        countries: z.array(z.string()).default([]).describe("trip/flags: 2-letter country codes in order, e.g. ['np','in']"),
+        points: z
+          .array(z.object({ when: z.string().describe("A year or short date, e.g. '2015'"), label: z.string().describe("2-5 words, target language") }))
+          .default([])
+          .describe("timeline only: 2-4 points, oldest first"),
+      }),
+    )
+    .default([])
+    .describe("NEWS / POLITICS videos only (otherwise empty): 2-5 news graphics, at most one per scene"),
+  people: z
+    .array(
+      z.object({
+        order: z.number().int().describe("Scene number where the narration says this person's name"),
+        person: z.string().describe("The person's full name in ENGLISH as written on Wikipedia, e.g. 'Narendra Modi'"),
+        name: z.string().describe("The name EXACTLY as the narration says it in that scene (target language), e.g. 'मोदी' or 'Modi'"),
+        role: z.string().default("").describe("1-3 word role, target language, e.g. 'प्रधानमन्त्री' / 'Prime Minister'"),
+      }),
+    )
+    .default([])
+    .describe("NEWS / POLITICS videos only: EVERY scene where a real public person (leader, official, celebrity, player) is named. Their real photo shows when the name is said."),
 });
 export type Script = z.infer<typeof ScriptSchema>;
 
@@ -100,7 +138,18 @@ const V2_SCRIPT_RULES = `- Scene 1 is the hook: one sentence under 10 words, spo
   NO call to action, no "like and follow", no goodbye.
 - No filler ("interestingly", "let's find out"). Each fact only once. Energetic, curious, spoken style.`;
 
-type ScriptInput = { language: Language; title: string; format: "SHORT" | "LONG"; research: Research };
+type ScriptInput = {
+  language: Language;
+  title: string;
+  format: "SHORT" | "LONG";
+  research: Research;
+  /** Nepal Politics video: strictly neutral words (checked after writing). */
+  politics?: boolean;
+  /** Added at the end of the prompt (used to ask again). */
+  extraNote?: string;
+  /** Politics: the real headlines the topic came from (for the "headline" news card). */
+  headlines?: { title: string; publisher: string }[];
+};
 
 /** The same prompt is used by Claude and by Gemini. */
 function scriptPrompt(input: ScriptInput): { system: string; prompt: string } {
@@ -120,7 +169,7 @@ function scriptPrompt(input: ScriptInput): { system: string; prompt: string } {
   return {
     system: `You are a scriptwriter for a bilingual (Nepali + English) educational video channel.
 Only use facts from the research. Never invent numbers.
-${STYLE[language]}`,
+${STYLE[language]}${input.politics ? `\n${NEUTRAL_RULES}\n- Hooks may be curious but never sensational or one-sided. Attribute claims ("according to ...").` : ""}`,
     prompt: `Write the ${language === "ne" ? "NEPALI" : "ENGLISH"} narration for this video.
 Topic: ${input.title}
 ${length}
@@ -156,6 +205,7 @@ On-screen text (target language):
 - cards: for each striking number, year, date or time in the narration (0-3 in total), an animated card
   on that scene: kind "number" (counts up), "year" (digits roll), "date" (calendar flips), "time" (clock turns).
 - followText: a short "Follow for Part 2" message.
+${input.politics ? NEWS_CARD_RULES(input) : "- newsCards and people: leave empty."}
 
 Summary:
 ${research.summary}
@@ -166,8 +216,13 @@ ${factsText}
 Scenes:
 ${scenesText}
 
-${LANGUAGE_REMINDER[language]}`,
+${LANGUAGE_REMINDER[language]}${input.extraNote ? `\n\n${input.extraNote}` : ""}`,
   };
+}
+
+/** All the words a viewer hears or reads, for the neutral-words check. */
+export function scriptText(script: Pick<Script, "title" | "description" | "scenes" | "hookLines" | "thumbnailHeadline">): string {
+  return [script.title, script.description, script.thumbnailHeadline, ...(script.hookLines ?? []), ...script.scenes.map((s) => s.text)].join("\n");
 }
 
 /**
@@ -181,6 +236,23 @@ hookLines, topicChip, emphasis, cards' "small" and followText in NEPALI (Devanag
 ONLY visualQuery and mustShow are in English. An answer in English is wrong.`,
   en: `LANGUAGE: write everything in English (visualQuery and mustShow too).`,
 };
+
+/** News graphics for Nepal News & Politics videos (stock sites have no pictures of politicians or events). */
+function NEWS_CARD_RULES(input: ScriptInput) {
+  const heads = (input.headlines ?? []).map((h) => `- "${h.title}" (${h.publisher})`).join("\n");
+  return `- newsCards: 2-5 news graphics on the scenes where they help most (at most one per scene). Kinds:
+  headline: on the scene that says what happened, copy one REAL headline EXACTLY (keep it in its original language):
+${heads || "  (no headline: do not use this kind)"}
+  quote: ONLY words a person really said that appear in quotation marks in the facts below. Never make up a quote.
+  timeline: 2-4 dates from the facts, oldest first.
+  trip: a visit or journey from the facts (from city, to city, the date, country codes).
+  flags: the countries involved (2-letter codes, e.g. np, in, cn, us).
+  Do NOT use "photo" in newsCards: people photos come from "people" below.
+  All words on cards come from the facts. Same neutral rules.
+- people: list EVERY scene where the narration names a real public person (leader, minister, official, celebrity, player).
+  One entry per person per scene. "person" = full English name as on Wikipedia; "name" = the exact words the narration uses for them.
+  Their real photo appears on screen at the moment the name is spoken.`;
+}
 
 /** Share of letters in Devanagari (0-1). Latin brand names inside a Nepali line are fine. */
 export function devanagariShare(text: string): number {
@@ -266,7 +338,77 @@ function normalise(script: Script): Script {
       .slice(0, 3)
       .map((c) => ({ ...c, big: c.big.trim(), small: nfc(c.small).trim() })),
     followText: nfc(script.followText).trim(),
+    newsCards: (script.newsCards ?? [])
+      .filter((c) => c.order > 0)
+      .map((c) => ({
+        ...c,
+        title: nfc(c.title).trim(),
+        by: nfc(c.by).trim(),
+        date: nfc(c.date).trim(),
+        from: nfc(c.from).trim(),
+        to: nfc(c.to).trim(),
+        person: c.person.trim(),
+        countries: c.countries.map((x) => x.trim().toLowerCase()).filter((x) => /^[a-z]{2}$/.test(x)).slice(0, 4),
+        points: c.points.map((p) => ({ when: nfc(p.when).trim(), label: nfc(p.label).trim() })).filter((p) => p.when).slice(0, 4),
+      })),
+    people: trustedPeople(script.people ?? []),
   };
+}
+
+/**
+ * Keep only news cards we can trust:
+ *  - quote: only when the research really has quoted words (never an invented quote),
+ *  - headline: only one of the REAL headlines this topic came from (copied exactly),
+ *  - every card needs what it shows (a timeline needs 2 points, a trip 2 cities ...),
+ *  - one card per scene, at most 5.
+ */
+export function trustedNewsCards(
+  cards: Script["newsCards"],
+  research: Pick<Research, "facts" | "summary">,
+  headlines: { title: string; publisher: string }[] = [],
+): Script["newsCards"] {
+  const quoted = research.facts.some((f) => /["“”]/.test(f.claim)) || /["“”]/.test(research.summary);
+  const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const real = new Map(headlines.map((h) => [norm(h.title), h]));
+  const used = new Set<number>();
+  const out: Script["newsCards"] = [];
+  for (const c of cards) {
+    if (used.has(c.order) || out.length >= 5) continue;
+    let card = c;
+    if (c.kind === "quote" && (!quoted || !c.title || !c.by)) continue;
+    if (c.kind === "headline") {
+      const match = real.get(norm(c.title)) ?? headlines[0];
+      if (!match) continue;
+      card = { ...c, title: match.title, by: match.publisher || c.by };
+    }
+    if (c.kind === "timeline" && c.points.length < 2) continue;
+    if (c.kind === "trip" && (!c.from || !c.to)) continue;
+    if (c.kind === "flags" && c.countries.length === 0) continue;
+    if (c.kind === "photo" && !c.person) continue;
+    used.add(c.order);
+    out.push(card);
+  }
+  return out;
+}
+
+/**
+ * People named in the narration: a full English name (2+ words) is needed to find the right photo.
+ * One entry per person per scene, at most 8.
+ */
+export function trustedPeople(people: Script["people"]): Script["people"] {
+  const seen = new Set<string>();
+  const out: Script["people"] = [];
+  for (const p of people) {
+    const person = p.person.replace(/\s+/g, " ").trim();
+    const name = p.name.normalize("NFC").trim();
+    if (p.order <= 0 || person.split(" ").filter((w) => w.length > 1).length < 2 || !name) continue;
+    const key = `${p.order}|${person.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ order: p.order, person, name, role: p.role.normalize("NFC").trim() });
+    if (out.length >= 8) break;
+  }
+  return out;
 }
 
 /** Tidy the AI's answer: Unicode, clean lines, and each line matched to its picture. */
@@ -278,8 +420,32 @@ function finish(script: Script, planLength: number, language: Language): Script 
 }
 
 export async function writeScript(input: ScriptInput): Promise<{ script: Script; costs: CostLine[] }> {
+  const result = await writeScriptChecked(input);
+  // News graphics only for news / politics videos, and only the ones we can trust.
+  result.script.newsCards = input.politics && !isMockAI() ? trustedNewsCards(result.script.newsCards, input.research, input.headlines) : input.politics ? result.script.newsCards : [];
+  if (!input.politics) result.script.people = [];
+  return result;
+}
+
+async function writeScriptChecked(input: ScriptInput): Promise<{ script: Script; costs: CostLine[] }> {
+  const first = await writeScriptOnce(input);
+  if (!input.politics) return first;
+  // Politics: no judgement words ("corrupt", "failed", "hero" ...). Found some? Ask once more.
+  const found = judgementWordsIn(scriptText(first.script));
+  if (found.length === 0) return first;
+  console.warn(`Script (${input.language}): not neutral (${found.join(", ")}). Asking again.`);
+  const again = await writeScriptOnce({
+    ...input,
+    extraNote: `Your last answer used judgement words (${found.join(", ")}). This is a NEUTRAL politics video: write it again with only facts and neutral words.`,
+  });
+  const still = judgementWordsIn(scriptText(again.script));
+  if (still.length) throw new Error(`The ${input.language} politics script was not neutral twice (${still.join(", ")}). Will retry later.`);
+  return { script: again.script, costs: [...first.costs, ...again.costs] };
+}
+
+async function writeScriptOnce(input: ScriptInput): Promise<{ script: Script; costs: CostLine[] }> {
   // Practice mode: no API call, no cost.
-  if (isMockAI()) return { script: mockScript(input), costs: [] };
+  if (isMockAI()) return { script: mockScript({ ...input, politics: input.politics }), costs: [] };
   const { system, prompt } = scriptPrompt(input);
 
   // Free plan: Gemini.
