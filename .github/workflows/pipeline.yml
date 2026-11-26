@@ -21,7 +21,7 @@
 # They are never written in the code. See README "Free plan setup".
 name: Pipeline
 # The name shown in the run list (the Mac app shows it too).
-run-name: ${{ inputs.topic && format('Idea - {0}', inputs.topic) || inputs.auto_now && 'Generate now (automatic topic)' || inputs.auto_slot && format('Night video {0} (backup timer)', inputs.auto_slot) || format('Pipeline ({0})', github.event_name) }}
+run-name: ${{ inputs.topic && format('Idea - {0}', inputs.topic) || inputs.redo_nepali && format('Remake Nepali - {0}', inputs.redo_nepali) || inputs.auto_now && 'Generate now (automatic topic)' || inputs.auto_slot && format('Night video {0} (backup timer)', inputs.auto_slot) || format('Pipeline ({0})', github.event_name) }}
 on:
   # GitHub's clock is UTC. Nepal is UTC + 5:45, so:
   #   1:05 AM Nepal = 19:20 UTC (the evening before)
@@ -58,6 +58,10 @@ on:
         description: "Remake the newest video (same script and voice, no Gemini needed)"
         type: boolean
         default: false
+      redo_nepali:
+        description: "Remake the Nepali video only (new Nepali script): a few words of the topic, or latest"
+        type: string
+        default: ""
   # No "push" test runs any more: each one made a practice story that used up the free
   # Gemini requests meant for your night videos (and then blocked them). To test a branch,
   # use "Run workflow" on that branch with "Add a practice story" ticked.
@@ -197,7 +201,7 @@ jobs:
           DEMO_TOPIC: ${{ inputs.topic }}
       # Automatic videos: add today's next story (does nothing if today already has enough).
       - name: Pick the next topic automatically
-        if: "!inputs.remake_latest && github.event.schedule != '30 8 * * *'"
+        if: "!inputs.remake_latest && !inputs.redo_nepali && github.event.schedule != '30 8 * * *'"
         run: pnpm --filter @dualflow/worker auto-ideas
         env:
           # "Generate now" button: make one even if Auto mode is off or today already has enough.
@@ -209,6 +213,11 @@ jobs:
       - name: Remake the newest video
         if: inputs.remake_latest
         run: pnpm --filter @dualflow/worker remake-video
+      - name: Remake the Nepali video
+        if: inputs.redo_nepali
+        run: pnpm --filter @dualflow/worker redo-nepali
+        env:
+          REDO_NEPALI: ${{ inputs.redo_nepali }}
       - name: Make the videos
         run: pnpm --filter @dualflow/worker once
         env:

@@ -164,8 +164,35 @@ Facts you may use:
 ${factsText}
 
 Scenes:
-${scenesText}`,
+${scenesText}
+
+${LANGUAGE_REMINDER[language]}`,
   };
+}
+
+/**
+ * Said again at the very END of the prompt: the rules above are written in English, and the light
+ * backup model (used when the main one is out of free quota) sometimes answered a Nepali request
+ * in English (2026-11-26, banana story).
+ */
+const LANGUAGE_REMINDER: Record<Language, string> = {
+  ne: `LANGUAGE (most important): write the narration, every part's "text", title, description, thumbnailHeadline,
+hookLines, topicChip, emphasis, cards' "small" and followText in NEPALI (Devanagari script, e.g. "केराको बोट रूख होइन").
+ONLY visualQuery and mustShow are in English. An answer in English is wrong.`,
+  en: `LANGUAGE: write everything in English (visualQuery and mustShow too).`,
+};
+
+/** Share of letters in Devanagari (0-1). Latin brand names inside a Nepali line are fine. */
+export function devanagariShare(text: string): number {
+  const letters = text.match(/\p{L}/gu) ?? [];
+  if (letters.length === 0) return 0;
+  const dev = letters.filter((ch) => /[\u0900-\u097F]/.test(ch)).length;
+  return dev / letters.length;
+}
+
+/** True when a Nepali script is really in Nepali (narration mostly Devanagari). */
+export function looksNepali(script: Pick<Script, "scenes">): boolean {
+  return devanagariShare(script.scenes.map((s) => s.text).join(" ")) >= 0.6;
 }
 
 /**
@@ -257,8 +284,23 @@ export async function writeScript(input: ScriptInput): Promise<{ script: Script;
 
   // Free plan: Gemini.
   if (aiProvider() === "gemini") {
-    const { value, cost } = await askGeminiJson(ScriptSchema, { system, prompt });
-    return { script: finish(value, input.research.visualPlan.length, input.language), costs: [cost] };
+    const costs: CostLine[] = [];
+    let { value, cost } = await askGeminiJson(ScriptSchema, { system, prompt });
+    costs.push(cost);
+    let script = finish(value, input.research.visualPlan.length, input.language);
+    if (input.language === "ne" && !looksNepali(script)) {
+      // The answer came back in English: ask once more, saying so plainly.
+      console.warn("Script: the Nepali script came back in English. Asking again.");
+      ({ value, cost } = await askGeminiJson(ScriptSchema, {
+        system,
+        prompt: `${prompt}\n\nYour last answer was in ENGLISH. Write it again, this time in NEPALI (Devanagari).`,
+      }));
+      costs.push(cost);
+      script = finish(value, input.research.visualPlan.length, input.language);
+      // Never make a "Nepali" video in English: fail, so the step is retried later.
+      if (!looksNepali(script)) throw new Error("The Nepali script came back in English twice. Will retry later.");
+    }
+    return { script, costs };
   }
 
   const model = currentModel();
@@ -270,6 +312,9 @@ export async function writeScript(input: ScriptInput): Promise<{ script: Script;
     system,
     messages: [{ role: "user", content: prompt }],
   });
+  if (input.language === "ne" && response.parsed_output && !looksNepali(finish(response.parsed_output, input.research.visualPlan.length, "ne"))) {
+    throw new Error("The Nepali script came back in English. Will retry.");
+  }
   if (response.stop_reason === "refusal") throw new Error(`Script request (${input.language}) was declined by the model.`);
   if (!response.parsed_output) throw new Error(`Could not read the ${input.language} script from the model.`);
 
