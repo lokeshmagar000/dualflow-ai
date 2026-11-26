@@ -13,6 +13,7 @@
     "demo-story": "tsx src/demo-story.ts",
     "auto-ideas": "tsx src/auto-ideas.ts",
     "remake-video": "tsx src/remake-video.ts",
+    "redo-nepali": "tsx src/redo-nepali.ts",
     "upload": "tsx src/publish.ts",
     "check-channels": "tsx src/check-channels.ts",
     "test": "tsx --test src/*.test.ts src/steps/*.test.ts"

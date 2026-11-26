@@ -29,6 +29,18 @@ export function jobKey(step: JobName, data: PipelineJobData): string {
 /** Add a job. Adding the same key again does nothing (safe on retries). */
 export async function enqueue(step: JobName, data: PipelineJobData, opts: { runAfter?: Date } = {}) {
   const key = jobKey(step, data);
+  try {
+    await addJob(key, step, data, opts);
+  } catch (err) {
+    // Two steps finishing at the same moment can both add the same job (e.g. "publish" when the
+    // Nepali and English videos are ready together). The job is there: that is all we wanted.
+    // (2026-11-26: this error made the English video render a second time.)
+    if ((err as { code?: string }).code === "P2002") return;
+    throw err;
+  }
+}
+
+async function addJob(key: string, step: JobName, data: PipelineJobData, opts: { runAfter?: Date }) {
   await prisma.pipelineJob.upsert({
     where: { key },
     update: {}, // already queued: leave it alone
