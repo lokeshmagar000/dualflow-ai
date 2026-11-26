@@ -354,6 +354,9 @@ model Publication {
   // Choices made in the dashboard's upload window, e.g. TikTok:
   // { "tiktok": { "privacyLevel": "SELF_ONLY", "caption": "...", "allowComment": true, ... } }
   options        Json?
+  // true = a person asked for this upload (Upload button, Approve, Retry, bulk upload page).
+  // false = the robot queued it by itself; it is only uploaded while Auto upload is "Fully automatic".
+  manual         Boolean       @default(false)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 

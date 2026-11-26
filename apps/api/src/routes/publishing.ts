@@ -56,7 +56,7 @@ export async function publishingRoutes(app: FastifyInstance) {
     // scheduledAt = null means "the next free slot"; the worker picks the time.
     const res = await prisma.publication.updateMany({
       where: { variantId: { in: variantIds }, status: "READY" },
-      data: { status: "SCHEDULED", scheduledAt: null },
+      data: { status: "SCHEDULED", scheduledAt: null, manual: true }, // you approved it = a person's choice
     });
     await prisma.approval.createMany({ data: variantIds.map((variantId) => ({ variantId, approved: true })) });
     await prisma.variant.updateMany({ where: { id: { in: variantIds }, status: "READY" }, data: { status: "SCHEDULED" } });
@@ -145,7 +145,7 @@ export async function publishingRoutes(app: FastifyInstance) {
     const pub = await prisma.publication.findFirst({ where: { id: req.params.id, channel: { workspaceId: ws.id } } });
     if (!pub) return reply.code(404).send({ error: "Upload not found" });
     if (pub.status !== "FAILED") return reply.code(409).send({ error: "Only failed uploads can be retried." });
-    await prisma.publication.update({ where: { id: pub.id }, data: { status: "SCHEDULED", scheduledAt: new Date(), attempts: 0, error: null } });
+    await prisma.publication.update({ where: { id: pub.id }, data: { status: "SCHEDULED", scheduledAt: new Date(), attempts: 0, error: null, manual: true } });
     await startUploadRun(req.log); // the small "Upload now" run, not the whole pipeline
     return { ok: true };
   });
@@ -214,8 +214,9 @@ async function sendUploads(workspaceId: string, variants: Variant[], log: Log, r
       const options = ch.platform === "TIKTOK" && tiktok ? ({ tiktok } as unknown as Prisma.InputJsonValue) : undefined;
       await prisma.publication.upsert({
         where: { variantId_channelId: { variantId: v.id, channelId: ch.id } },
-        update: { status: "SCHEDULED", scheduledAt: now, attempts: 0, error: null, ...(options ? { options } : {}) },
-        create: { variantId: v.id, channelId: ch.id, status: "SCHEDULED", scheduledAt: now, ...(options ? { options } : {}) },
+        // manual: true = you pressed the button, so it uploads even while Auto upload is Off.
+        update: { status: "SCHEDULED", scheduledAt: now, attempts: 0, error: null, manual: true, ...(options ? { options } : {}) },
+        create: { variantId: v.id, channelId: ch.id, status: "SCHEDULED", scheduledAt: now, manual: true, ...(options ? { options } : {}) },
       });
       queued++;
       where.add(ch.name);
