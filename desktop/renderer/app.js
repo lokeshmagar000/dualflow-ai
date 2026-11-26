@@ -106,7 +106,7 @@ function runRow(r) {
     });
     actions.append(btn);
   } else if (r.status === "completed" && r.conclusion === "success") {
-    actions.append(el("span", { class: "muted small" }, "No new video in this run"));
+    actions.append(el("span", { class: "muted small" }, "Get videos on the dashboard Ready page"));
   }
   actions.append(el("button", { class: "ghost small", onclick: () => ask(api.openUrl(r.url)) }, "Details ↗"));
   return el(
