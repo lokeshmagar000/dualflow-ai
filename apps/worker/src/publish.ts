@@ -41,7 +41,7 @@ async function main() {
       await assignSlots(ws.id);
     }
     const r = await uploadDue(ws.id);
-    console.log(`Upload run finished: ${r.uploaded} uploaded, ${r.waiting} will retry later, ${r.failed} failed${r.practice ? `, ${r.practice} practice` : ""}.`);
+    console.log(`Upload run finished: ${r.uploaded} uploaded, ${r.waiting} will retry later, ${r.failed} failed${r.practice ? `, ${r.practice} practice` : ""}${r.removed ? `, ${r.removed} robot-queued removed (Auto upload not Fully automatic)` : ""}.`);
   }
 }
 

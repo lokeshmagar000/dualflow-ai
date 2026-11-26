@@ -3,6 +3,7 @@
  *
  *   GET  /ready?show=waiting|uploaded|all&page=1   finished stories, newest first, 10 per page
  *   GET  /ready/zip?show=waiting|uploaded|all      "Download all": every video of that tab in one .zip
+ *   GET  /ready/zip?story=<id>                     "Download this topic": only that topic's Nepali + English pair
  *   GET  /variants/:id/download/:kind              video, thumbnail or srt (?inline=1 to play/show it,
  *                                                  thumbnail: ?size=shorts|youtube|feed for another size)
  *   POST /variants/:id/uploaded                    { uploaded: true | false } = the "Mark as uploaded" button
@@ -135,11 +136,17 @@ export async function readyRoutes(app: FastifyInstance) {
    * Files flow straight from R2 into the zip ("streaming"), one at a time, so even
    * a big zip needs very little memory on the free server.
    */
-  app.get<{ Querystring: { show?: string } }>("/ready/zip", async (req, reply) => {
+  app.get<{ Querystring: { show?: string; story?: string } }>("/ready/zip", async (req, reply) => {
     const ws = await getDefaultWorkspace();
     const show = req.query.show ?? "waiting";
+    // ?story=<id>: just ONE topic (its Nepali and English video), whatever the tab.
+    const storyId = typeof req.query.story === "string" && /^[a-z0-9]{10,40}$/i.test(req.query.story) ? req.query.story : null;
+    if (req.query.story && !storyId) return reply.code(400).send({ error: "Unknown topic" });
+    const where: Prisma.VariantWhereInput = storyId
+      ? { storyId, outputKey: { not: null }, story: { workspaceId: ws.id } }
+      : { ...variantFilterFor(show), outputKey: { not: null }, story: storyFilterFor(ws.id, show) };
     const variants = await prisma.variant.findMany({
-      where: { ...variantFilterFor(show), outputKey: { not: null }, story: storyFilterFor(ws.id, show) },
+      where,
       select: {
         language: true,
         title: true,
@@ -147,20 +154,24 @@ export async function readyRoutes(app: FastifyInstance) {
         hashtags: true,
         outputKey: true,
         thumbnails: { select: { storageKey: true, sizes: true }, orderBy: { createdAt: "desc" }, take: 1 },
+        subtitles: { select: { storageKey: true }, orderBy: { createdAt: "desc" }, take: 1 },
         story: { select: { createdAt: true, topic: { select: { title: true } }, variants: { select: { language: true, title: true } } } },
       },
       orderBy: [{ story: { createdAt: "desc" } }, { language: "desc" }],
       take: ZIP_MAX_VIDEOS,
     });
-    if (variants.length === 0) return reply.code(404).send({ error: "No videos to download on this tab" });
+    if (variants.length === 0) return reply.code(404).send({ error: storyId ? "This topic has no video files (they may have been deleted to save storage)" : "No videos to download on this tab" });
 
     // "store" = no squeezing. Videos are already compressed, so squeezing only wastes time.
     const zip = archiver("zip", { store: true });
     zip.on("warning", (err) => req.log.warn(err));
     const day = new Date().toISOString().slice(0, 10);
+    const first = variants[0]!;
+    const topicName = slugify(first.story.variants.find((x) => x.language === "en")?.title || first.story.topic.title);
+    const fileName = storyId ? `namaste-${first.story.createdAt.toISOString().slice(0, 10)}-${topicName}.zip` : `namaste-videos-${show}-${day}.zip`;
     reply
       .header("content-type", "application/zip")
-      .header("content-disposition", `attachment; filename="namaste-videos-${show}-${day}.zip"`)
+      .header("content-disposition", `attachment; filename="${fileName}"`)
       .send(zip); // the zip is sent while it is still being made
 
     // Add the files one after another (each starts only when the last one is in the zip).
@@ -180,6 +191,8 @@ export async function readyRoutes(app: FastifyInstance) {
               await addAndWait(zip, await readStream(thumbnailKeyFor(thumb, size)).catch(() => null), name);
             }
           }
+          const srt = v.subtitles[0]?.storageKey;
+          if (srt) await addAndWait(zip, await readStream(srt).catch(() => null), `${folder}/${downloadName({ ...base, kind: "srt" })}`);
           zip.append(uploadText(v), { name: `${folder}/${videoName.replace(/\.mp4$/, "")}-text.txt` });
         }
         await zip.finalize();

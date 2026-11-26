@@ -144,7 +144,7 @@ export async function bulkRoutes(app: FastifyInstance) {
         const limits = checkLimits(toName(ch.platform), facts);
         await tx.publication.create({
           data: limits.ok
-            ? { variantId: variant.id, channelId: ch.id, status: "SCHEDULED", scheduledAt: now }
+            ? { variantId: variant.id, channelId: ch.id, status: "SCHEDULED", scheduledAt: now, manual: true }
             : { variantId: variant.id, channelId: ch.id, status: "FAILED", error: `Not sent: ${limits.problems.join(" ")}` },
         });
       }

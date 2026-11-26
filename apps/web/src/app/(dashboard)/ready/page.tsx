@@ -100,7 +100,8 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
       </nav>
       {videoCount > 0 && (
         <p className="-mt-2 mb-4 text-xs text-fg3">
-          The zip has a Nepali and an English folder: each video with its thumbnail and a text file with the title, description and hashtags. A big zip takes a few minutes.
+          The zip has a Nepali and an English folder: each video with its thumbnails, subtitles and a text file with the title, description and hashtags. A big zip takes a few minutes.
+          Want only one topic? Press <b>Download this topic</b> on its card.
         </p>
       )}
 
@@ -121,7 +122,15 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
                 <Link href={`/content/${s.id}`} className="font-semibold hover:text-brand-fg">{s.topic?.title ?? "Untitled"}</Link>
                 <p className="text-xs text-fg3">Made {nepalTime(s.createdAt)}, {s.topic?.source === "DIRECTOR" ? "topic picked by AI" : "your idea"}</p>
               </div>
-              <DeleteStoryButton storyId={s.id} title={s.topic?.title ?? "this video"} />
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Only THIS topic: its Nepali + English video, thumbnails, subtitles and text files. */}
+                {(s.variants ?? []).some((v) => v.outputKey) && (
+                  <a href={`/download/all?story=${s.id}`} className="btn" title="One .zip with only this topic: Nepali + English video, thumbnails, subtitles and text">
+                    <IconDownload className="h-4 w-4" /> Download this topic (.zip)
+                  </a>
+                )}
+                <DeleteStoryButton storyId={s.id} title={s.topic?.title ?? "this video"} />
+              </div>
             </div>
             {/* Nepali first, then English. */}
             <div className="grid gap-px bg-stroke xl:grid-cols-2">

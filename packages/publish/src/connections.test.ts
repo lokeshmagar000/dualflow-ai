@@ -67,6 +67,9 @@ test("switch positions", () => {
   assert.equal(switchToEnv("off").PUBLISH_MODE, "manual"); // buttons still work, nothing by itself
   assert.equal(switchToEnv("practice").PUBLISH_DRY_RUN, "true");
   assert.equal(switchToEnv("approval").PUBLISH_MODE, "approval");
+  // "Off" also beats a one-platform GitHub variable like PUBLISH_MODE_YOUTUBE=auto.
+  assert.equal(switchToEnv("off").PUBLISH_MODE_YOUTUBE, "manual");
+  assert.equal(switchToEnv("auto").PUBLISH_MODE_TIKTOK, "auto");
 });
 
 test("Facebook Pages are matched to languages by name", () => {

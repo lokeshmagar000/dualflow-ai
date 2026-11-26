@@ -11,6 +11,8 @@
  *   3. assignSlots()    gives every queued upload its own time slot (PUBLISH_TIMES),
  *                       so a channel gets at most one video per slot ("bulk queue").
  *   4. uploadDue()      uploads everything whose time has come, with retries.
+ *                       Only uploads a PERSON asked for (Publication.manual) go out while
+ *                       Auto upload is not "Fully automatic"; robot-queued ones are removed.
  *                       PUBLISH_DRY_RUN=true only prints what would happen.
  *   5. A story is marked PUBLISHED only when EVERY channel got its video.
  *      Only then does the cleanup delete its files (DELETE_AFTER_PUBLISH).
@@ -25,7 +27,11 @@ import {
   configuredChannels,
   dryRun,
   getUploader,
+  modeFor,
   planSlots,
+  readSwitch,
+  SETTING,
+  type UploadSwitch,
   publishEnabled,
   PublishConfigError,
   PublishQuotaError,
@@ -41,6 +47,24 @@ export const PRACTICE_NOTE = "Practice mode: nothing was uploaded. For real uplo
 const toPlatform = (p: PlatformName) => p.toUpperCase() as Platform;
 const toName = (p: Platform) => p.toLowerCase() as PlatformName;
 const toMode = (m: ChannelConfig["mode"]) => m.toUpperCase() as PublishMode;
+
+/**
+ * The dashboard's Auto upload switch, read straight from the database.
+ * (The video-making run does not load the dashboard settings, so we look here too.)
+ */
+export async function savedSwitch(workspaceId: string): Promise<UploadSwitch | null> {
+  const row = await prisma.appSetting.findUnique({ where: { workspaceId_key: { workspaceId, key: SETTING.uploadSwitch } } });
+  return readSwitch(row?.value);
+}
+
+/**
+ * May the robot upload to this platform BY ITSELF right now?
+ * Only when the switch is "Fully automatic" (or, with no switch saved, PUBLISH_MODE=auto).
+ */
+export function robotMayUpload(platform: PlatformName, sw: UploadSwitch | null, env: Record<string, string | undefined> = process.env): boolean {
+  if (sw) return sw === "auto" || sw === "practice"; // practice uploads nothing anyway
+  return modeFor(platform, env) === "auto";
+}
 
 /** Make sure every configured channel has a row, with the current name and mode. */
 export async function syncChannels(workspaceId: string) {
@@ -77,6 +101,8 @@ export async function planStory(storyId: string) {
   const story = await prisma.story.findUniqueOrThrow({ where: { id: storyId }, include: { variants: true, topic: true } });
   // Bulk uploads: only the platforms you ticked. Never add more by ourselves.
   if (story.topic.source === "UPLOAD") return;
+  // Auto upload Off on the dashboard: queue nothing (you use the Upload buttons).
+  if ((await savedSwitch(story.workspaceId)) === "off") return;
   const channels = await syncChannels(story.workspaceId); // also picks up a changed PUBLISH_MODE
   let queued = 0;
   for (const v of story.variants) {
@@ -146,10 +172,29 @@ export async function uploadDue(workspaceId: string, now = new Date()) {
   });
 
   const channels = await activeChannels(workspaceId);
-  const result = { uploaded: 0, failed: 0, waiting: 0, practice: 0 };
+  const sw = await savedSwitch(workspaceId);
+  const result = { uploaded: 0, failed: 0, waiting: 0, practice: 0, removed: 0 };
   for (const ch of channels) {
+    // Auto upload is not "Fully automatic": only uploads a person asked for may go out.
+    // Ones the robot queued by itself (e.g. while the switch was on Practice) are taken out of
+    // the queue, so they can never post later by surprise. The videos stay on Ready to upload.
+    const robotOk = robotMayUpload(toName(ch.platform), sw);
+    if (!robotOk) {
+      const removed = await prisma.publication.deleteMany({
+        where: { channelId: ch.id, status: "SCHEDULED", manual: false, variant: { story: { topic: { source: { not: "UPLOAD" } } } } },
+      });
+      if (removed.count > 0) {
+        console.log(`[publish] ${ch.name}: Auto upload is not "Fully automatic", so ${removed.count} video(s) the robot had queued were taken out of the queue (not uploaded).`);
+        result.removed += removed.count;
+      }
+    }
     const due = await prisma.publication.findMany({
-      where: { channelId: ch.id, status: "SCHEDULED", scheduledAt: { lte: now } },
+      where: {
+        channelId: ch.id,
+        status: "SCHEDULED",
+        scheduledAt: { lte: now },
+        ...(robotOk ? {} : { OR: [{ manual: true }, { variant: { story: { topic: { source: "UPLOAD" } } } }] }),
+      },
       orderBy: { scheduledAt: "asc" },
       take: perChannel,
       include: {

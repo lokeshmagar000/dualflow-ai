@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { prisma } from "@dualflow/db";
 import { saveFile } from "@dualflow/storage";
-import { assignSlots, planStory, syncChannels, uploadDue } from "./publishing";
+import { assignSlots, planStory, robotMayUpload, syncChannels, uploadDue } from "./publishing";
 
 const skip = !process.env.DATABASE_URL && "DATABASE_URL not set";
 const slug = `publish-test-${Date.now()}`;
@@ -83,6 +83,7 @@ after(async () => {
   globalThis.fetch = realFetch;
   if (!skip) {
     await prisma.story.deleteMany({ where: { workspaceId } });
+    await prisma.appSetting.deleteMany({ where: { workspaceId } });
     await prisma.workspace.deleteMany({ where: { slug } });
   }
   await prisma.$disconnect();
@@ -142,7 +143,7 @@ test("approval mode waits for you; dry run changes nothing", { skip }, async () 
   assert.equal((await prisma.story.findUniqueOrThrow({ where: { id: storyId } })).status, "READY");
 
   // Approve (what the dashboard button does), then a PRACTICE run.
-  await prisma.publication.updateMany({ where: { variant: { storyId } }, data: { status: "SCHEDULED", scheduledAt: new Date(Date.now() - 1000) } });
+  await prisma.publication.updateMany({ where: { variant: { storyId } }, data: { status: "SCHEDULED", scheduledAt: new Date(Date.now() - 1000), manual: true } });
   process.env.PUBLISH_DRY_RUN = "true";
   const before = uploads;
   const r = await uploadDue(workspaceId, new Date());
@@ -192,4 +193,45 @@ test("bulk upload: only the ticked channel gets it, and then the story is PUBLIS
   const done = await prisma.story.findUniqueOrThrow({ where: { id: story.id }, include: { variants: { include: { publications: true } } } });
   assert.equal(done.variants[0]!.publications[0]!.status, "PUBLISHED");
   assert.equal(done.status, "PUBLISHED", "only the ticked channel counts");
+});
+
+test("robotMayUpload: only Fully automatic lets the robot post by itself", () => {
+  assert.equal(robotMayUpload("youtube", "off", { PUBLISH_MODE_YOUTUBE: "auto" }), false, "the switch wins over GitHub variables");
+  assert.equal(robotMayUpload("youtube", "approval", {}), false);
+  assert.equal(robotMayUpload("youtube", "auto", {}), true);
+  assert.equal(robotMayUpload("youtube", null, { PUBLISH_MODE: "auto" }), true);
+  assert.equal(robotMayUpload("youtube", null, { PUBLISH_MODE: "manual" }), false);
+});
+
+test("Auto upload Off: robot-queued uploads never post, Upload-button ones still do", { skip }, async () => {
+  // Queued while the switch was on (e.g. Practice) ...
+  process.env.PUBLISH_MODE = "auto";
+  await syncChannels(workspaceId);
+  const storyId = await makeStory();
+  await planStory(storyId);
+  assert.equal(await prisma.publication.count({ where: { variant: { storyId }, status: "SCHEDULED" } }), 2);
+
+  // ... then the owner turns Auto upload Off, and presses Upload on the English video only.
+  await prisma.appSetting.upsert({
+    where: { workspaceId_key: { workspaceId, key: "publish.switch" } },
+    update: { value: JSON.stringify({ mode: "off" }) },
+    create: { workspaceId, key: "publish.switch", value: JSON.stringify({ mode: "off" }) },
+  });
+  process.env.PUBLISH_MODE = "manual";
+  await prisma.publication.updateMany({ where: { variant: { storyId } }, data: { scheduledAt: new Date(Date.now() - 1000) } });
+  await prisma.publication.updateMany({ where: { variant: { storyId, language: "en" } }, data: { manual: true } });
+
+  const before = uploads;
+  const r = await uploadDue(workspaceId, new Date());
+  assert.equal(r.uploaded, 1, "only the button upload");
+  assert.equal(r.removed, 1, "the robot-queued one is taken out of the queue");
+  assert.equal(uploads, before + 1);
+  assert.equal(await prisma.publication.count({ where: { variant: { storyId, language: "ne" } } }), 0);
+
+  // A new story while Off: nothing is queued, even if a GitHub variable says auto.
+  process.env.PUBLISH_MODE = "auto";
+  const story2 = await makeStory();
+  await planStory(story2);
+  assert.equal(await prisma.publication.count({ where: { variant: { storyId: story2 } } }), 0);
+  await prisma.appSetting.deleteMany({ where: { workspaceId } });
 });

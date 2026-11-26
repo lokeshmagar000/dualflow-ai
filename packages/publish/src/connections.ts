@@ -105,6 +105,14 @@ export function readSwitch(value: string | undefined): UploadSwitch | null {
 
 /** What each switch position means for the old GitHub variables. */
 export function switchToEnv(mode: UploadSwitch): Env {
+  const base = baseSwitchEnv(mode);
+  // The switch also wins over one-platform variables like PUBLISH_MODE_YOUTUBE=auto,
+  // so "Off" really means off on EVERY platform.
+  for (const p of ["YOUTUBE", "FACEBOOK", "INSTAGRAM", "TIKTOK"]) base[`PUBLISH_MODE_${p}`] = base.PUBLISH_MODE;
+  return base;
+}
+
+function baseSwitchEnv(mode: UploadSwitch): Env {
   switch (mode) {
     case "off":
       // Nothing uploads BY ITSELF, but the "Upload" buttons on the dashboard still work.
