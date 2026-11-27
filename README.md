@@ -78,7 +78,7 @@ The free plan runs without any server that is on all day:
 | Dashboard + API | Render free web services (`render.yaml`) | |
 | Database + job queue | Neon free Postgres | `DATABASE_URL` |
 | Making the videos | GitHub Actions (`.github/workflows/pipeline.yml`), about 1-2 AM Nepal time (ready by 3 AM), or "Run now" | `WORKER_MODE=once` |
-| Research + scripts | Gemini free tier | `AI_PROVIDER=gemini`, `GEMINI_API_KEY` |
+| Research + scripts | Claude (chosen on the dashboard's Settings page), Gemini free tier as backup | `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` (see docs/claude-for-writing.md) |
 | Voice | Edge TTS (no key) or Azure F0 | `VOICE_PROVIDER=edge` or `azure` |
 | Files | Cloudflare R2 (10 GB free) | `STORAGE=r2`, `R2_*` |
 
@@ -95,7 +95,7 @@ free limit is used, the waiting jobs, a **Run now** button and the kill switch.
 4. **GitHub** (this repo → Settings → Secrets and variables → Actions):
    - Secrets: `DATABASE_URL`, `GEMINI_API_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`
      (and later `AZURE_SPEECH_KEY` or `ANTHROPIC_API_KEY`)
-   - Variables (optional): `AI_PROVIDER` (default `gemini`), `VOICE_PROVIDER` (default `edge`),
+   - Variables (optional): `AI_PROVIDER` (default `claude`; the dashboard's Settings page overrides it), `VOICE_PROVIDER` (default `edge`),
      `GEMINI_DAILY_REQUESTS` (default `20`), `R2_BUCKET` (default `dualflow`), `EDGE_VOICE_NE`
 5. **Render** (render.com → New → Blueprint → this repo). Fill in the values it asks for. Beginner steps: [docs/put-dashboard-online.md](docs/put-dashboard-online.md). For **Run now**, make a
    fine-grained GitHub token for only this repo with *Actions: Read and write* and set it as `GITHUB_DISPATCH_TOKEN`

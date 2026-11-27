@@ -41,3 +41,40 @@ export function currentQuotaDayStart(now = new Date()): Date {
   const next = nextQuotaReset(now);
   return new Date(next.getTime() - 24 * 60 * 60 * 1000);
 }
+
+/** True when a Claude key is in the environment (same names client.ts reads). */
+export function claudeKeySet(): boolean {
+  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.DUALFLOW_ANTHROPIC_API_KEY || process.env.DUALFLOW_ANTHROPIC_KEY);
+}
+
+/** True when a Gemini key is in the environment. */
+export function geminiKeySet(): boolean {
+  return Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+}
+
+/**
+ * Gemini as the BACKUP when Claude is chosen: on by default whenever a Gemini key exists.
+ * AI_BACKUP=off turns it off (then a Claude problem makes the step wait and retry).
+ */
+export function geminiBackupOn(): boolean {
+  return geminiKeySet() && !/^(off|no|false|0|none)$/i.test(process.env.AI_BACKUP ?? "on");
+}
+
+/**
+ * Run one AI task with the chosen provider:
+ *   - Gemini chosen: only Gemini (same as before).
+ *   - Claude chosen: Claude first. If Claude fails (no key, no credit left, busy, ...)
+ *     and a Gemini key exists, the same task runs on Gemini, so the night's videos
+ *     are still made.
+ * `what` is a short name for the logs, like "Script (ne)".
+ */
+export async function withGeminiBackup<T>(what: string, claudeTask: () => Promise<T>, geminiTask: () => Promise<T>): Promise<T> {
+  if (aiProvider() === "gemini") return geminiTask();
+  try {
+    return await claudeTask();
+  } catch (err) {
+    if (!geminiBackupOn()) throw err;
+    console.warn(`${what}: Claude did not work (${(err as Error).message?.slice(0, 200)}). Using Gemini instead for this step.`);
+    return geminiTask();
+  }
+}

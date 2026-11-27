@@ -12,7 +12,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { claude, currentModel, fallbackOptions } from "./client";
 import { claudeCost, type CostLine } from "./cost";
 import { isMockAI } from "./mock";
-import { aiProvider } from "./provider";
+import { withGeminiBackup } from "./provider";
 import { askGeminiJson } from "./gemini";
 
 export const TopicIdeaSchema = z.object({
@@ -68,11 +68,17 @@ export async function suggestTopic(input: {
     return { idea: { title, notes: "Practice topic (AI_PROVIDER=mock)." }, costs: [] };
   }
 
-  if (aiProvider() === "gemini") {
-    const { value, cost } = await askGeminiJson(TopicIdeaSchema, { system: SYSTEM, prompt: prompt(niche, input.recentTitles) });
-    return { idea: value, costs: [cost] };
-  }
+  return withGeminiBackup(
+    "Topic",
+    () => topicWithClaude(niche, input.recentTitles),
+    async () => {
+      const { value, cost } = await askGeminiJson(TopicIdeaSchema, { system: SYSTEM, prompt: prompt(niche, input.recentTitles) });
+      return { idea: value, costs: [cost] };
+    },
+  );
+}
 
+async function topicWithClaude(niche: string, recentTitles: string[]): Promise<{ idea: TopicIdea; costs: CostLine[] }> {
   const model = currentModel();
   const res = await claude().beta.messages.parse({
     model,
@@ -80,7 +86,7 @@ export async function suggestTopic(input: {
     ...fallbackOptions(),
     output_config: { effort: "low", format: betaZodOutputFormat(TopicIdeaSchema) },
     system: SYSTEM,
-    messages: [{ role: "user", content: prompt(niche, input.recentTitles) }],
+    messages: [{ role: "user", content: prompt(niche, recentTitles) }],
   });
   if (!res.parsed_output) throw new Error("Could not read the topic from the model.");
   return { idea: res.parsed_output, costs: [claudeCost(model, res.usage)] };

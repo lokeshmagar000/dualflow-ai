@@ -10,7 +10,7 @@ import { claude, currentModel, fallbackOptions } from "./client";
 import { claudeCost, type CostLine } from "./cost";
 import type { Research } from "./research";
 import { isMockAI, mockScript } from "./mock";
-import { aiProvider } from "./provider";
+import { withGeminiBackup } from "./provider";
 import { askGeminiJson } from "./gemini";
 
 export const ScriptSchema = z.object({
@@ -448,44 +448,57 @@ async function writeScriptOnce(input: ScriptInput): Promise<{ script: Script; co
   if (isMockAI()) return { script: mockScript({ ...input, politics: input.politics }), costs: [] };
   const { system, prompt } = scriptPrompt(input);
 
-  // Free plan: Gemini.
-  if (aiProvider() === "gemini") {
-    const costs: CostLine[] = [];
-    let { value, cost } = await askGeminiJson(ScriptSchema, { system, prompt });
-    costs.push(cost);
-    let script = finish(value, input.research.visualPlan.length, input.language);
-    if (input.language === "ne" && !looksNepali(script)) {
-      // The answer came back in English: ask once more, saying so plainly.
-      console.warn("Script: the Nepali script came back in English. Asking again.");
-      ({ value, cost } = await askGeminiJson(ScriptSchema, {
-        system,
-        prompt: `${prompt}\n\nYour last answer was in ENGLISH. Write it again, this time in NEPALI (Devanagari).`,
-      }));
-      costs.push(cost);
-      script = finish(value, input.research.visualPlan.length, input.language);
-      // Never make a "Nepali" video in English: fail, so the step is retried later.
-      if (!looksNepali(script)) throw new Error("The Nepali script came back in English twice. Will retry later.");
-    }
-    return { script, costs };
-  }
+  return withGeminiBackup(`Script (${input.language})`, () => scriptWithClaude(input, system, prompt), () => scriptWithGemini(input, system, prompt));
+}
 
+async function scriptWithGemini(input: ScriptInput, system: string, prompt: string): Promise<{ script: Script; costs: CostLine[] }> {
+  const costs: CostLine[] = [];
+  let { value, cost } = await askGeminiJson(ScriptSchema, { system, prompt });
+  costs.push(cost);
+  let script = finish(value, input.research.visualPlan.length, input.language);
+  if (input.language === "ne" && !looksNepali(script)) {
+    // The answer came back in English: ask once more, saying so plainly.
+    console.warn("Script: the Nepali script came back in English. Asking again.");
+    ({ value, cost } = await askGeminiJson(ScriptSchema, {
+      system,
+      prompt: `${prompt}\n\nYour last answer was in ENGLISH. Write it again, this time in NEPALI (Devanagari).`,
+    }));
+    costs.push(cost);
+    script = finish(value, input.research.visualPlan.length, input.language);
+    // Never make a "Nepali" video in English: fail, so the step is retried later.
+    if (!looksNepali(script)) throw new Error("The Nepali script came back in English twice. Will retry later.");
+  }
+  return { script, costs };
+}
+
+async function scriptWithClaude(input: ScriptInput, system: string, prompt: string): Promise<{ script: Script; costs: CostLine[] }> {
   const model = currentModel();
-  const response = await claude().beta.messages.parse({
+  const costs: CostLine[] = [];
+  let response = await askClaudeForScript(model, system, prompt);
+  costs.push(claudeCost(model, response.usage));
+  if (input.language === "ne" && response.parsed_output && !looksNepali(finish(response.parsed_output, input.research.visualPlan.length, "ne"))) {
+    // The answer came back in English: ask once more, saying so plainly.
+    console.warn("Script: the Nepali script came back in English. Asking Claude again.");
+    response = await askClaudeForScript(model, system, `${prompt}\n\nYour last answer was in ENGLISH. Write it again, this time in NEPALI (Devanagari).`);
+    costs.push(claudeCost(model, response.usage));
+    // Never make a "Nepali" video in English.
+    if (response.parsed_output && !looksNepali(finish(response.parsed_output, input.research.visualPlan.length, "ne"))) {
+      throw new Error("The Nepali script came back in English twice.");
+    }
+  }
+  if (response.stop_reason === "refusal") throw new Error(`Script request (${input.language}) was declined by the model.`);
+  if (!response.parsed_output) throw new Error(`Could not read the ${input.language} script from the model.`);
+
+  return { script: finish(response.parsed_output, input.research.visualPlan.length, input.language), costs };
+}
+
+function askClaudeForScript(model: string, system: string, prompt: string) {
+  return claude().beta.messages.parse({
     model,
-    max_tokens: 32000,
+    max_tokens: 16000,
     ...fallbackOptions(),
     output_config: { effort: "high", format: betaZodOutputFormat(ScriptSchema) },
     system,
     messages: [{ role: "user", content: prompt }],
   });
-  if (input.language === "ne" && response.parsed_output && !looksNepali(finish(response.parsed_output, input.research.visualPlan.length, "ne"))) {
-    throw new Error("The Nepali script came back in English. Will retry.");
-  }
-  if (response.stop_reason === "refusal") throw new Error(`Script request (${input.language}) was declined by the model.`);
-  if (!response.parsed_output) throw new Error(`Could not read the ${input.language} script from the model.`);
-
-  return {
-    script: finish(response.parsed_output, input.research.visualPlan.length, input.language),
-    costs: [claudeCost(model, response.usage)],
-  };
 }

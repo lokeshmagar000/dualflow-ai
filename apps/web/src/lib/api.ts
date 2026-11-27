@@ -357,3 +357,13 @@ export interface AutoStatus {
   waitingIdeas: number;
   aiTopics: { id: string; title: string; createdAt: string; storyId: string | null; storyStatus: string | null }[];
 }
+
+/* ---------- AI for writing (Settings page) ---------- */
+/** GET /ai-settings: Claude or Gemini for topics, research, scripts and picture checks. */
+export interface AiSettings {
+  provider: "claude" | "gemini";
+  claudeModel: string;
+  saved: boolean; // false = never saved on the dashboard (GitHub's AI_PROVIDER decides, default Claude)
+  claudeModels: { id: string; label: string; about: string }[];
+  claudeSpend: { today: { usd: number; calls: number }; month: { usd: number; calls: number }; lastUsedAt: string | null };
+}

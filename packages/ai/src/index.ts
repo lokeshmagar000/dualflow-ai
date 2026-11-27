@@ -1,12 +1,13 @@
 export { researchTopic, ResearchSchema, checkPoliticsSources, MIN_POLITICS_SOURCES, type Research } from "./research";
 export { writeScript, ScriptSchema, type Script } from "./script";
 export { claudeCost, type CostLine } from "./cost";
-export { ConfigError, isPermanentError, currentModel, BUDGET_MODEL, QUALITY_MODEL } from "./client";
+export { ConfigError, isPermanentError, currentModel, checkClaudeKey, BUDGET_MODEL, QUALITY_MODEL } from "./client";
 export { isMockAI } from "./mock";
-export { aiProvider, AIQuotaError, nextQuotaReset, currentQuotaDayStart, type AIProviderName } from "./provider";
+export { aiProvider, AIQuotaError, nextQuotaReset, currentQuotaDayStart, claudeKeySet, geminiKeySet, geminiBackupOn, withGeminiBackup, type AIProviderName } from "./provider";
 export { geminiModel, DEFAULT_GEMINI_MODEL } from "./gemini";
 export { suggestTopic, TopicIdeaSchema, DEFAULT_NICHE, type TopicIdea } from "./topic";
 export { findHashtags, mergeHashtags, parseHashtags, cleanTag, MAX_HASHTAGS } from "./hashtags";
 export { suggestPoliticsTopic, PoliticsIdeaSchema, dayMonth, type TopicSource } from "./politics";
 export { fetchNepalPoliticsNews, parseNewsRss, dedupeNews, type NewsItem } from "./news";
 export { scriptText, trustedNewsCards, trustedPeople } from "./script";
+export { claudeCheckPictures, type PictureForCheck } from "./vision";

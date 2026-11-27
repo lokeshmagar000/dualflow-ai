@@ -17,7 +17,7 @@
 import { brandFor, type Language } from "@dualflow/shared";
 import type { CostLine } from "./cost";
 import { askGemini } from "./gemini";
-import { aiProvider } from "./provider";
+import { aiProvider, geminiKeySet } from "./provider";
 
 export const MAX_HASHTAGS = 15;
 
@@ -103,7 +103,8 @@ export async function findHashtags(input: {
     mergeHashtags({ language: input.language, format: input.format, trending, script: input.scriptHashtags, brand });
 
   const searchOn = (process.env.HASHTAG_SEARCH ?? "on").toLowerCase() !== "off";
-  if (aiProvider() !== "gemini" || !searchOn || input.allowSearch === false) return { hashtags: merge([]), costs: [] };
+  // Uses free Gemini + Google Search even when Claude writes the scripts (Claude search costs money).
+  if (aiProvider() === "mock" || !geminiKeySet() || !searchOn || input.allowSearch === false) return { hashtags: merge([]), costs: [] };
 
   try {
     const res = await askGemini({ system: SYSTEM, prompt: prompt(input.language, input.title, input.summary), search: true });

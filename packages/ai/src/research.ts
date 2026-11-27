@@ -9,7 +9,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { claude, currentModel, fallbackOptions, webSearchTool } from "./client";
 import { claudeCost, type CostLine } from "./cost";
 import { isMockAI, mockResearch } from "./mock";
-import { aiProvider } from "./provider";
+import { withGeminiBackup } from "./provider";
 import { askGemini, askGeminiJson } from "./gemini";
 import { NEUTRAL_RULES, videoStyle } from "@dualflow/shared";
 import type { TopicSource } from "./politics";
@@ -228,8 +228,11 @@ export async function researchTopic(input: ResearchInput): Promise<ResearchResul
 async function researchAny(input: ResearchInput): Promise<ResearchResult> {
   // Practice mode: no API call, no cost.
   if (isMockAI()) return { research: mockResearch(input), costs: [], sources: [] };
-  if (aiProvider() === "gemini") return researchWithGemini(input);
+  return withGeminiBackup("Research", () => researchWithClaude(input), () => researchWithGemini(input));
+}
 
+/** Research with Claude: call 1 searches the web and writes notes, call 2 makes the checked plan. */
+async function researchWithClaude(input: ResearchInput): Promise<ResearchResult> {
   const ai = claude();
   const model = currentModel();
   const costs: CostLine[] = [];
@@ -254,6 +257,18 @@ async function researchAny(input: ResearchInput): Promise<ResearchResult> {
   const textOf = (r: typeof notesResponse) =>
     r.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
   const noteParts = [textOf(notesResponse)];
+  // The web pages the search really found (for the on-screen "Source:" line).
+  const sources: { url: string; title: string }[] = [];
+  const keepSources = (r: typeof notesResponse) => {
+    for (const block of r.content) {
+      // A failed search returns an error object instead of a list: skip it.
+      if (block.type !== "web_search_tool_result" || !Array.isArray(block.content)) continue;
+      for (const hit of block.content) {
+        if (hit.type === "web_search_result" && hit.url && !sources.some((s) => s.url === hit.url)) sources.push({ url: hit.url, title: hit.title ?? "" });
+      }
+    }
+  };
+  keepSources(notesResponse);
 
   // "pause_turn" means the server paused a long search loop. We send the
   // answer so far back and the server continues where it stopped (max 3 times).
@@ -269,6 +284,7 @@ async function researchAny(input: ResearchInput): Promise<ResearchResult> {
     });
     costs.push(claudeCost(model, notesResponse.usage));
     noteParts.push(textOf(notesResponse));
+    keepSources(notesResponse);
   }
   if (notesResponse.stop_reason === "refusal") throw new Error("Research request was declined by the model.");
 
@@ -293,5 +309,5 @@ async function researchAny(input: ResearchInput): Promise<ResearchResult> {
   costs.push(claudeCost(model, planned.usage));
   if (!planned.parsed_output) throw new Error("Could not read the research plan from the model.");
 
-  return { research: planned.parsed_output, costs, sources: [] };
+  return { research: planned.parsed_output, costs, sources: sources.slice(0, 12) };
 }

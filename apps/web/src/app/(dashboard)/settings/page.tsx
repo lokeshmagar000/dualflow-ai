@@ -1,4 +1,5 @@
-import { ApiProblem, api, envPlace, hostName, oneServerMode, problemText, storageSetup, type AutoStatus, type BulkSetup, type StorageCheck } from "@/lib/api";
+import { ApiProblem, api, envPlace, hostName, oneServerMode, problemText, storageSetup, type AiSettings, type AutoStatus, type BulkSetup, type StorageCheck } from "@/lib/api";
+import { AiChoiceForm } from "@/components/AiChoiceControls";
 import { Card, Notice, PageHeader, STATE_TEXT } from "@/components/ui";
 import { insideApiStatus } from "@/lib/inside-api";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
@@ -19,12 +20,14 @@ export default async function SettingsPage() {
   let auto: AutoStatus | null = null;
   let bulk: BulkSetup | null = null;
   let storageCheck: StorageCheck | null = null;
+  let ai: AiSettings | null = null;
   try {
-    [auto, bulk, storageCheck] = await Promise.all([
+    [auto, bulk, storageCheck, ai] = await Promise.all([
       api<AutoStatus>("/auto"),
       api<BulkSetup>("/bulk-uploads/setup").catch(() => null),
       // A real test: the server that makes the download links asks Cloudflare R2 (older APIs: null).
       api<StorageCheck>("/storage/check").catch(() => null),
+      api<AiSettings>("/ai-settings").catch(() => null), // older APIs: null
     ]);
   } catch (e) {
     apiOk = false;
@@ -55,6 +58,18 @@ export default async function SettingsPage() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
+        {ai && (
+          <Card title="AI for writing" className="lg:col-span-2">
+            <AiChoiceForm settings={ai} />
+            <p className="mt-4 border-t border-stroke pt-3 text-xs text-fg2">
+              Claude spent: <b>${ai.claudeSpend.today.usd.toFixed(3)}</b> today, <b>${ai.claudeSpend.month.usd.toFixed(3)}</b> this month
+              {ai.claudeSpend.lastUsedAt ? ` (last used ${new Date(ai.claudeSpend.lastUsedAt).toLocaleString("en-GB", { timeZone: "Asia/Kathmandu", dateStyle: "medium", timeStyle: "short" })} Nepal time)` : " (not used yet)"}.
+              {" "}Voices are not changed by this: they stay Gemini voices, with Edge as the backup.
+              {" "}The Claude key lives only in GitHub (Secret <code>ANTHROPIC_API_KEY</code>), because the videos are made there.
+              {!ai.saved && " Not saved yet: until you press Save, GitHub's AI_PROVIDER setting decides (default Claude)."}
+            </p>
+          </Card>
+        )}
         <Card title="Connection">
           <ul className="divide-y divide-stroke">
             <Row ok={oneServer} label="One server mode" text={oneServer ? "On: the API runs inside this server." : "Off: using the separate dualflow-api server."} warnOnly />
@@ -98,6 +113,7 @@ export default async function SettingsPage() {
               ["bulk-upload.md", "Bulk upload setup"],
               ["put-dashboard-online.md", "Put the dashboard online on Render"],
               ["move-to-vercel.md", "Move the dashboard to Vercel (fast, never sleeps)"],
+              ["claude-for-writing.md", "Use Claude for writing (API key steps)"],
             ].map(([file, label]) => (
               <li key={file}>
                 <a href={`${REPO}/${file}`} target="_blank" rel="noopener noreferrer"
