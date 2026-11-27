@@ -204,10 +204,17 @@ jobs:
         with: { python-version: "3.12" }
       # FFmpeg turns the voice MP3 into raw audio. A ready-made copy downloads in seconds
       # (installing it with apt took about 8 minutes).
+      # If that download breaks (it did on 2026-11-27: "Failed to read version from readme"),
+      # the Install step below gets FFmpeg from Ubuntu instead, so videos are still made.
       - uses: FedericoCarboni/setup-ffmpeg@v3
         id: ffmpeg
+        continue-on-error: true
       - name: Install
         run: |
+          if ! command -v ffmpeg >/dev/null; then
+            echo "FFmpeg download failed: installing it from Ubuntu instead (takes a few minutes)."
+            sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          fi
           pnpm install --frozen-lockfile
           pip install -r packages/voice/python/requirements.txt
           ffmpeg -version >/dev/null && ffmpeg -version | head -n 1
