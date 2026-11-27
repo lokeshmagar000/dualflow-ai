@@ -6,13 +6,15 @@ import { ApiProblem, api, problemText, type ActionResult } from "@/lib/api";
 /** Run the pipeline again for a failed story. */
 export async function retryStory(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const storyId = String(formData.get("storyId"));
+  let github: { started: boolean; message: string } | undefined;
   try {
-    await api(`/stories/${storyId}/retry`, { method: "POST", body: "{}" });
+    ({ github } = await api<{ github?: { started: boolean; message: string } }>(`/stories/${storyId}/retry`, { method: "POST", body: "{}" }));
   } catch (e) {
     return { message: problemText(e) };
   }
   revalidatePath(`/content/${storyId}`);
   revalidatePath("/content");
+  if (github && !github.started) return { ok: false, message: github.message };
   return { ok: true, message: "Started again. It takes about 15 minutes." };
 }
 

@@ -21,13 +21,16 @@ export async function addTopic(_prev: ActionResult, formData: FormData): Promise
 export async function makeVideo(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const topicId = String(formData.get("topicId"));
   const format = String(formData.get("format") ?? "short");
+  let github: { started: boolean; message: string } | undefined;
   try {
-    await api("/stories", { method: "POST", body: JSON.stringify({ topicId, format }) });
+    ({ github } = await api<{ github?: { started: boolean; message: string } }>("/stories", { method: "POST", body: JSON.stringify({ topicId, format }) }));
   } catch (e) {
     return { message: problemText(e) };
   }
   revalidatePath("/ideas");
   revalidatePath("/content");
   revalidatePath("/");
-  return { ok: true, message: "Started. The videos are made with the next run." };
+  // Say clearly when GitHub did NOT start, so you are not left waiting (older APIs send nothing).
+  if (github && !github.started) return { ok: false, message: github.message };
+  return { ok: true, message: github?.started ? "Started on GitHub. Both videos are ready in about 15-20 minutes." : "Started. The videos are made with the next run." };
 }

@@ -139,8 +139,8 @@ export async function storyRoutes(app: FastifyInstance) {
     });
     await prisma.variant.updateMany({ where: { storyId: story.id }, data: { status: "DRAFT", lastError: null } });
     await enqueue(JOB_NAMES.research, { storyId: story.id, run: updated.run });
-    await triggerQuietly(req.log); // free plan: start a GitHub Actions run now
-    return { ok: true, run: updated.run };
+    const github = await triggerQuietly(req.log); // free plan: start a GitHub Actions run now
+    return { ok: true, run: updated.run, github };
   });
 
   /**
@@ -176,8 +176,8 @@ export async function storyRoutes(app: FastifyInstance) {
 
     // The job key makes this safe: adding the same job twice does nothing.
     await enqueue(JOB_NAMES.research, { storyId: story.id, run: story.run });
-    await triggerQuietly(req.log); // free plan: start a GitHub Actions run now
+    const github = await triggerQuietly(req.log); // free plan: start a GitHub Actions run now
 
-    return reply.code(201).send(story);
+    return reply.code(201).send({ ...story, github });
   });
 }
