@@ -9,7 +9,7 @@
  *                                                  clip: ?n=1|2|3 = a short cut from a full video)
  *   POST /variants/:id/uploaded                    { uploaded: true | false } = the "Mark as uploaded" button
  */
-import { myPicturesOf } from "./mypictures";
+import { myPictureRows } from "./mypictures";
 import type { FastifyInstance } from "fastify";
 import archiver from "archiver";
 import { prisma, type Prisma } from "@dualflow/db";
@@ -131,15 +131,7 @@ export async function readyRoutes(app: FastifyInstance) {
         ...s,
         topic,
         // "My pictures": small previews (photos) and names, for the panel under the story.
-        myPictures: await Promise.all(
-          myPicturesOf(myPictures).map(async (m, n) => ({
-            n,
-            kind: m.kind,
-            name: m.name ?? "",
-            credit: m.credit ?? "",
-            previewUrl: m.kind === "image" ? await downloadUrlFor(m.key, { inline: true }).catch(() => null) : null,
-          })),
-        ),
+        myPictures: await myPictureRows(myPictures),
         // Nepal News & Politics: the series and the sources to check before you approve it.
         politics: politicsInfo(topic, sources, research),
         variants: await Promise.all(

@@ -161,7 +161,7 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
                 <VideoCard key={v.id} v={v} canUpload={canUpload} tiktok={tiktokLangs.includes(v.language)} wide={s.format === "LONG"} />
               ))}
             </div>
-            <MyPictures storyId={s.id} pictures={s.myPictures ?? []} />
+            <MyPictures id={s.id} pictures={s.myPictures ?? []} />
           </section>
         ))}
       </div>

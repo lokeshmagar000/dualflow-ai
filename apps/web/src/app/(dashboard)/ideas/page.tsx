@@ -5,6 +5,7 @@ import { AutoSwitch, GenerateNowButton } from "@/components/AutoControls";
 import { PoliticsGenerateNow, PoliticsSeriesForm, PoliticsSwitch } from "@/components/PoliticsControls";
 import { ActionButton } from "@/components/ActionButton";
 import { IdeaForm } from "@/components/IdeaForm";
+import { MyPictures } from "@/components/MyPictures";
 import { nepalTime } from "@/components/UploadStatus";
 import { makeVideo } from "./actions";
 
@@ -63,6 +64,9 @@ export default async function IdeasPage() {
                         <option value="long">Long</option>
                       </select>
                     </ActionButton>
+                    <div className="basis-full">
+                      <MyPictures id={t.id} target="topics" pictures={t.myPictures ?? []} />
+                    </div>
                   </li>
                 ))}
               </ul>

@@ -2,16 +2,21 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "@dualflow/db";
 import { createTopicSchema } from "@dualflow/shared";
 import { getDefaultWorkspace } from "../workspace";
+import { myPictureRows } from "./mypictures";
 
 export async function topicRoutes(app: FastifyInstance) {
   // List the newest topics first.
   app.get("/topics", async () => {
     const ws = await getDefaultWorkspace();
-    return prisma.topic.findMany({
+    const topics = await prisma.topic.findMany({
       where: { workspaceId: ws.id },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
+    // "My pictures" added to a waiting idea, with small previews for the Ideas page.
+    return Promise.all(
+      topics.map(async ({ myPictures, ...t }) => ({ ...t, myPictures: t.status === "USED" ? [] : await myPictureRows(myPictures) })),
+    );
   });
 
   // Add a new idea (from the chat assistant or typed by hand).
