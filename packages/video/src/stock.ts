@@ -361,12 +361,29 @@ const VISION_WAITS_MS = [0, 8_000, 20_000, 40_000];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const CHECK_BATCH = 8;
 
-/** How many picture-check requests this program made (for the cost page). */
+/** How many Gemini picture-check requests this program made (for the cost page). */
 export let visionRequests = 0;
 
+/** A picture checker run by another AI (the worker plugs in Claude here when Claude is chosen). */
+export type PictureChecker = (
+  pictures: { mimeType: string; base64: string }[],
+  instructions: string,
+) => Promise<{ pass: number[]; cost: { provider: string; units: number; unitType: string; usd: number } }>;
+let otherChecker: { check: PictureChecker; first: boolean } | null = null;
+/** Money spent by the other checker (Claude), for the cost page. */
+export const visionCosts: { provider: string; units: number; unitType: string; usd: number }[] = [];
+
+/**
+ * Plug in another picture checker. `first: true` = ask it before Gemini (Claude is the chosen AI);
+ * otherwise it is only the backup when Gemini does not answer.
+ */
+export function setPictureChecker(check: PictureChecker | null, first = false): void {
+  otherChecker = check ? { check, first } : null;
+}
+
 export function visionCheckOn(): boolean {
-  // On by default whenever there is a Gemini key; STOCK_VISION_CHECK=off turns it off.
-  return !/^(off|no|false|0)$/i.test(process.env.STOCK_VISION_CHECK ?? "on") && Boolean(process.env.GEMINI_API_KEY);
+  // On by default whenever there is a Gemini key or another checker (Claude); STOCK_VISION_CHECK=off turns it off.
+  return !/^(off|no|false|0)$/i.test(process.env.STOCK_VISION_CHECK ?? "on") && (Boolean(process.env.GEMINI_API_KEY) || Boolean(otherChecker));
 }
 
 async function previewPart(url: string): Promise<{ inline_data: { mime_type: string; data: string } } | null> {
@@ -395,8 +412,7 @@ export async function checkPictures(candidates: Candidate[], mustShow: string, t
   if (withPictures.length === 0) return [];
   const parts: unknown[] = [];
   withPictures.forEach(({ part }, i) => parts.push({ text: `Picture ${i + 1}:` }, part));
-  parts.push({
-    text: `This is for a short educational video about: ${topic}.
+  const instructions = `This is for a short educational video about: ${topic}.
 The narrator is saying a line, and the picture on screen must clearly show: ${mustShow}.
 Be STRICT. Say a picture passes ONLY if a viewer would instantly see that exact thing, in a real, good-looking scene.
 - A flag must be exactly the right country's flag (any other country's flag fails).
@@ -410,8 +426,8 @@ Be STRICT. Say a picture passes ONLY if a viewer would instantly see that exact 
   green screen, blue screen, grey, any flat colour or simple gradient), 3D renders on a plain background,
   clip-art, icons, and slides of text. These look cheap in a video.
 - Prefer real places, real people and real life with depth and movement.
-Answer with the numbers of the pictures that pass, BEST FIRST (the most lively, real, high-quality scene first).`,
-  });
+Answer with the numbers of the pictures that pass, BEST FIRST (the most lively, real, high-quality scene first).`;
+  parts.push({ text: instructions });
   const body = {
     contents: [{ role: "user", parts }],
     generationConfig: {
@@ -423,7 +439,24 @@ Answer with the numbers of the pictures that pass, BEST FIRST (the most lively, 
       },
     },
   };
-  for (const wait of VISION_WAITS_MS) {
+  const pick = (pass: number[]) => pass.map((n) => withPictures[n - 1]?.c).filter((c): c is Candidate => Boolean(c));
+  const askOther = async () => {
+    if (!otherChecker) return null;
+    try {
+      const pictures = withPictures.map(({ part }) => ({ mimeType: part.inline_data.mime_type, base64: part.inline_data.data }));
+      const { pass, cost } = await otherChecker.check(pictures, instructions);
+      visionCosts.push(cost);
+      return pick(pass);
+    } catch (err) {
+      console.warn(`Picture check (Claude) failed (${(err as Error).message}).`);
+      return null;
+    }
+  };
+  if (otherChecker?.first) {
+    const passed = await askOther();
+    if (passed) return passed;
+  }
+  for (const wait of process.env.GEMINI_API_KEY ? VISION_WAITS_MS : []) {
     if (wait) await sleep(wait);
     for (const model of VISION_MODELS) {
       try {
@@ -441,11 +474,16 @@ Answer with the numbers of the pictures that pass, BEST FIRST (the most lively, 
         const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
         const { pass } = JSON.parse(text) as { pass: number[] };
         visionRequests++;
-        return pass.map((n) => withPictures[n - 1]?.c).filter((c): c is Candidate => Boolean(c));
+        return pick(pass);
       } catch (err) {
         console.warn(`Picture check: ${model} failed (${(err as Error).message}).`);
       }
     }
+  }
+  // Gemini did not answer: try Claude as the backup (if it was not already asked first).
+  if (otherChecker && !otherChecker.first) {
+    const passed = await askOther();
+    if (passed) return passed;
   }
   // The check itself did not work: say so, and let the caller decide (we do NOT guess).
   throw new Error("Picture check unavailable");

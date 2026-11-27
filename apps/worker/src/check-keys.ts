@@ -108,8 +108,16 @@ if (!r2Missing.length && env.DATABASE_URL) {
   }
 }
 
-// 4) Optional keys (only reported as set / not set)
-for (const name of ["AZURE_SPEECH_KEY", "ANTHROPIC_API_KEY"]) report(`${name} (optional)`, env[name] ? "SET" : "not set");
+// 4) Claude (one tiny request, a tiny fraction of a cent). Needed when "Claude" is chosen on the dashboard.
+if (!env.ANTHROPIC_API_KEY) report("Claude (ANTHROPIC_API_KEY)", "MISSING", "only needed when Claude writes the scripts");
+else {
+  const { checkClaudeKey } = await import("@dualflow/ai");
+  const r = await checkClaudeKey();
+  report("Claude (ANTHROPIC_API_KEY)", r.ok ? "PASS" : "FAIL", clean(r.note));
+}
+
+// 5) Optional keys (only reported as set / not set)
+for (const name of ["AZURE_SPEECH_KEY"]) report(`${name} (optional)`, env[name] ? "SET" : "not set");
 
 console.log("\n=== KEY CHECK ===");
 for (const r of results) console.log(`${r.status.padEnd(8)} ${r.service}${r.note ? `  -- ${r.note}` : ""}`);

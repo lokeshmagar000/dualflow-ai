@@ -9,10 +9,12 @@
 import { prisma } from "@dualflow/db";
 import { enqueue } from "@dualflow/queue";
 import { JOB_NAMES } from "@dualflow/shared";
+import { applyDashboardAiChoice } from "./ai-choice";
 
 async function main() {
   const search = (process.env.REDO_NEPALI || "").trim();
   if (!search) return;
+  await applyDashboardAiChoice(); // Claude or Gemini, chosen on the dashboard
   const story = await prisma.story.findFirst({
     where: search.toLowerCase() === "latest" ? {} : { topic: { title: { contains: search, mode: "insensitive" } } },
     orderBy: { createdAt: "desc" },

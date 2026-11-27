@@ -84,8 +84,12 @@ jobs:
     timeout-minutes: 55
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      # AI (free: gemini). Switch to claude later by changing the AI_PROVIDER variable.
-      AI_PROVIDER: ${{ vars.AI_PROVIDER || 'gemini' }}
+      # AI for writing (topics, research, scripts, picture checks). The dashboard's Settings page
+      # ("AI for writing") decides once you press Save there; these are only the starting values.
+      AI_PROVIDER: ${{ vars.AI_PROVIDER || 'claude' }}
+      AI_MODEL: ${{ vars.AI_MODEL }}
+      # Gemini takes over a step when Claude fails (no credit, busy). "off" = no backup.
+      AI_BACKUP: ${{ vars.AI_BACKUP || 'on' }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
       GEMINI_DAILY_REQUESTS: ${{ vars.GEMINI_DAILY_REQUESTS || '20' }}

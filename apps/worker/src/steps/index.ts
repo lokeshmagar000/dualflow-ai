@@ -35,6 +35,7 @@ import {
   renderVideo,
   renderVideoV2,
   visionRequests,
+  visionCosts,
   type FoundMedia,
   type Media,
   type V2Text,
@@ -357,6 +358,7 @@ const render: Step = async (data) => {
     // (a story about Nepal's flag never shows another country's flag).
     const focus = (story.research as { focus?: string } | null)?.focus || story.topic.title;
     const visionBefore = visionRequests;
+    const visionCostsBefore = visionCosts.length;
     for (const [i, shot] of shots.entries()) {
       const p = plan[shot.order - 1];
       const seconds = (shot.endMs - shot.startMs) / 1000;
@@ -495,6 +497,13 @@ const render: Step = async (data) => {
     // The picture check uses free Gemini requests: show them on the costs page.
     const visionUsed = visionRequests - visionBefore;
     if (visionUsed > 0) await recordCosts(story.workspaceId, story.id, [{ provider: "gemini-vision", units: visionUsed, unitType: "requests", usd: 0 }]);
+    // Picture checks done by Claude cost a little money: record them too.
+    const claudeVision = visionCosts.slice(visionCostsBefore);
+    if (claudeVision.length > 0) {
+      const usd = claudeVision.reduce((sum, c) => sum + c.usd, 0);
+      const units = claudeVision.reduce((sum, c) => sum + c.units, 0);
+      await recordCosts(story.workspaceId, story.id, [{ provider: `${claudeVision[0]!.provider}:vision`, units, unitType: "tokens", usd }]);
+    }
 
     // Remember where each clip came from (credits).
     const assets = await Promise.all(

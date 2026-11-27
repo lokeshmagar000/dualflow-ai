@@ -35,6 +35,7 @@ import { JOB_NAMES, LANGUAGES } from "@dualflow/shared";
 import { aiProvider, currentQuotaDayStart, suggestTopic } from "@dualflow/ai";
 import { geminiDailyLimit } from "./budget";
 import { createPoliticsTopic, isPoliticsTurn, politicsSettings } from "./politics-topic";
+import { applyDashboardAiChoice } from "./ai-choice";
 
 /** Gemini requests one whole story needs: 1 topic + 2 research + 2 scripts, plus room for one retry. */
 const GEMINI_REQUESTS_PER_STORY = 6;
@@ -70,6 +71,7 @@ export function roomForRun(opts: { force: boolean; perDay: number; perRun: numbe
 }
 
 async function main() {
+  await applyDashboardAiChoice(); // Claude or Gemini, chosen on the dashboard
   const force = process.env.AUTO_FORCE === "true"; // the "Generate now" button
   const perDay = Number(process.env.AUTO_STORIES_PER_DAY ?? 2);
   const perRun = Math.max(1, Number(process.env.AUTO_STORIES_PER_RUN ?? 1));

@@ -17,6 +17,7 @@ import { bulkRoutes } from "./routes/bulk";
 import { readyRoutes } from "./routes/ready";
 import { autoRoutes } from "./routes/auto";
 import { politicsRoutes } from "./routes/politics";
+import { aiSettingsRoutes } from "./routes/ai-settings";
 import { connectRoutes } from "./routes/connect";
 import { uploadPostRoutes } from "./routes/uploadpost";
 
@@ -52,6 +53,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(readyRoutes);
   await app.register(autoRoutes);
   await app.register(politicsRoutes);
+  await app.register(aiSettingsRoutes);
   await app.register(connectRoutes);
   await app.register(uploadPostRoutes);
 

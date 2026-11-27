@@ -81,3 +81,21 @@ export function claude() {
   }
   return client;
 }
+
+/**
+ * Key check (check-keys workflow): one tiny request to the chosen Claude model.
+ * Costs a tiny fraction of a cent. Also shows "no credit left" problems.
+ */
+export async function checkClaudeKey(): Promise<{ ok: boolean; note: string }> {
+  const model = currentModel();
+  try {
+    await claude().messages.create({ model, max_tokens: 200, output_config: { effort: "low" }, messages: [{ role: "user", content: "Say OK." }] });
+    return { ok: true, note: `${model} answered` };
+  } catch (err) {
+    if (err instanceof Anthropic.AuthenticationError) return { ok: false, note: "the key is wrong (401). Make a new key and paste it again." };
+    if (err instanceof Anthropic.PermissionDeniedError) return { ok: false, note: "the key is not allowed to use this model (403)." };
+    if (err instanceof Anthropic.BadRequestError) return { ok: false, note: `request refused (400), often "credit balance too low": ${String(err.message).slice(0, 120)}` };
+    if (err instanceof Anthropic.APIError) return { ok: false, note: `Claude error ${err.status ?? ""}: ${String(err.message).slice(0, 120)}` };
+    return { ok: false, note: (err as Error).message.slice(0, 120) };
+  }
+}

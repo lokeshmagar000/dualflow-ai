@@ -15,7 +15,7 @@ import { NEUTRAL_RULES, politicsSeries, type PoliticsSeriesId } from "@dualflow/
 import { claude, currentModel, fallbackOptions } from "./client";
 import { claudeCost, type CostLine } from "./cost";
 import { isMockAI } from "./mock";
-import { aiProvider } from "./provider";
+import { withGeminiBackup } from "./provider";
 import { askGeminiJson } from "./gemini";
 import type { NewsItem } from "./news";
 
@@ -82,23 +82,27 @@ export async function suggestPoliticsTopic(input: {
   const costs: CostLine[] = [];
   if (isMockAI()) {
     idea = { headline: series.needsNews ? 1 : 0, title: series.needsNews ? `Explained: ${news[0]!.title}` : PRACTICE[series.id], notes: "Practice topic (AI_PROVIDER=mock)." };
-  } else if (aiProvider() === "gemini") {
-    const { value, cost } = await askGeminiJson(PoliticsIdeaSchema, { system: SYSTEM, prompt: prompt(series.id, input.recentTitles, news, now) });
-    idea = value;
-    costs.push(cost);
   } else {
-    const model = currentModel();
-    const res = await claude().beta.messages.parse({
-      model,
-      max_tokens: 2000,
-      ...fallbackOptions(),
-      output_config: { effort: "low", format: betaZodOutputFormat(PoliticsIdeaSchema) },
-      system: SYSTEM,
-      messages: [{ role: "user", content: prompt(series.id, input.recentTitles, news, now) }],
-    });
-    if (!res.parsed_output) throw new Error("Could not read the politics topic from the model.");
-    idea = res.parsed_output;
-    costs.push(claudeCost(model, res.usage));
+    const p = prompt(series.id, input.recentTitles, news, now);
+    const answer = await withGeminiBackup(
+      "Politics topic",
+      async () => {
+        const model = currentModel();
+        const res = await claude().beta.messages.parse({
+          model,
+          max_tokens: 2000,
+          ...fallbackOptions(),
+          output_config: { effort: "low", format: betaZodOutputFormat(PoliticsIdeaSchema) },
+          system: SYSTEM,
+          messages: [{ role: "user", content: p }],
+        });
+        if (!res.parsed_output) throw new Error("Could not read the politics topic from the model.");
+        return { value: res.parsed_output, cost: claudeCost(model, res.usage) };
+      },
+      () => askGeminiJson(PoliticsIdeaSchema, { system: SYSTEM, prompt: p }),
+    );
+    idea = answer.value;
+    costs.push(answer.cost);
   }
 
   const sources: TopicSource[] = [];

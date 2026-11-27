@@ -13,7 +13,9 @@
  * (default 45), so a GitHub Actions run never hits its time limit.
  */
 import { prisma, type PipelineJob } from "@dualflow/db";
-import { AIQuotaError, isPermanentError } from "@dualflow/ai";
+import { AIQuotaError, aiProvider, claudeCheckPictures, claudeKeySet, isPermanentError } from "@dualflow/ai";
+import { setPictureChecker } from "@dualflow/video";
+import { applyDashboardAiChoice } from "./ai-choice";
 import { VoiceConfigError } from "@dualflow/voice";
 import { claimNext, done, fail, nextRunAfter, postpone, queueCounts } from "@dualflow/queue";
 import type { JobName } from "@dualflow/shared";
@@ -86,6 +88,9 @@ async function lane() {
 }
 
 async function main() {
+  await applyDashboardAiChoice(); // Claude or Gemini, chosen on the dashboard's Settings page
+  // Picture check: Claude first when Claude is chosen; otherwise Claude is only the backup when Gemini fails.
+  if (aiProvider() !== "mock" && claudeKeySet()) setPictureChecker(claudeCheckPictures, aiProvider() === "claude");
   console.log(`Worker started (mode: ${once ? "once" : "forever"}, ${concurrency} at a time)`);
   await Promise.all(Array.from({ length: concurrency }, () => lane()));
   const left = await queueCounts();
