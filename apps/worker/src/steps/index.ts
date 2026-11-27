@@ -55,6 +55,8 @@ import { planStory } from "../publishing";
 import { planShots, type ScenePart } from "./shots";
 import { fetchFlag, findCommonsPhoto, type CommonsPhoto, type NewsCardInput, type V2NewsCard, type V2Props } from "@dualflow/video";
 import { fullVideoExtras, makeShorts, sharedPictures, type SavedClip } from "./full";
+import { findNewsPhoto, newsPhotoCheck } from "@dualflow/video";
+import { pictureSpots, type MyPicture } from "./mypictures";
 
 type Step = (data: PipelineJobData) => Promise<void>;
 
@@ -381,9 +383,48 @@ const render: Step = async (data) => {
     // Shorts may still use a b-roll idea as the very last choice; a full video repeats the line's
     // own picture instead (a right picture twice beats a wrong one).
     const extraCount = new Map<number, number>();
+    // 1st choice: YOUR pictures ("My pictures" on the Ready page). They take the news-photo lines
+    // first, then lines spread over the video. 2nd: a REAL news photo (Wikimedia Commons, with
+    // PIB / PM India photos) for lines about the event itself. 3rd: stock video of the line's subject.
+    const mine = ((story.myPictures as unknown as MyPicture[] | null) ?? []).filter((m) => m?.key);
+    const mySpots = pictureSpots(plan.map((q) => Boolean(q?.newsPhoto?.trim())), mine.length);
+    const myMedia = async (k: number, name: string): Promise<FoundMedia | null> => {
+      const m = mine[k]!;
+      try {
+        const file = `${name}-mine${path.extname(m.key) || (m.kind === "video" ? ".mp4" : ".jpg")}`;
+        await writeFile(path.join(job.dir, file), await readFile(m.key));
+        return { file, kind: m.kind, sourceUrl: "", provider: "mine", id: 0, credit: m.credit || undefined, fit: m.kind === "image" ? "contain" : undefined };
+      } catch (err) {
+        console.warn(`My pictures: could not read ${m.key} (${(err as Error).message}).`);
+        return null;
+      }
+    };
+    const newsUsed = new Set<string>();
+    const news = (key: string, query: string, mustShow: string, name: string) => {
+      const search = (dir: string, file: string) =>
+        findNewsPhoto(query, dir, file, newsPhotoCheck(mustShow, focus), newsUsed).then((r) =>
+          r ? { file: r.file, kind: "image" as const, sourceUrl: r.pageUrl, provider: "commons", id: 0, credit: r.credit, fit: "contain" as const } : null,
+        );
+      return shared ? shared.find(key, (dir) => search(dir, `m-${key}`), job.dir, name) : search(job.dir, name);
+    };
     for (const [i, shot] of shots.entries()) {
       const p = plan[shot.order - 1];
       const seconds = (shot.endMs - shot.startMs) / 1000;
+      if (!shot.extra && shot.part === 0) {
+        const k = mySpots.get(shot.order);
+        const own = k === undefined ? null : await myMedia(k, `shot-${i + 1}`);
+        if (own) {
+          media.push(own);
+          continue;
+        }
+        if (p?.newsPhoto?.trim()) {
+          const real = await news(`n${shot.order}`, p.newsPhoto, p.mustShow || p.newsPhoto, `shot-${i + 1}`);
+          if (real) {
+            media.push(real);
+            continue;
+          }
+        }
+      }
       const clean = (list: (string | undefined)[]) => [...new Set(list.map((q) => q?.trim() ?? "").filter(Boolean))];
       // Extra pieces show the whole line's subject; a line part shows what that part names.
       const lineMustShow = shot.extra
@@ -428,7 +469,8 @@ const render: Step = async (data) => {
     const brand = brandInfo.name;
     const accent = process.env.VIDEO_ACCENT || BRAND_COLORS.marigold;
     // durationSec lets the video loop a short clip smoothly instead of freezing on its last frame.
-    const toMedia = (m: FoundMedia | null | undefined) => (m ? { src: job.url(m.file), kind: m.kind, durationSec: m.durationSec } : null);
+    const toMedia = (m: FoundMedia | null | undefined) =>
+      m ? { src: job.url(m.file), kind: m.kind, durationSec: m.durationSec, ...(m.credit ? { credit: m.credit } : {}), ...(m.fit ? { fit: m.fit } : {}) } : null;
 
     const videoFile = path.join(job.dir, "video.mp4");
     const started = Date.now();

@@ -12,6 +12,7 @@
  *                   neutral news rules, like the Nepal News & Politics series.
  *   FULL_LANGUAGES  "ne,en" (default), or "ne" for Nepali only
  *   FULL_TOPIC=resume  finish a full video whose run was stopped (no new story, no new AI writing)
+ *   FULL_TOPIC=remake <story id>  make that story's videos again (Ready page "Remake" button)
  */
 import { prisma, Prisma } from "@dualflow/db";
 import { enqueue } from "@dualflow/queue";
@@ -50,8 +51,31 @@ async function resume() {
   await prisma.$disconnect();
 }
 
+/**
+ * "remake <story id>" (the Remake button on the Ready page): make that story's videos again with
+ * the same script and voice. Pictures are searched again: your "My pictures" first. No AI writing.
+ */
+async function remake(storyId: string) {
+  const story = await prisma.story.findUnique({ where: { id: storyId }, include: { variants: { include: { voiceovers: { take: 1 } } } } });
+  if (!story) throw new Error(`Remake: story ${storyId} was not found.`);
+  const variants = story.variants.filter((v) => v.voiceovers.length > 0);
+  if (variants.length === 0) throw new Error("Remake: this story has no voice yet, so there is nothing to remake.");
+  // Old render steps out, so the same steps can be queued again.
+  await prisma.pipelineJob.deleteMany({ where: { storyId, step: JOB_NAMES.render } });
+  await prisma.story.update({ where: { id: storyId }, data: { status: "GENERATING", lastError: null } });
+  for (const v of variants) {
+    await prisma.variant.update({ where: { id: v.id }, data: { status: "GENERATING" } });
+    await enqueue(JOB_NAMES.render, { storyId, variantId: v.id, run: story.run });
+  }
+  console.log(`Remake: ${variants.length} video(s) of story ${storyId} will be made again (same script and voice).`);
+  await prisma.$disconnect();
+}
+
 async function main() {
-  if ((process.env.FULL_TOPIC ?? "").trim().toLowerCase() === "resume") return resume();
+  const command = (process.env.FULL_TOPIC ?? "").trim();
+  if (command.toLowerCase() === "resume") return resume();
+  const remakeId = /^remake\s+([a-z0-9]{10,40})$/i.exec(command)?.[1];
+  if (remakeId) return remake(remakeId);
   // "topic || notes": the GitHub form has one box, so notes can follow the topic after "||".
   const [rawTitle = "", ...noteParts] = (process.env.FULL_TOPIC ?? "").split("||");
   const title = rawTitle.trim();

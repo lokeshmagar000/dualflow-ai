@@ -109,9 +109,12 @@ export async function storyRoutes(app: FastifyInstance) {
     let files = 0;
     let filesProblem: string | null = null;
     try {
-      for (const file of await listFiles(`stories/${story.id}/`)) {
-        await deleteFile(file.key);
-        files++;
+      // ...and your "My pictures" for it under "mypictures/<storyId>/".
+      for (const prefix of [`stories/${story.id}/`, `mypictures/${story.id}/`]) {
+        for (const file of await listFiles(prefix)) {
+          await deleteFile(file.key);
+          files++;
+        }
       }
     } catch (e) {
       filesProblem = e instanceof Error ? e.message : String(e);

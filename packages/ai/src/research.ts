@@ -45,6 +45,12 @@ export const ResearchSchema = z.object({
           .describe(
             "2-4 English words for a SECOND, different view of the SAME subject (shown when the line is long), e.g. visualQuery 'hydropower dam nepal' -> altQuery 'river water turbine'; 'everest snowy peak' -> 'himalaya aerial view'",
           ),
+        newsPhoto: z
+          .string()
+          .default("")
+          .describe(
+            "ONLY when the scene is about a real event or a named public person (a meeting, a signing, a visit, a speech, a disaster): English search words for a REAL news photo of it, with full names and the place, e.g. 'Narendra Modi Nepal Prime Minister Hyderabad House'. Empty string for every other scene",
+          ),
         mustShow: z
           .string()
           .default("")
@@ -106,6 +112,9 @@ const PICTURE_RULES = `- "idea" must say the actual fact (with its number), not 
   When the sentence is about a person or a meeting, show the place or thing it is about
   ("new delhi parliament", "nepal india border gate", "government building flags") - never an unrelated scene.
 - "altQuery" is another view of the same subject (another angle or detail), never a different subject.
+- "newsPhoto": for scenes about the real event or a named leader, words to find a REAL photo of it
+  (full names + place or event). The video then shows that real photo instead of stock footage.
+  Leave it empty for background or topic scenes (hydropower, mountains, trade...): they get stock video.
 - Make it beautiful: prefer lively, cinematic shots (aerial views, moving water, golden light, busy streets)
   over plain or static ones, as long as they show the subject.
 - "mustShow" names the subject of the sentence exactly; a picture check uses it to reject wrong pictures.

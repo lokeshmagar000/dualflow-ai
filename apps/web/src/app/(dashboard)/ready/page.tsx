@@ -8,6 +8,7 @@ import { ActionButton } from "@/components/ActionButton";
 import { IconCheck, IconChevronLeft, IconChevronRight, IconDownload, IconUpload } from "@/components/icons";
 import { setUploaded, uploadAll, uploadVideo } from "./actions";
 import { TikTokUploadButton } from "@/components/TikTokUploadButton";
+import { MyPictures } from "@/components/MyPictures";
 
 /**
  * Ready to upload: every finished video, Nepali and English side by side.
@@ -160,6 +161,7 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
                 <VideoCard key={v.id} v={v} canUpload={canUpload} tiktok={tiktokLangs.includes(v.language)} wide={s.format === "LONG"} />
               ))}
             </div>
+            <MyPictures storyId={s.id} pictures={s.myPictures ?? []} />
           </section>
         ))}
       </div>

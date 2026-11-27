@@ -88,16 +88,55 @@ export function Background({ media, index, frames }: { media?: Media | null; ind
     const usable = media.durationSec ? Math.floor(media.durationSec * 30) - start - 2 : 0;
     return <AbsoluteFill>{usable > 15 && usable < frames ? <Loop durationInFrames={usable}>{clip}</Loop> : clip}</AbsoluteFill>;
   }
+  if (media?.kind === "image" && media.fit === "contain") {
+    // A real news photo: the whole photo (nobody's head cut off), with a soft zoom, on a blurred
+    // and darkened copy of itself that fills the rest of the screen.
+    return (
+      <AbsoluteFill>
+        <Img src={media.src} style={{ ...fill, transform: "scale(1.15)", filter: "blur(28px) brightness(0.55)" }} />
+        <AbsoluteFill style={{ padding: "4%" }}>
+          <Img src={media.src} style={{ ...fill, objectFit: "contain", transform: `scale(${zoomIn ? 1 + 0.08 * t : 1.08 - 0.08 * t})` }} />
+        </AbsoluteFill>
+        {media.credit ? <Credit text={media.credit} /> : null}
+      </AbsoluteFill>
+    );
+  }
   if (media?.kind === "image") {
     return (
       <AbsoluteFill>
         <Img src={media.src} style={fill} />
+        {media.credit ? <Credit text={media.credit} /> : null}
       </AbsoluteFill>
     );
   }
   const [a, b] = GRADIENTS[index % GRADIENTS.length]!;
   const angle = 135 + interpolate(frame, [0, Math.max(1, frames)], [0, 40]);
   return <AbsoluteFill style={{ background: `linear-gradient(${angle}deg, ${a}, ${b})` }} />;
+}
+
+/** The photo's credit (its licence asks for it): small, bottom right, readable on any picture. */
+function Credit({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        right: 18,
+        bottom: 14,
+        maxWidth: "60%",
+        fontFamily: FONT,
+        fontSize: 22,
+        color: "rgba(255,255,255,0.85)",
+        background: "rgba(0,0,0,0.45)",
+        padding: "3px 10px",
+        borderRadius: 6,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      {text}
+    </div>
+  );
 }
 
 /** Dark shading at the top and bottom, so white text is easy to read on any picture. */

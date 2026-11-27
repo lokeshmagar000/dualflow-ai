@@ -27,6 +27,10 @@ export type FoundMedia = {
   id: number;
   /** Clip length in seconds (0 or missing for photos), so a short clip can loop instead of freezing. */
   durationSec?: number;
+  /** News photos and your own pictures: credit line shown on screen. */
+  credit?: string;
+  /** News photos: show the whole photo (see Media.fit). */
+  fit?: "contain";
 };
 
 /** Which stock site to use, or null for colour backgrounds. */
@@ -39,6 +43,23 @@ export function stockProvider(): "pixabay" | "pexels" | null {
   if (process.env.PEXELS_API_KEY) return "pexels";
   return null;
 }
+
+/**
+ * Every stock site that has a key, best for real-looking video first. Pexels has the most
+ * cinematic clips, so it is asked for VIDEOS first; Pixabay adds more choice (clips and photos).
+ * STOCK_PROVIDER=pixabay|pexels keeps only that one.
+ */
+export function stockProviders(): ("pixabay" | "pexels")[] {
+  const choice = (process.env.STOCK_PROVIDER ?? "auto").toLowerCase();
+  if (choice === "none") return [];
+  const all = (["pexels", "pixabay"] as const).filter((p) => (p === "pexels" ? process.env.PEXELS_API_KEY : process.env.PIXABAY_API_KEY));
+  return choice === "pixabay" || choice === "pexels" ? all.filter((p) => p === choice) : [...all];
+}
+
+/** Pexels allows 200 searches an hour: after a "too many" answer, stop asking it in this run. */
+let pexelsResting = false;
+/** Pexels and Pixabay ids could be the same number: Pexels ids are moved far away. */
+const PEXELS_ID_OFFSET = 10_000_000_000;
 
 type PexelsVideo = {
   id: number;
@@ -64,6 +85,8 @@ async function download(url: string, file: string) {
 /** One search result from any stock site, before we download it. */
 export type Candidate = {
   id: number;
+  /** Which stock site it came from (when more than one is used). */
+  provider?: "pixabay" | "pexels";
   kind: "video" | "image";
   /** Words that describe the clip (Pixabay tags, or the words in a Pexels page address). */
   tags: string;
@@ -515,16 +538,28 @@ export async function findCheckedMedia(
   }
   const pool = new Map<number, Candidate & { score: number }>();
   for (const query of queries) {
-    for (const photos of [false, true]) {
-      try {
-        const found = (await search(provider, query, format, photos)).filter((c) => !used.has(c.id));
-        // Keep the 6 best of each search, so every query gets a fair chance.
-        for (const c of rankCandidates(query, found, minSeconds).slice(0, 6)) {
-          const prev = pool.get(c.id);
-          if (!prev || prev.score < c.score) pool.set(c.id, c);
+    for (const site of stockProviders()) {
+      // Pexels: videos only (its best part, and it keeps us under its 200 searches an hour).
+      for (const photos of site === "pexels" ? [false] : [false, true]) {
+        if (site === "pexels" && pexelsResting) continue;
+        try {
+          const found = (await search(site, query, format, photos))
+            .map((c) => ({ ...c, provider: site, id: site === "pexels" ? c.id + PEXELS_ID_OFFSET : c.id }))
+            .filter((c) => !used.has(c.id));
+          // Keep the 6 best of each search, so every query gets a fair chance.
+          for (const c of rankCandidates(query, found, minSeconds).slice(0, 6)) {
+            const prev = pool.get(c.id);
+            if (!prev || prev.score < c.score) pool.set(c.id, c);
+          }
+        } catch (err) {
+          const message = (err as Error).message;
+          if (site === "pexels" && /429|too many|rate/i.test(message)) {
+            pexelsResting = true;
+            console.warn("pexels: hourly search limit reached, using Pixabay only for the rest of this run.");
+          } else {
+            console.warn(`${site}: search "${query}" failed (${message}).`);
+          }
         }
-      } catch (err) {
-        console.warn(`${provider}: search "${query}" failed (${(err as Error).message}).`);
       }
     }
   }
@@ -533,7 +568,7 @@ export async function findCheckedMedia(
     const file = `${name}.${pick.kind === "video" ? "mp4" : "jpg"}`;
     await download(pick.downloadUrl, path.join(dir, file));
     used.add(pick.id);
-    return { file, kind: pick.kind, sourceUrl: pick.sourceUrl, provider, id: pick.id, durationSec: pick.duration, checked };
+    return { file, kind: pick.kind, sourceUrl: pick.sourceUrl, provider: pick.provider ?? provider, id: pick.id, durationSec: pick.duration, checked };
   };
   for (let i = 0; i < Math.min(ordered.length, CHECK_BATCH * 3); i += CHECK_BATCH) {
     const batch = ordered.slice(i, i + CHECK_BATCH);
@@ -552,4 +587,16 @@ export async function findCheckedMedia(
   }
   console.warn(`Picture check: nothing showed "${mustShow}" (${ordered.length} looked at).`);
   return null;
+}
+
+/**
+ * The picture check for real news photos (see findNewsPhoto in newsmedia.ts): returns the
+ * numbers of the photos that show `mustShow`, best first. Undefined when no check is set up.
+ */
+export function newsPhotoCheck(mustShow: string, topic: string): ((list: { preview: string; index: number }[]) => Promise<number[]>) | undefined {
+  if (!visionCheckOn()) return undefined;
+  return async (list) => {
+    const candidates: Candidate[] = list.map((p) => ({ id: p.index, kind: "image", tags: "", duration: 0, rightShape: true, downloadUrl: p.preview, sourceUrl: "", preview: p.preview }));
+    return (await checkPictures(candidates, `${mustShow} (a real news photo of this)`, topic)).map((c) => c.id);
+  };
 }

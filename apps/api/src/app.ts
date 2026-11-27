@@ -14,6 +14,7 @@ import { costRoutes } from "./routes/costs";
 import { pipelineRoutes } from "./routes/pipeline";
 import { publishingRoutes } from "./routes/publishing";
 import { bulkRoutes } from "./routes/bulk";
+import { myPicturesRoutes } from "./routes/mypictures";
 import { readyRoutes } from "./routes/ready";
 import { autoRoutes } from "./routes/auto";
 import { politicsRoutes } from "./routes/politics";
@@ -50,6 +51,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(pipelineRoutes);
   await app.register(publishingRoutes);
   await app.register(bulkRoutes);
+  await app.register(myPicturesRoutes);
   await app.register(readyRoutes);
   await app.register(autoRoutes);
   await app.register(politicsRoutes);

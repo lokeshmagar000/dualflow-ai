@@ -323,6 +323,8 @@ export interface ReadyStory {
   topic: { title: string; source: string };
   /** Nepal News & Politics video: series name + sources to check (null for other videos). */
   politics?: { series: string; sources: { name: string; url: string }[] } | null;
+  /** "My pictures": your own photos / clips for this story (they replace the robot's pictures). */
+  myPictures?: { n: number; kind: "image" | "video"; name: string; credit: string; previewUrl: string | null }[];
   variants: ReadyVariant[];
 }
 export interface ReadyPage {

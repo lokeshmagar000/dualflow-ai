@@ -219,6 +219,8 @@ model Story {
   visualPlan  Json?
   // Research summary and facts shared by both languages.
   research    Json?
+  // "My pictures": your own photos/clips for this story [{ key, kind, credit, name }] (Ready page).
+  myPictures  Json?
   status      ContentStatus @default(DRAFT)
   lastError   String?
   // Goes up by one each time the pipeline is retried.
