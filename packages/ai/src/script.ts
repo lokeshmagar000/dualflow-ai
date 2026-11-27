@@ -106,6 +106,10 @@ export const ScriptSchema = z.object({
     )
     .default([])
     .describe("NEWS / POLITICS videos only: EVERY scene where a real public person (leader, official, celebrity, player) is named. Their real photo shows when the name is said."),
+  chapterTitles: z
+    .array(z.string())
+    .default([])
+    .describe("FULL VIDEOS only (shorts: empty): one title per chapter, same order, target language, 2-5 words each"),
 });
 export type Script = z.infer<typeof ScriptSchema>;
 
@@ -124,6 +128,17 @@ const STYLE: Record<Language, string> = {
 
 /** Most words in one scene, so one picture never has to cover a long speech. */
 export const MAX_SCENE_WORDS: Record<Language, number> = { ne: 16, en: 20 };
+
+/** FULL VIDEO (4-5 minutes): no loop, chapters, and a question + subscribe at the end. */
+const LONG_SCRIPT_RULES = `- Scene 1 is the hook: one curious sentence under 12 words, spoken from the very first second. No greeting.
+- Scene 2 says in one sentence what the viewer will learn.
+- The FIRST scene of each chapter opens that chapter's idea with a mini-hook, so the chapter also works alone as a short.
+  Never start a chapter with "also", "and", "secondly" or "as we said": a viewer may start watching there.
+- The LAST scene of each chapter closes its idea.
+- The "open_loop" scene promises something that comes later. The "payoff" scene gives the biggest surprise.
+- The last scenes: a one-line summary, then ONE neutral question for the comments, then "subscribe for more".
+- Talk like a calm, friendly news explainer: clear, warm, no shouting, no filler. Each fact only once.
+- chapterTitles: one short title per chapter (same order as the chapters list), in the target language.`;
 
 const CLASSIC_SCRIPT_RULES = `- Scene 1 is a strong hook (surprise or question). No greeting, no "welcome", no "in this video".
 - No filler ("did you know that..." more than once, "interestingly", "let's find out").
@@ -159,12 +174,16 @@ function scriptPrompt(input: ScriptInput): { system: string; prompt: string } {
     .map((s, i) => `${i + 1}. [${s.purpose}] say: ${s.idea}\n   on screen: ${s.visualQuery}`)
     .join("\n");
   const factsText = research.facts.map((f) => `- ${f.claim}`).join("\n");
+  const long = input.format === "LONG";
   const length =
     input.format === "SHORT"
       ? videoStyle() === "v2"
         ? "The whole script must take about 30-45 seconds to speak."
         : "The whole script must take about 40-55 seconds to speak."
-      : "The whole script must take about 8-12 minutes to speak.";
+      : "This is a FULL VIDEO: the whole script must take about 4-5 minutes to speak (about 600-700 English words; Nepali about the same length when spoken).";
+  const chaptersText = (research.chapters ?? []).length
+    ? `\nChapters (write one chapterTitle for each, same order):\n${research.chapters.map((c, i) => `${i + 1}. scenes ${c.firstScene}-${c.lastScene}: ${c.title}`).join("\n")}\n`
+    : "";
 
   return {
     system: `You are a scriptwriter for a bilingual (Nepali + English) educational video channel.
@@ -179,7 +198,7 @@ Rules (the picture changes with every scene, so the words must fit the picture):
 - Each entry says ONLY that scene's "say" idea, and talks about what is "on screen" at that moment.
   Never talk about the next scene's thing early, and never go back to an earlier one.
 - Each entry: one or two short sentences, at most ${MAX_SCENE_WORDS[language]} words.
-${videoStyle() === "v2" ? V2_SCRIPT_RULES : CLASSIC_SCRIPT_RULES}
+${long ? LONG_SCRIPT_RULES : videoStyle() === "v2" ? V2_SCRIPT_RULES : CLASSIC_SCRIPT_RULES}
 - Plain spoken words only: no emojis, hashtags, brackets, stage directions or "Scene 1:" labels.
 
 Pictures inside a line ("parts"):
@@ -202,9 +221,9 @@ On-screen text (target language):
 - hookLines: 1-2 short lines for the first frame (a promise or shock, 2-4 words each). hookHighlight: the line with the surprise.
 - topicChip: 2-3 words naming the topic.
 - emphasis: 1-2 key words per scene, copied exactly as written in the narration.
-- cards: for each striking number, year, date or time in the narration (0-3 in total), an animated card
+- cards: for each striking number, year, date or time in the narration (${long ? "4-8" : "0-3"} in total), an animated card
   on that scene: kind "number" (counts up), "year" (digits roll), "date" (calendar flips), "time" (clock turns).
-- followText: a short "Follow for Part 2" message.
+- followText: ${long ? 'a short "Subscribe for more" message.' : 'a short "Follow for Part 2" message.'}
 ${input.politics ? NEWS_CARD_RULES(input) : "- newsCards and people: leave empty."}
 
 Summary:
@@ -215,7 +234,7 @@ ${factsText}
 
 Scenes:
 ${scenesText}
-
+${chaptersText}
 ${LANGUAGE_REMINDER[language]}${input.extraNote ? `\n\n${input.extraNote}` : ""}`,
   };
 }
@@ -240,7 +259,7 @@ ONLY visualQuery and mustShow are in English. An answer in English is wrong.`,
 /** News graphics for Nepal News & Politics videos (stock sites have no pictures of politicians or events). */
 function NEWS_CARD_RULES(input: ScriptInput) {
   const heads = (input.headlines ?? []).map((h) => `- "${h.title}" (${h.publisher})`).join("\n");
-  return `- newsCards: 2-5 news graphics on the scenes where they help most (at most one per scene). Kinds:
+  return `- newsCards: ${input.format === "LONG" ? "6-10" : "2-5"} news graphics on the scenes where they help most (at most one per scene). Kinds:
   headline: on the scene that says what happened, copy one REAL headline EXACTLY (keep it in its original language):
 ${heads || "  (no headline: do not use this kind)"}
   quote: ONLY words a person really said that appear in quotation marks in the facts below. Never make up a quote.
@@ -320,8 +339,14 @@ function cleanParts(parts: PartInput[]): { text: string; visualQuery: string; mu
   return clean.slice(0, 4);
 }
 
+/** How many cards, news graphics and people photos fit: a full video has room for more. */
+export function limitsFor(format: "SHORT" | "LONG") {
+  return format === "LONG" ? { cards: 8, newsCards: 10, people: 16 } : { cards: 3, newsCards: 5, people: 8 };
+}
+
 /** Normalise Unicode (NFC) so the same word is always stored the same way. */
-function normalise(script: Script): Script {
+function normalise(script: Script, format: "SHORT" | "LONG" = "SHORT"): Script {
+  const limits = limitsFor(format);
   const nfc = (s: string) => s.normalize("NFC");
   return {
     ...script,
@@ -335,7 +360,7 @@ function normalise(script: Script): Script {
     emphasis: script.emphasis.map((w) => nfc(w).trim()).filter(Boolean),
     cards: script.cards
       .filter((c) => c.order > 0 && c.big.trim())
-      .slice(0, 3)
+      .slice(0, limits.cards)
       .map((c) => ({ ...c, big: c.big.trim(), small: nfc(c.small).trim() })),
     followText: nfc(script.followText).trim(),
     newsCards: (script.newsCards ?? [])
@@ -351,7 +376,8 @@ function normalise(script: Script): Script {
         countries: c.countries.map((x) => x.trim().toLowerCase()).filter((x) => /^[a-z]{2}$/.test(x)).slice(0, 4),
         points: c.points.map((p) => ({ when: nfc(p.when).trim(), label: nfc(p.label).trim() })).filter((p) => p.when).slice(0, 4),
       })),
-    people: trustedPeople(script.people ?? []),
+    people: trustedPeople(script.people ?? [], limits.people),
+    chapterTitles: (script.chapterTitles ?? []).map((t) => nfc(t).trim()).filter(Boolean),
   };
 }
 
@@ -366,6 +392,7 @@ export function trustedNewsCards(
   cards: Script["newsCards"],
   research: Pick<Research, "facts" | "summary">,
   headlines: { title: string; publisher: string }[] = [],
+  max = 5,
 ): Script["newsCards"] {
   const quoted = research.facts.some((f) => /["“”]/.test(f.claim)) || /["“”]/.test(research.summary);
   const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -373,7 +400,7 @@ export function trustedNewsCards(
   const used = new Set<number>();
   const out: Script["newsCards"] = [];
   for (const c of cards) {
-    if (used.has(c.order) || out.length >= 5) continue;
+    if (used.has(c.order) || out.length >= max) continue;
     let card = c;
     if (c.kind === "quote" && (!quoted || !c.title || !c.by)) continue;
     if (c.kind === "headline") {
@@ -395,7 +422,7 @@ export function trustedNewsCards(
  * People named in the narration: a full English name (2+ words) is needed to find the right photo.
  * One entry per person per scene, at most 8.
  */
-export function trustedPeople(people: Script["people"]): Script["people"] {
+export function trustedPeople(people: Script["people"], max = 8): Script["people"] {
   const seen = new Set<string>();
   const out: Script["people"] = [];
   for (const p of people) {
@@ -406,14 +433,14 @@ export function trustedPeople(people: Script["people"]): Script["people"] {
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({ order: p.order, person, name, role: p.role.normalize("NFC").trim() });
-    if (out.length >= 8) break;
+    if (out.length >= max) break;
   }
   return out;
 }
 
 /** Tidy the AI's answer: Unicode, clean lines, and each line matched to its picture. */
-function finish(script: Script, planLength: number, language: Language): Script {
-  const tidy = normalise(script);
+function finish(script: Script, planLength: number, language: Language, format: "SHORT" | "LONG" = "SHORT"): Script {
+  const tidy = normalise(script, format);
   const scenes = alignScenes(tidy.scenes, planLength);
   if (scenes.length === 0) throw new Error(`The ${language} script came back without any narration.`);
   return { ...tidy, scenes };
@@ -422,7 +449,8 @@ function finish(script: Script, planLength: number, language: Language): Script 
 export async function writeScript(input: ScriptInput): Promise<{ script: Script; costs: CostLine[] }> {
   const result = await writeScriptChecked(input);
   // News graphics only for news / politics videos, and only the ones we can trust.
-  result.script.newsCards = input.politics && !isMockAI() ? trustedNewsCards(result.script.newsCards, input.research, input.headlines) : input.politics ? result.script.newsCards : [];
+  result.script.newsCards = input.politics && !isMockAI() ? trustedNewsCards(result.script.newsCards, input.research, input.headlines, limitsFor(input.format).newsCards) : input.politics ? result.script.newsCards : [];
+  if (input.format !== "LONG") result.script.chapterTitles = [];
   if (!input.politics) result.script.people = [];
   return result;
 }
@@ -455,7 +483,7 @@ async function scriptWithGemini(input: ScriptInput, system: string, prompt: stri
   const costs: CostLine[] = [];
   let { value, cost } = await askGeminiJson(ScriptSchema, { system, prompt });
   costs.push(cost);
-  let script = finish(value, input.research.visualPlan.length, input.language);
+  let script = finish(value, input.research.visualPlan.length, input.language, input.format);
   if (input.language === "ne" && !looksNepali(script)) {
     // The answer came back in English: ask once more, saying so plainly.
     console.warn("Script: the Nepali script came back in English. Asking again.");
@@ -464,7 +492,7 @@ async function scriptWithGemini(input: ScriptInput, system: string, prompt: stri
       prompt: `${prompt}\n\nYour last answer was in ENGLISH. Write it again, this time in NEPALI (Devanagari).`,
     }));
     costs.push(cost);
-    script = finish(value, input.research.visualPlan.length, input.language);
+    script = finish(value, input.research.visualPlan.length, input.language, input.format);
     // Never make a "Nepali" video in English: fail, so the step is retried later.
     if (!looksNepali(script)) throw new Error("The Nepali script came back in English twice. Will retry later.");
   }
@@ -474,31 +502,41 @@ async function scriptWithGemini(input: ScriptInput, system: string, prompt: stri
 async function scriptWithClaude(input: ScriptInput, system: string, prompt: string): Promise<{ script: Script; costs: CostLine[] }> {
   const model = currentModel();
   const costs: CostLine[] = [];
-  let response = await askClaudeForScript(model, system, prompt);
+  let response = await askClaudeForScript(model, system, prompt, input.format);
   costs.push(claudeCost(model, response.usage));
-  if (input.language === "ne" && response.parsed_output && !looksNepali(finish(response.parsed_output, input.research.visualPlan.length, "ne"))) {
+  if (input.language === "ne" && response.parsed_output && !looksNepali(finish(response.parsed_output, input.research.visualPlan.length, "ne", input.format))) {
     // The answer came back in English: ask once more, saying so plainly.
     console.warn("Script: the Nepali script came back in English. Asking Claude again.");
-    response = await askClaudeForScript(model, system, `${prompt}\n\nYour last answer was in ENGLISH. Write it again, this time in NEPALI (Devanagari).`);
+    response = await askClaudeForScript(model, system, `${prompt}\n\nYour last answer was in ENGLISH. Write it again, this time in NEPALI (Devanagari).`, input.format);
     costs.push(claudeCost(model, response.usage));
     // Never make a "Nepali" video in English.
-    if (response.parsed_output && !looksNepali(finish(response.parsed_output, input.research.visualPlan.length, "ne"))) {
+    if (response.parsed_output && !looksNepali(finish(response.parsed_output, input.research.visualPlan.length, "ne", input.format))) {
       throw new Error("The Nepali script came back in English twice.");
     }
   }
   if (response.stop_reason === "refusal") throw new Error(`Script request (${input.language}) was declined by the model.`);
   if (!response.parsed_output) throw new Error(`Could not read the ${input.language} script from the model.`);
 
-  return { script: finish(response.parsed_output, input.research.visualPlan.length, input.language), costs };
+  return { script: finish(response.parsed_output, input.research.visualPlan.length, input.language, input.format), costs };
 }
 
-function askClaudeForScript(model: string, system: string, prompt: string) {
-  return claude().beta.messages.parse({
-    model,
-    max_tokens: 16000,
-    ...fallbackOptions(),
-    output_config: { effort: "high", format: betaZodOutputFormat(ScriptSchema) },
-    system,
-    messages: [{ role: "user", content: prompt }],
-  });
+function askClaudeForScript(model: string, system: string, prompt: string, format: "SHORT" | "LONG" = "SHORT") {
+  // Room for thinking AND the long JSON script (with 16000 a short's script was cut off half-way;
+  // a full 4-5 minute video needs about twice a short's room again).
+  // Above ~21,000 max_tokens the SDK refuses a request without streaming unless we set our own
+  // timeout, so we do (the answer still comes in one piece).
+  // A full video's Nepali script was cut off at 64000 (thinking + long Devanagari text used it all),
+  // so LONG gets more room and medium effort (less thinking, same script rules).
+  const long = format === "LONG";
+  return claude().beta.messages.parse(
+    {
+      model,
+      max_tokens: long ? 100000 : 32000,
+      ...fallbackOptions(),
+      output_config: { effort: long ? "medium" : "high", format: betaZodOutputFormat(ScriptSchema) },
+      system,
+      messages: [{ role: "user", content: prompt }],
+    },
+    { timeout: (long ? 30 : 15) * 60_000 },
+  );
 }

@@ -131,9 +131,9 @@ function AutoCard({ auto }: { auto: AutoStatus }) {
         </div>
         <div className="bg-surface p-4 sm:p-5">
           <p className="mb-2 text-fg3">Want a video right now?</p>
-          <GenerateNowButton available={auto.generateNowAvailable} />
+          <GenerateNowButton available={auto.generateNowAvailable} pipelineUrl={auto.pipelineUrl} missing={auto.missing} />
           {auto.generateNowAvailable && (
-            <p className="mt-2 text-xs text-fg3">Ready on <Link href="/ready" className="link">Ready to upload</Link> in about 15 to 20 minutes. Works even when auto mode is off.</p>
+            <p className="mt-2 text-xs text-fg3">Ready on <Link href="/ready" className="link">Ready to upload</Link> in about 15 to 20 minutes. Auto mode stays as it is (on or off): this is one extra video.</p>
           )}
         </div>
       </div>

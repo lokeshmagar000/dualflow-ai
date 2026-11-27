@@ -53,7 +53,10 @@ import {
 } from "../budget";
 import { planStory } from "../publishing";
 import { planShots, type ScenePart } from "./shots";
-import { fetchFlag, findCommonsPhoto, type CommonsPhoto, type NewsCardInput, type V2NewsCard } from "@dualflow/video";
+import { fetchFlag, findCommonsPhoto, type CommonsPhoto, type NewsCardInput, type V2NewsCard, type V2Props } from "@dualflow/video";
+import { fullVideoExtras, makeShorts, sharedPictures, type SavedClip } from "./full";
+import { findNewsPhoto, newsPhotoCheck } from "@dualflow/video";
+import { pictureSpots, type MyPicture } from "./mypictures";
 
 type Step = (data: PipelineJobData) => Promise<void>;
 
@@ -110,6 +113,8 @@ const research: Step = async ({ storyId, run = 1 }) => {
           thumbnailQuery: research.thumbnailQuery,
           focus: research.focus,
           broll: research.broll,
+          // Full video: its parts (each one can also become a short).
+          chapters: research.chapters ?? [],
           // The web pages the research used (shown as "Source:" in politics videos).
           sources: sources.slice(0, 12),
         } as unknown as Prisma.InputJsonValue,
@@ -131,7 +136,7 @@ const script: Step = async (data) => {
   await prisma.variant.update({ where: { id: variant.id }, data: { status: "GENERATING", lastError: null } });
 
   // Rebuild the Research object saved by the research step.
-  const saved = story.research as unknown as (Pick<Research, "summary" | "facts" | "thumbnailQuery"> & { focus?: string; broll?: Research["broll"] }) | null;
+  const saved = story.research as unknown as (Pick<Research, "summary" | "facts" | "thumbnailQuery"> & { focus?: string; broll?: Research["broll"]; chapters?: Research["chapters"] }) | null;
   const visualPlan = story.visualPlan as unknown as Research["visualPlan"] | null;
   if (!saved || !visualPlan) throw new Error("Research is missing for this story.");
 
@@ -139,7 +144,7 @@ const script: Step = async (data) => {
     language: variant.language as Language,
     title: story.topic.title,
     format: story.format,
-    research: { ...saved, thumbnailQuery: saved.thumbnailQuery ?? "", focus: saved.focus ?? "", broll: saved.broll ?? [], visualPlan },
+    research: { ...saved, thumbnailQuery: saved.thumbnailQuery ?? "", focus: saved.focus ?? "", broll: saved.broll ?? [], chapters: saved.chapters ?? [], visualPlan },
     politics: story.topic.category === POLITICS_CATEGORY,
     headlines: ((story.topic.sources as TopicSource[] | null) ?? []).map((h) => ({ title: h.title, publisher: h.publisher })),
   });
@@ -190,6 +195,7 @@ const script: Step = async (data) => {
           followText: script.followText,
           newsCards: script.newsCards,
           people: script.people,
+          chapterTitles: script.chapterTitles,
         } satisfies V2Text as unknown as Prisma.InputJsonValue,
       },
     }),
@@ -335,21 +341,27 @@ const render: Step = async (data) => {
     // A long line is split at a sentence end into two shots with two different clips,
     // so one picture never has to stay on screen for too long.
     const plan = (story.visualPlan as unknown as Research["visualPlan"] | null) ?? [];
+    // FULL VIDEO: the pictures come from the shared plan only (not each language's own "parts"),
+    // so the Nepali and the English video can share the same checked pictures (half the searches
+    // and picture checks).
+    const long = format === "LONG";
     const lineShots = planShots(
       variant.scenes.map((s) => ({
         order: s.order,
         text: s.text,
         startMs: s.startMs ?? 0,
         endMs: s.endMs ?? durationMs,
-        parts: (s.parts as unknown as ScenePart[] | null) ?? null,
+        parts: long ? null : ((s.parts as unknown as ScenePart[] | null) ?? null),
       })),
       words,
     );
     // STYLE V2: a shot longer than ~3 s is cut into ~2 s pieces; the extra pieces show
     // other on-topic pictures (people, places, maps... from the research "broll" list),
     // so the video keeps flowing instead of staying on one picture.
-    const v2 = videoStyle() === "v2" && format === "SHORT";
-    const shots = v2 ? splitLongShots(lineShots) : lineShots.map((s) => ({ ...s, extra: false }));
+    // A FULL VIDEO always uses the new look (in wide 16:9). Its pictures change about every
+    // 3-4 seconds (a short: every ~2 seconds), so a 5-minute video needs fewer searches.
+    const v2 = long || (videoStyle() === "v2" && format === "SHORT");
+    const shots = long ? splitLongShots(lineShots, 6500, 3500) : v2 ? splitLongShots(lineShots) : lineShots.map((s) => ({ ...s, extra: false }));
     const broll = ((story.research as { broll?: { query: string; mustShow?: string }[] } | null)?.broll ?? []).filter((b) => b?.query);
     let nextBroll = 0;
     const used = new Set<number>();
@@ -359,26 +371,91 @@ const render: Step = async (data) => {
     const focus = (story.research as { focus?: string } | null)?.focus || story.topic.title;
     const visionBefore = visionRequests;
     const visionCostsBefore = visionCosts.length;
+    // Full video: one picture search per plan scene / b-roll idea, shared by both languages.
+    const shared = long ? sharedPictures(story.id) : null;
+    const find = (key: string, queries: string[], mustShow: string, name: string, seconds: number) =>
+      shared
+        ? shared.find(key, (dir, used2) => findCheckedMedia(queries, mustShow, focus, format, dir, `m-${key}`, used2, Math.max(seconds, 4)), job.dir, name)
+        : findCheckedMedia(queries, mustShow, focus, format, job.dir, name, used, seconds);
+    // EVERY picture shows what ITS line talks about (owner's rule: hydropower line -> hydropower,
+    // heritage line -> heritage, mountains -> mountains). A line split into pieces shows other views
+    // of the SAME subject (altQuery / backupQuery), not a random b-roll idea of the whole topic.
+    // Shorts may still use a b-roll idea as the very last choice; a full video repeats the line's
+    // own picture instead (a right picture twice beats a wrong one).
+    const extraCount = new Map<number, number>();
+    // 1st choice: YOUR pictures ("My pictures" on the Ready page). They take the news-photo lines
+    // first, then lines spread over the video. 2nd: a REAL news photo (Wikimedia Commons, with
+    // PIB / PM India photos) for lines about the event itself. 3rd: stock video of the line's subject.
+    const mine = ((story.myPictures as unknown as MyPicture[] | null) ?? []).filter((m) => m?.key);
+    const mySpots = pictureSpots(plan.map((q) => Boolean(q?.newsPhoto?.trim())), mine.length);
+    const myMedia = async (k: number, name: string): Promise<FoundMedia | null> => {
+      const m = mine[k]!;
+      try {
+        const file = `${name}-mine${path.extname(m.key) || (m.kind === "video" ? ".mp4" : ".jpg")}`;
+        await writeFile(path.join(job.dir, file), await readFile(m.key));
+        return { file, kind: m.kind, sourceUrl: "", provider: "mine", id: 0, credit: m.credit || undefined, fit: m.kind === "image" ? "contain" : undefined };
+      } catch (err) {
+        console.warn(`My pictures: could not read ${m.key} (${(err as Error).message}).`);
+        return null;
+      }
+    };
+    const newsUsed = new Set<string>();
+    const news = (key: string, query: string, mustShow: string, name: string) => {
+      const search = (dir: string, file: string) =>
+        findNewsPhoto(query, dir, file, newsPhotoCheck(mustShow, focus), newsUsed).then((r) =>
+          r ? { file: r.file, kind: "image" as const, sourceUrl: r.pageUrl, provider: "commons", id: 0, credit: r.credit, fit: "contain" as const } : null,
+        );
+      return shared ? shared.find(key, (dir) => search(dir, `m-${key}`), job.dir, name) : search(job.dir, name);
+    };
     for (const [i, shot] of shots.entries()) {
       const p = plan[shot.order - 1];
       const seconds = (shot.endMs - shot.startMs) / 1000;
-      if (shot.extra && broll.length) {
-        // Variety piece: the next b-roll idea (they take turns, so nothing repeats soon).
-        const b = broll[nextBroll++ % broll.length]!;
-        const queries = [...new Set([b.query, p?.backupQuery, p?.visualQuery].map((q) => q?.trim() ?? "").filter(Boolean))];
-        media.push(await findCheckedMedia(queries, b.mustShow || b.query, focus, format, job.dir, `shot-${i + 1}`, used, seconds));
+      if (!shot.extra && shot.part === 0) {
+        const k = mySpots.get(shot.order);
+        const own = k === undefined ? null : await myMedia(k, `shot-${i + 1}`);
+        if (own) {
+          media.push(own);
+          continue;
+        }
+        if (p?.newsPhoto?.trim()) {
+          const real = await news(`n${shot.order}`, p.newsPhoto, p.mustShow || p.newsPhoto, `shot-${i + 1}`);
+          if (real) {
+            media.push(real);
+            continue;
+          }
+        }
+      }
+      const clean = (list: (string | undefined)[]) => [...new Set(list.map((q) => q?.trim() ?? "").filter(Boolean))];
+      // Extra pieces show the whole line's subject; a line part shows what that part names.
+      const lineMustShow = shot.extra
+        ? p?.mustShow || p?.visualQuery || shot.mustShow || shot.visualQuery || story.topic.title
+        : shot.mustShow || (shot.part === 0 ? p?.mustShow : "") || shot.visualQuery || p?.visualQuery || story.topic.title;
+      if (shot.extra) {
+        const k = (extraCount.get(shot.order) ?? 0) + 1;
+        extraCount.set(shot.order, k);
+        // Take turns between the line's other views, so two pieces of one line differ.
+        const views = clean([p?.altQuery, p?.backupQuery, p?.visualQuery]);
+        const queries = views.length ? [...views.slice((k - 1) % views.length), ...views.slice(0, (k - 1) % views.length)] : [];
+        let found = queries.length ? await find(`p${shot.order}-x${k}`, queries, lineMustShow, `shot-${i + 1}`, seconds) : null;
+        if (!found && !long && broll.length) {
+          const bi = nextBroll++ % broll.length;
+          const b = broll[bi]!;
+          found = await find(`b${bi}`, clean([b.query]), b.mustShow || b.query, `shot-${i + 1}`, seconds);
+        }
+        media.push(found);
         continue;
       }
       // A part of a line shows the thing that part names ("yak", "jungle") first.
       // The second shot of a long line uses the simpler backup words first, for variety.
-      const planned = shot.part === 0 ? [p?.visualQuery, p?.backupQuery] : [p?.backupQuery, p?.visualQuery];
-      const queries = [...new Set([shot.visualQuery, ...planned, story.topic.title].map((q) => q?.trim() ?? "").filter(Boolean))];
-      const mustShow = shot.mustShow || (shot.part === 0 ? p?.mustShow : "") || shot.visualQuery || p?.visualQuery || story.topic.title;
-      let found = await findCheckedMedia(queries, mustShow, focus, format, job.dir, `shot-${i + 1}`, used, seconds);
-      if (!found && v2 && broll.length) {
-        // Nothing passed for this line: show a variety picture of the same topic instead of a plain colour.
-        const b = broll[nextBroll++ % broll.length]!;
-        found = await findCheckedMedia([b.query], b.mustShow || b.query, focus, format, job.dir, `shot-${i + 1}`, used, seconds);
+      const planned = shot.part === 0 ? [p?.visualQuery, p?.altQuery, p?.backupQuery] : [p?.backupQuery, p?.altQuery, p?.visualQuery];
+      // The video's title is a poor stock search; a full video never uses it.
+      const queries = clean([shot.visualQuery, ...planned, long ? undefined : story.topic.title]);
+      let found = await find(`p${shot.order}-${shot.part}`, queries, lineMustShow, `shot-${i + 1}`, seconds);
+      if (!found && !long && v2 && broll.length) {
+        // Short: nothing passed for this line, so show a variety picture of the same topic.
+        const bi = nextBroll++ % broll.length;
+        const b = broll[bi]!;
+        found = await find(`b${bi}`, [b.query], b.mustShow || b.query, `shot-${i + 1}`, seconds);
       }
       media.push(found);
     }
@@ -392,10 +469,12 @@ const render: Step = async (data) => {
     const brand = brandInfo.name;
     const accent = process.env.VIDEO_ACCENT || BRAND_COLORS.marigold;
     // durationSec lets the video loop a short clip smoothly instead of freezing on its last frame.
-    const toMedia = (m: FoundMedia | null | undefined) => (m ? { src: job.url(m.file), kind: m.kind, durationSec: m.durationSec } : null);
+    const toMedia = (m: FoundMedia | null | undefined) =>
+      m ? { src: job.url(m.file), kind: m.kind, durationSec: m.durationSec, ...(m.credit ? { credit: m.credit } : {}), ...(m.fit ? { fit: m.fit } : {}) } : null;
 
     const videoFile = path.join(job.dir, "video.mp4");
     const started = Date.now();
+    let fullProps: V2Props | null = null;
     if (v2) {
       // STYLE V2: hook on frame 1 (no logo intro), music + sound effects, key-word stickers,
       // number card, follow pill in the middle and a loop ending (no like & follow card).
@@ -413,7 +492,9 @@ const render: Step = async (data) => {
         brandTag: brandInfo.tag,
         ...politicsOnScreen(story, language),
         news: await prepareNews(story, language, variant.style as Partial<V2Text> | null, job.dir, job.url),
+        ...(long ? fullVideoExtras(story.research, variant.style as Partial<V2Text> | null, variant.scenes, language, durationMs) : {}),
       });
+      fullProps = props;
       const raw = path.join(job.dir, "video-raw.mp4");
       await renderVideoV2(props, raw);
       if (!(await normaliseLoudness(raw, videoFile))) await copyFile(raw, videoFile);
@@ -494,6 +575,17 @@ const render: Step = async (data) => {
       for (const size of extraSizes) await copyFile(thumbFiles[size]!, path.join(process.env.VIDEO_COPY_DIR, `${name}-${size}.jpg`));
     }
 
+    // FULL VIDEO: cut 2-3 shorts out of it (same voice, pictures and cards; no AI cost).
+    let clips: SavedClip[] | null = null;
+    if (long && fullProps) {
+      try {
+        clips = await makeShorts({ props: fullProps, job, folder, language, research: story.research, text: variant.style as Partial<V2Text> | null, scenes: variant.scenes });
+      } catch (err) {
+        // The full video is fine: never lose it because a short failed.
+        console.warn(`[shorts] ${language}: could not make the shorts (${(err as Error).message}).`);
+      }
+    }
+
     // The picture check uses free Gemini requests: show them on the costs page.
     const visionUsed = visionRequests - visionBefore;
     if (visionUsed > 0) await recordCosts(story.workspaceId, story.id, [{ provider: "gemini-vision", units: visionUsed, unitType: "requests", usd: 0 }]);
@@ -532,7 +624,10 @@ const render: Step = async (data) => {
         data: { variantId: variant.id, storageKey: thumbKey, headline: variant.thumbnailHeadline, sizes: [...extraSizes] },
       }),
       prisma.renderJob.update({ where: { id: renderJob.id }, data: { status: "DONE", outputKey: videoKey } }),
-      prisma.variant.update({ where: { id: variant.id }, data: { status: "READY", outputKey: videoKey, lastError: null } }),
+      prisma.variant.update({
+        where: { id: variant.id },
+        data: { status: "READY", outputKey: videoKey, lastError: null, ...(clips ? { clips: clips as unknown as Prisma.InputJsonValue } : {}) },
+      }),
     ]);
   } catch (err) {
     await prisma.renderJob.update({

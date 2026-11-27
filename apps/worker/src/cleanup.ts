@@ -15,7 +15,7 @@
  *     RETENTION_DAYS in any case, and after 1 day if no upload uses them (the sending was stopped).
  *  6. Deletes finished job rows older than 30 days, so the database stays small (Neon free: 1 GB).
  */
-import { prisma } from "@dualflow/db";
+import { prisma, Prisma } from "@dualflow/db";
 import { deleteFile, listFiles } from "@dualflow/storage";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -92,7 +92,7 @@ async function main() {
   }
 
   if (goneVideos.size > 0) {
-    await prisma.variant.updateMany({ where: { storyId: { in: [...goneVideos] } }, data: { outputKey: null } });
+    await prisma.variant.updateMany({ where: { storyId: { in: [...goneVideos] } }, data: { outputKey: null, clips: Prisma.DbNull } });
   }
 
   const jobs = await prisma.pipelineJob.deleteMany({

@@ -89,8 +89,9 @@ async function lane() {
 
 async function main() {
   await applyDashboardAiChoice(); // Claude or Gemini, chosen on the dashboard's Settings page
-  // Picture check: Claude first when Claude is chosen; otherwise Claude is only the backup when Gemini fails.
-  if (aiProvider() !== "mock" && claudeKeySet()) setPictureChecker(claudeCheckPictures, aiProvider() === "claude");
+  // Picture check: free Gemini first (it found good pictures before); Claude only when Gemini does not answer.
+  // (In the first Claude run, Claude Haiku said "no" to every picture, so every scene got a plain background.)
+  if (aiProvider() !== "mock" && claudeKeySet()) setPictureChecker(claudeCheckPictures, false);
   console.log(`Worker started (mode: ${once ? "once" : "forever"}, ${concurrency} at a time)`);
   await Promise.all(Array.from({ length: concurrency }, () => lane()));
   const left = await queueCounts();

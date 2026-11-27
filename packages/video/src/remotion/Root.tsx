@@ -66,6 +66,9 @@ const sampleV2: V2Props = {
   series: "",
   news: null,
   follow: null,
+  // Tall short by default; full videos send wide: true (1920x1080).
+  wide: false,
+  chapters: [],
 };
 
 export function Root() {
@@ -94,7 +97,11 @@ export function Root() {
         height={1920}
         durationInFrames={300}
         defaultProps={sampleV2}
-        calculateMetadata={({ props }) => ({ durationInFrames: Math.ceil(((props.durationMs + 300) / 1000) * FPS) })}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: Math.ceil(((props.durationMs + 300) / 1000) * FPS),
+          // Full video: wide 16:9 for YouTube. Shorts: tall 9:16.
+          ...(props.wide ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 }),
+        })}
       />
       <Still
         id="Thumbnail"

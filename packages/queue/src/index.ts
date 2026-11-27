@@ -17,7 +17,9 @@ import type { JobName, PipelineJobData } from "@dualflow/shared";
 export type { PipelineJob };
 
 /** If a worker crashes mid-step, the job is given out again after this long. */
-const LOCK_MS = 20 * 60 * 1000;
+// A full 4-5 minute video renders for an hour or more: its runs set QUEUE_LOCK_MINUTES higher,
+// so a job that is still working is never taken for a crashed one and started twice.
+const LOCK_MS = Number(process.env.QUEUE_LOCK_MINUTES ?? 20) * 60 * 1000;
 /** Retry waits: 10 s, 20 s, 40 s ... */
 const RETRY_BASE_MS = 10_000;
 

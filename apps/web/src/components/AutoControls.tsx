@@ -30,16 +30,22 @@ export function AutoSwitch({ enabled }: { enabled: boolean }) {
   );
 }
 
-export function GenerateNowButton({ available }: { available: boolean }) {
+export function GenerateNowButton({ available, pipelineUrl, missing }: { available: boolean; pipelineUrl?: string; missing?: string[] }) {
   const [state, action, pending] = useActionState<AutoState>(generateNow, {});
   if (!available) {
-    // Without the GitHub token on Render the dashboard cannot start a run, so show the manual way.
+    // The dashboard has no GitHub key yet, so it cannot start the run by itself.
+    // The button still works: it opens the Pipeline page on GitHub, where one more click starts it.
+    const url = pipelineUrl ?? "https://github.com/lokeshmagar000/dualflow-ai/actions/workflows/pipeline.yml";
+    const what = missing && missing.length > 0 ? missing : ["GITHUB_DISPATCH_TOKEN"];
     return (
       <div className="text-fg2">
-        <button className="btn" disabled aria-disabled="true"><IconBolt className="h-4 w-4" /> Generate now</button>
+        <a href={url} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
+          <IconBolt className="h-4 w-4" /> Generate now (on GitHub)
+        </a>
         <p className="mt-2 text-xs text-fg3">
-          Needs the GitHub key on your dashboard host, Render or Vercel (<code>GITHUB_REPO</code> + <code>GITHUB_DISPATCH_TOKEN</code>). Until then: GitHub,
-          then <b>Actions</b>, <b>Pipeline</b>, <b>Run workflow</b>, tick <b>Make one automatic video now</b>, and press <b>Run workflow</b>.
+          On GitHub press <b>Run workflow</b>, tick <b>Make one automatic video now</b>, and press the green <b>Run workflow</b>.
+          To make this button start it by itself, add {what.map((m, i) => <span key={m}>{i > 0 && " and "}<code>{m}</code></span>)} on Vercel
+          (steps: <code>docs/generate-now.md</code>).
         </p>
       </div>
     );

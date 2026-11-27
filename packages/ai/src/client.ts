@@ -30,8 +30,9 @@ export function maxWebSearches(): number {
  * The newer "20260209" version (smarter filtering of results) works only on
  * the bigger models (Opus, Sonnet, Fable). Haiku uses the basic "20250305" version.
  */
-export function webSearchTool() {
-  const max_uses = maxWebSearches();
+export function webSearchTool(maxUses?: number) {
+  // A full video may search a little more (it needs 15-25 facts); never fewer than the normal amount.
+  const max_uses = Math.max(maxWebSearches(), maxUses ?? 0);
   return currentModel().startsWith("claude-haiku")
     ? ({ type: "web_search_20250305", name: "web_search", max_uses } as const)
     : ({ type: "web_search_20260209", name: "web_search", max_uses } as const);

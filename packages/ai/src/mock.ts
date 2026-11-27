@@ -18,6 +18,7 @@ export function isMockAI(): boolean {
 
 export function mockResearch(input: { title: string; format: "SHORT" | "LONG" }): Research {
   const t = input.title;
+  if (input.format === "LONG") return mockLongResearch(t);
   return {
     summary: `PRACTICE DATA (no AI key): a short explainer about "${t}". Real research will replace this text when AI_MODE is not "mock".`,
     facts: [
@@ -27,14 +28,46 @@ export function mockResearch(input: { title: string; format: "SHORT" | "LONG" })
     ],
     // The same 5 scenes are used by BOTH languages, like the real pipeline.
     visualPlan: [
-      { purpose: "hook", idea: `Grab attention with a question about ${t}`, visualQuery: "curious person looking up", backupQuery: "curious person", mustShow: "a curious person" },
-      { purpose: "point", idea: `First main point about ${t}`, visualQuery: "nepal landscape", backupQuery: "nepal", mustShow: "a landscape in Nepal" },
-      { purpose: "point", idea: `Second main point about ${t}`, visualQuery: "city street kathmandu", backupQuery: "kathmandu", mustShow: "a street in Kathmandu" },
-      { purpose: "example", idea: `A simple real-life example`, visualQuery: "people talking", backupQuery: "people", mustShow: "people talking" },
-      { purpose: "call_to_action", idea: "Ask viewers to like and follow", visualQuery: "phone like button", backupQuery: "smartphone", mustShow: "a smartphone" },
+      { purpose: "hook", idea: `Grab attention with a question about ${t}`, visualQuery: "curious person looking up", backupQuery: "curious person", altQuery: "", newsPhoto: "", mustShow: "a curious person" },
+      { purpose: "point", idea: `First main point about ${t}`, visualQuery: "nepal landscape", backupQuery: "nepal", altQuery: "", newsPhoto: "", mustShow: "a landscape in Nepal" },
+      { purpose: "point", idea: `Second main point about ${t}`, visualQuery: "city street kathmandu", backupQuery: "kathmandu", altQuery: "", newsPhoto: "", mustShow: "a street in Kathmandu" },
+      { purpose: "example", idea: `A simple real-life example`, visualQuery: "people talking", backupQuery: "people", altQuery: "", newsPhoto: "", mustShow: "people talking" },
+      { purpose: "call_to_action", idea: "Ask viewers to like and follow", visualQuery: "phone like button", backupQuery: "smartphone", altQuery: "", newsPhoto: "", mustShow: "a smartphone" },
     ],
     focus: t,
     broll: [],
+    chapters: [],
+    thumbnailQuery: "nepal mountains",
+  };
+}
+
+/** Practice FULL VIDEO: an intro, 3 chapters of 6 scenes and an outro (so chapters and shorts can be tested). */
+function mockLongResearch(t: string): Research {
+  const places = ["nepal landscape", "kathmandu city street", "himalaya mountains", "nepali people market", "pokhara lake", "terai rice field"];
+  const scene = (purpose: Research["visualPlan"][number]["purpose"], i: number) => ({
+    purpose,
+    idea: `Practice idea ${i} about ${t}`,
+    visualQuery: places[i % places.length]!,
+    backupQuery: places[(i + 2) % places.length]!.split(" ")[0]!,
+    altQuery: places[(i + 1) % places.length]!,
+    newsPhoto: "",
+    mustShow: places[i % places.length]!,
+  });
+  const visualPlan = [scene("hook", 0), scene("point", 1)];
+  const chapters: Research["chapters"] = [];
+  for (let c = 0; c < 3; c++) {
+    const first = visualPlan.length + 1;
+    for (let k = 0; k < 6; k++) visualPlan.push(scene(k === 5 && c === 2 ? "payoff" : k % 2 ? "example" : "point", visualPlan.length));
+    chapters.push({ title: ["What happened", "The main details", "What happens next"][c]!, firstScene: first, lastScene: visualPlan.length });
+  }
+  visualPlan.push(scene("call_to_action", visualPlan.length));
+  return {
+    summary: `PRACTICE DATA (no AI key): a full explainer about "${t}".`,
+    facts: [1, 2, 3, 4, 5].map((n) => ({ claim: `Practice fact ${n} about ${t}.`, sourceUrl: "" })),
+    visualPlan,
+    chapters,
+    focus: t,
+    broll: places.map((q) => ({ query: q, mustShow: q })),
     thumbnailQuery: "nepal mountains",
   };
 }
@@ -57,9 +90,15 @@ const LINES: Record<Language, (t: string) => string[]> = {
   ],
 };
 
-export function mockScript(input: { language: Language; title: string; research: Research; politics?: boolean }): Script {
-  const lines = LINES[input.language](input.title);
+export function mockScript(input: { language: Language; title: string; research: Research; politics?: boolean; format?: "SHORT" | "LONG" }): Script {
   const isNe = input.language === "ne";
+  const long = input.format === "LONG";
+  // A full practice video: one numbered practice sentence per scene.
+  const lines = long
+    ? input.research.visualPlan.map((_, i) =>
+        isNe ? `यो अभ्यास वाक्य नम्बर ${i + 1} हो, जसले पूरा भिडियोको लम्बाइ जाँच गर्छ।` : `This is practice sentence number ${i + 1}, used to test the full video length.`,
+      )
+    : LINES[input.language](input.title);
   return {
     title: isNe ? `${input.title} — अभ्यास भिडियो` : `${input.title} (practice video)`,
     description: isNe
@@ -90,5 +129,6 @@ export function mockScript(input: { language: Language; title: string; research:
         ]
       : [],
     people: input.politics ? [{ order: 3, person: "Narendra Modi", name: isNe ? "मोदी" : "Modi", role: isNe ? "भारतका प्रधानमन्त्री" : "Prime Minister of India" }] : [],
+    chapterTitles: long ? (input.research.chapters ?? []).map((c, i) => (isNe ? `अभ्यास भाग ${i + 1}` : c.title)) : [],
   };
 }

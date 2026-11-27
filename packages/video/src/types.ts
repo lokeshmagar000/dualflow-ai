@@ -15,6 +15,10 @@ export type Media = {
   atSec?: number;
   /** Clip length in seconds: a clip shorter than its scene loops instead of freezing on its last frame. */
   durationSec?: number;
+  /** Small credit line shown on the picture, e.g. "Photo: PIB, GODL-India, Wikimedia Commons". */
+  credit?: string;
+  /** "contain": show the WHOLE photo (news photos: no cut-off heads) on a blurred copy of itself. */
+  fit?: "contain";
 };
 
 export type VideoScene = {

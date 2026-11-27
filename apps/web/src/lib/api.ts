@@ -309,16 +309,22 @@ export interface ReadyVariant {
   thumbnailUrl: string | null; // direct address of the preview picture (fast), or null
   thumbnailSizes?: string[]; // extra sizes: "shorts" | "youtube" | "feed"
   subtitles: { id: string }[];
+  /** Full video: the shorts cut from it (download: /download/<id>/clip?n=<n>). */
+  clips?: { n: number; title: string; durationSec: number }[];
   /** Where this video was sent (Upload buttons or Auto upload). */
   publications?: { status: string; postUrl: string | null; error: string | null; scheduledAt: string | null; channel: { name: string; platform: string } }[];
 }
 export interface ReadyStory {
   id: string;
   status: string;
+  /** SHORT = vertical short; LONG = full 4-5 minute video (wide 16:9). */
+  format?: "SHORT" | "LONG";
   createdAt: string;
   topic: { title: string; source: string };
   /** Nepal News & Politics video: series name + sources to check (null for other videos). */
   politics?: { series: string; sources: { name: string; url: string }[] } | null;
+  /** "My pictures": your own photos / clips for this story (they replace the robot's pictures). */
+  myPictures?: { n: number; kind: "image" | "video"; name: string; credit: string; previewUrl: string | null }[];
   variants: ReadyVariant[];
 }
 export interface ReadyPage {
@@ -353,7 +359,9 @@ export interface AutoStatus {
   paused: boolean; // kill switch on the Costs page
   perDay: number;
   nextRuns: string[]; // next scheduled run times (ISO)
-  generateNowAvailable: boolean; // false = GITHUB_DISPATCH_TOKEN not set on Render
+  generateNowAvailable: boolean; // false = GITHUB_DISPATCH_TOKEN not set on the dashboard host
+  pipelineUrl?: string; // the Pipeline page on GitHub (fallback when the token is missing)
+  missing?: string[]; // which settings are missing, e.g. ["GITHUB_DISPATCH_TOKEN"]
   waitingIdeas: number;
   aiTopics: { id: string; title: string; createdAt: string; storyId: string | null; storyStatus: string | null }[];
 }

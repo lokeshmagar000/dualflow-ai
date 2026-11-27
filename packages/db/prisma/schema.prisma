@@ -219,6 +219,8 @@ model Story {
   visualPlan  Json?
   // Research summary and facts shared by both languages.
   research    Json?
+  // "My pictures": your own photos/clips for this story [{ key, kind, credit, name }] (Ready page).
+  myPictures  Json?
   status      ContentStatus @default(DRAFT)
   lastError   String?
   // Goes up by one each time the pipeline is retried.
@@ -250,6 +252,8 @@ model Variant {
   manualUploadedAt  DateTime?
   /// Style V2 on-screen text: { hookLines, hookHighlight, topicChip, emphasis, numberCard, followText }
   style             Json?
+  /// FULL VIDEO: the shorts cut from it: [{ key, title, startSec, durationSec }] (files in storage)
+  clips             Json?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
