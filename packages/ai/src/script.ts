@@ -525,13 +525,15 @@ function askClaudeForScript(model: string, system: string, prompt: string, forma
   // a full 4-5 minute video needs about twice a short's room again).
   // Above ~21,000 max_tokens the SDK refuses a request without streaming unless we set our own
   // timeout, so we do (the answer still comes in one piece).
+  // A full video's Nepali script was cut off at 64000 (thinking + long Devanagari text used it all),
+  // so LONG gets more room and medium effort (less thinking, same script rules).
   const long = format === "LONG";
   return claude().beta.messages.parse(
     {
       model,
-      max_tokens: long ? 64000 : 32000,
+      max_tokens: long ? 100000 : 32000,
       ...fallbackOptions(),
-      output_config: { effort: "high", format: betaZodOutputFormat(ScriptSchema) },
+      output_config: { effort: long ? "medium" : "high", format: betaZodOutputFormat(ScriptSchema) },
       system,
       messages: [{ role: "user", content: prompt }],
     },
