@@ -59,14 +59,30 @@ export async function latestPipelineRuns(count = 5): Promise<{ status: string; c
   return data.workflow_runs ?? [];
 }
 
-/** Start a run if possible, but never let a GitHub problem break the request. */
-export async function triggerQuietly(log: { warn: (msg: string) => void }) {
-  if (!githubRunConfigured() || (process.env.AUTO_RUN_ON_NEW_STORY ?? "true") === "false") return;
+/**
+ * Start a run if possible, but never let a GitHub problem break the request.
+ * Returns what happened, so the page can SAY it when the run did not start
+ * (before, a missing or expired GitHub key failed silently and videos waited for the night run).
+ */
+export async function triggerQuietly(log: { warn: (msg: string) => void }): Promise<{ started: boolean; message: string }> {
+  if ((process.env.AUTO_RUN_ON_NEW_STORY ?? "true") === "false") return { started: false, message: "Starting at once is turned off (AUTO_RUN_ON_NEW_STORY=false). The next scheduled run makes it." };
+  if (!githubRunConfigured()) {
+    const message = "Saved, but the dashboard cannot start GitHub by itself (GITHUB_REPO and GITHUB_DISPATCH_TOKEN are missing on the dashboard host). The next scheduled run makes it, or press Run workflow on GitHub (Actions, Pipeline).";
+    log.warn(message);
+    return { started: false, message };
+  }
   try {
     const r = await triggerPipelineRun();
-    if (!r.started) log.warn(r.message);
+    if (!r.started) {
+      log.warn(r.message);
+      const hint = /\b(401|403)\b/.test(r.message) ? " The GitHub key (GITHUB_DISPATCH_TOKEN) is wrong or expired: make a new one (docs/faster-dashboard.md) and paste it on the dashboard host." : "";
+      return { started: false, message: `Saved, but GitHub did not start: ${r.message}.${hint}` };
+    }
+    return r;
   } catch (err) {
-    log.warn(`Could not start the GitHub run: ${(err as Error).message}`);
+    const message = `Saved, but GitHub could not be reached: ${(err as Error).message}`;
+    log.warn(message);
+    return { started: false, message };
   }
 }
 
