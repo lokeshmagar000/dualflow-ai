@@ -182,6 +182,8 @@ export function problemText(e: unknown): string {
 }
 
 /* Types for the data the API returns (simplified). */
+/** One of "My pictures" (your own photo or clip) as the dashboard shows it. */
+export type MyPictureRow = { n: number; kind: "image" | "video"; name: string; credit: string; previewUrl: string | null };
 export interface Topic {
   id: string;
   title: string;
@@ -189,6 +191,8 @@ export interface Topic {
   source: string;
   status: string;
   createdAt: string;
+  /** "My pictures" added on the Ideas page (waiting ideas only). */
+  myPictures?: MyPictureRow[];
 }
 export interface Variant {
   id: string;
@@ -324,7 +328,7 @@ export interface ReadyStory {
   /** Nepal News & Politics video: series name + sources to check (null for other videos). */
   politics?: { series: string; sources: { name: string; url: string }[] } | null;
   /** "My pictures": your own photos / clips for this story (they replace the robot's pictures). */
-  myPictures?: { n: number; kind: "image" | "video"; name: string; credit: string; previewUrl: string | null }[];
+  myPictures?: MyPictureRow[];
   variants: ReadyVariant[];
 }
 export interface ReadyPage {

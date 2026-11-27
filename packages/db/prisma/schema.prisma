@@ -187,6 +187,9 @@ model Topic {
   series      String?
   // Real news this topic came from: [{ title, url, publisher, publishedAt }].
   sources     Json?
+  // "My pictures" added on the Ideas page before the video is made: [{ key, kind, credit?, name? }].
+  // The first video of this idea copies them to its Story (Story.myPictures).
+  myPictures  Json?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 

@@ -386,6 +386,12 @@ const render: Step = async (data) => {
     // 1st choice: YOUR pictures ("My pictures" on the Ready page). They take the news-photo lines
     // first, then lines spread over the video. 2nd: a REAL news photo (Wikimedia Commons, with
     // PIB / PM India photos) for lines about the event itself. 3rd: stock video of the line's subject.
+    // Pictures added on the Ideas page (before the story existed) are copied to the story once,
+    // so they also show (and can be changed) on the Ready page.
+    if (!story.myPictures && story.topic.myPictures) {
+      story.myPictures = story.topic.myPictures;
+      await prisma.story.update({ where: { id: story.id }, data: { myPictures: story.topic.myPictures as Prisma.InputJsonValue } });
+    }
     const mine = ((story.myPictures as unknown as MyPicture[] | null) ?? []).filter((m) => m?.key);
     const mySpots = pictureSpots(plan.map((q) => Boolean(q?.newsPhoto?.trim())), mine.length);
     const myMedia = async (k: number, name: string): Promise<FoundMedia | null> => {
