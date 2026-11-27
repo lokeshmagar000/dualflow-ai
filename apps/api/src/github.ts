@@ -13,20 +13,40 @@ const WORKFLOW = "pipeline.yml";
 /** The small "Upload now" run (.github/workflows/upload.yml): uploads only, done in a few minutes. */
 export const UPLOAD_WORKFLOW = "upload.yml";
 
+/**
+ * Which GitHub repo to start runs in.
+ * GITHUB_REPO wins; otherwise it is found by itself from the host:
+ * Vercel gives VERCEL_GIT_REPO_OWNER + VERCEL_GIT_REPO_SLUG, Render gives RENDER_GIT_REPO_SLUG.
+ * So on Vercel only the token (GITHUB_DISPATCH_TOKEN) has to be added by hand.
+ */
+export function githubRepo(): string | undefined {
+  const own = process.env.GITHUB_REPO?.trim();
+  if (own) return own;
+  const { VERCEL_GIT_REPO_OWNER: owner, VERCEL_GIT_REPO_SLUG: slug, RENDER_GIT_REPO_SLUG: render } = process.env;
+  if (owner && slug) return `${owner}/${slug}`;
+  if (render && render.includes("/")) return render;
+  return undefined;
+}
+
+/** The repo's Pipeline page on GitHub (for the "start it on GitHub" fallback link). */
+export function pipelinePageUrl(): string {
+  return `https://github.com/${githubRepo() ?? "lokeshmagar000/dualflow-ai"}/actions/workflows/${WORKFLOW}`;
+}
+
 export function githubRunConfigured(): boolean {
-  return Boolean(process.env.GITHUB_REPO && process.env.GITHUB_DISPATCH_TOKEN);
+  return Boolean(githubRepo() && process.env.GITHUB_DISPATCH_TOKEN?.trim());
 }
 
 export async function triggerPipelineRun(workflow = WORKFLOW, inputs?: Record<string, string>): Promise<{ started: boolean; message: string }> {
   if (!githubRunConfigured()) {
     return { started: false, message: "Run now is not set up (GITHUB_REPO and GITHUB_DISPATCH_TOKEN). The next scheduled run will do it." };
   }
-  const repo = process.env.GITHUB_REPO!;
+  const repo = githubRepo()!;
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return { started: false, message: "GITHUB_REPO must look like owner/name." };
   const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${process.env.GITHUB_DISPATCH_TOKEN}`,
+      authorization: `Bearer ${process.env.GITHUB_DISPATCH_TOKEN!.trim()}`,
       accept: "application/vnd.github+json",
       "x-github-api-version": "2022-11-28",
       "content-type": "application/json",
@@ -44,10 +64,10 @@ export async function triggerPipelineRun(workflow = WORKFLOW, inputs?: Record<st
 
 /** The newest Pipeline runs (status: "queued", "in_progress", "completed", ...). Needs "Actions: Read". */
 export async function latestPipelineRuns(count = 5): Promise<{ status: string; created_at: string }[]> {
-  const repo = process.env.GITHUB_REPO!;
+  const repo = githubRepo()!;
   const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW}/runs?per_page=${count}`, {
     headers: {
-      authorization: `Bearer ${process.env.GITHUB_DISPATCH_TOKEN}`,
+      authorization: `Bearer ${process.env.GITHUB_DISPATCH_TOKEN!.trim()}`,
       accept: "application/vnd.github+json",
       "x-github-api-version": "2022-11-28",
       "user-agent": "dualflow-ai",

@@ -359,7 +359,9 @@ export interface AutoStatus {
   paused: boolean; // kill switch on the Costs page
   perDay: number;
   nextRuns: string[]; // next scheduled run times (ISO)
-  generateNowAvailable: boolean; // false = GITHUB_DISPATCH_TOKEN not set on Render
+  generateNowAvailable: boolean; // false = GITHUB_DISPATCH_TOKEN not set on the dashboard host
+  pipelineUrl?: string; // the Pipeline page on GitHub (fallback when the token is missing)
+  missing?: string[]; // which settings are missing, e.g. ["GITHUB_DISPATCH_TOKEN"]
   waitingIdeas: number;
   aiTopics: { id: string; title: string; createdAt: string; storyId: string | null; storyStatus: string | null }[];
 }

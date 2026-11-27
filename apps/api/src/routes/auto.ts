@@ -11,7 +11,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import { prisma } from "@dualflow/db";
-import { githubRunConfigured, triggerPipelineRun } from "../github";
+import { githubRepo, githubRunConfigured, pipelinePageUrl, triggerPipelineRun } from "../github";
 import { getDefaultWorkspace } from "../workspace";
 import { backupTick } from "../backup-timer";
 
@@ -57,6 +57,10 @@ export async function autoRoutes(app: FastifyInstance) {
       perDay: Number(process.env.AUTO_STORIES_PER_DAY ?? 2),
       nextRuns: nextRuns().map((d) => d.toISOString()),
       generateNowAvailable: githubRunConfigured(),
+      // Without the token, the button opens this page so you can still start it yourself.
+      pipelineUrl: pipelinePageUrl(),
+      // What is missing, so the page can say exactly which setting to add.
+      missing: githubRunConfigured() ? [] : [...(githubRepo() ? [] : ["GITHUB_REPO"]), ...(process.env.GITHUB_DISPATCH_TOKEN?.trim() ? [] : ["GITHUB_DISPATCH_TOKEN"])],
       waitingIdeas, // your own ideas not made yet: the next runs use these first
       aiTopics: aiTopics.map(({ stories, ...t }) => ({ ...t, storyId: stories[0]?.id ?? null, storyStatus: stories[0]?.status ?? null })),
     };
