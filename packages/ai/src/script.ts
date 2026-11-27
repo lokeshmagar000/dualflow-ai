@@ -495,7 +495,8 @@ async function scriptWithClaude(input: ScriptInput, system: string, prompt: stri
 function askClaudeForScript(model: string, system: string, prompt: string) {
   return claude().beta.messages.parse({
     model,
-    max_tokens: 16000,
+    // Room for thinking AND the long JSON script: with 16000 the script was cut off half-way.
+    max_tokens: 32000,
     ...fallbackOptions(),
     output_config: { effort: "high", format: betaZodOutputFormat(ScriptSchema) },
     system,
