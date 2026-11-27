@@ -122,6 +122,7 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
                 <Link href={`/content/${s.id}`} className="font-semibold hover:text-brand-fg">{s.topic?.title ?? "Untitled"}</Link>
                 <p className="text-xs text-fg3">
                   {s.politics && <span className="mr-1.5 rounded bg-[#C8102E] px-1.5 py-0.5 font-semibold text-white">{s.politics.series}</span>}
+                  {s.format === "LONG" && <span className="mr-1.5 rounded bg-brand px-1.5 py-0.5 font-semibold text-white">Full video</span>}
                   Made {nepalTime(s.createdAt)}, {s.politics ? "Nepal News & Politics" : s.topic?.source === "DIRECTOR" ? "topic picked by AI" : "your idea"}
                 </p>
               </div>
@@ -156,7 +157,7 @@ export default async function ReadyPage({ searchParams }: { searchParams: Promis
             {/* Nepali first, then English. */}
             <div className="grid gap-px bg-stroke xl:grid-cols-2">
               {[...(s.variants ?? [])].sort((a, b) => (a.language === "ne" ? -1 : b.language === "ne" ? 1 : 0)).map((v) => (
-                <VideoCard key={v.id} v={v} canUpload={canUpload} tiktok={tiktokLangs.includes(v.language)} />
+                <VideoCard key={v.id} v={v} canUpload={canUpload} tiktok={tiktokLangs.includes(v.language)} wide={s.format === "LONG"} />
               ))}
             </div>
           </section>
@@ -187,7 +188,7 @@ const SIZE_LABELS: Record<string, { short: string; title: string }> = {
   feed: { short: "FB / Insta post", title: "1080x1350: Facebook and Instagram feed posts" },
 };
 
-function VideoCard({ v, canUpload, tiktok }: { v: ReadyVariant; canUpload: boolean; tiktok: boolean }) {
+function VideoCard({ v, canUpload, tiktok, wide = false }: { v: ReadyVariant; canUpload: boolean; tiktok: boolean; wide?: boolean }) {
   const tags = (v.hashtags ?? []).map((h) => `#${h.replace(/^#/, "")}`);
   const hashtags = tags.join(" ");
   const fullText = [v.description, hashtags].filter(Boolean).join("\n\n");
@@ -207,13 +208,13 @@ function VideoCard({ v, canUpload, tiktok }: { v: ReadyVariant; canUpload: boole
       <div className="flex flex-col gap-4 sm:flex-row">
         {/* Preview: the video (press play; nothing downloads until then) and its own thumbnail. */}
         <div className="mx-auto flex shrink-0 gap-2 sm:mx-0">
-          <div className="w-32">
+          <div className={wide ? "w-56" : "w-32"}>
             <p className="mb-1 text-xs font-semibold text-fg3">Video</p>
             {hasVideo ? (
               <video controls preload="none" poster={poster} src={`/download/${v.id}/video?inline=1`}
-                className="aspect-[9/16] w-full rounded-md bg-[#1f1f1f] object-cover" />
+                className={`${wide ? "aspect-video" : "aspect-[9/16]"} w-full rounded-md bg-[#1f1f1f] object-cover`} />
             ) : (
-              <div className="flex aspect-[9/16] w-full items-center justify-center rounded-md bg-subtle p-2 text-center text-xs text-fg3">
+              <div className={`flex ${wide ? "aspect-video" : "aspect-[9/16]"} w-full items-center justify-center rounded-md bg-subtle p-2 text-center text-xs text-fg3`}>
                 Video file deleted to save storage
               </div>
             )}
@@ -225,7 +226,7 @@ function VideoCard({ v, canUpload, tiktok }: { v: ReadyVariant; canUpload: boole
               <a href={`/download/${v.id}/thumbnail?inline=1`} target="_blank" rel="noreferrer" title="Open full size">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={poster} alt={`${langName} thumbnail`} loading="lazy"
-                  className="aspect-[9/16] w-full rounded-md bg-subtle object-cover ring-1 ring-stroke" />
+                  className={`${wide ? "aspect-video" : "aspect-[9/16]"} w-full rounded-md bg-subtle object-cover ring-1 ring-stroke`} />
               </a>
               <a href={`/download/${v.id}/thumbnail`} className="btn btn-sm mt-2 w-full justify-center" title="The size that fits this video">
                 <IconDownload className="h-4 w-4" /> Thumbnail
@@ -255,9 +256,15 @@ function VideoCard({ v, canUpload, tiktok }: { v: ReadyVariant; canUpload: boole
               <CopyButton text={fullText} label="Copy both" />
             </div>
           )}
-          {v.durationSec != null && <p className="text-xs text-fg3">{Math.round(v.durationSec)} seconds, vertical 9:16</p>}
+          {v.durationSec != null && (
+            <p className="text-xs text-fg3">
+              {wide ? `${Math.floor(v.durationSec / 60)} min ${Math.round(v.durationSec % 60)} s, wide 16:9 (normal YouTube video)` : `${Math.round(v.durationSec)} seconds, vertical 9:16`}
+            </p>
+          )}
         </div>
       </div>
+
+      {hasVideo && (v.clips?.length ?? 0) > 0 && <Shorts v={v} langName={langName} />}
 
       {(v.publications?.length ?? 0) > 0 && <SentTo pubs={v.publications!} />}
 
@@ -288,6 +295,30 @@ function VideoCard({ v, canUpload, tiktok }: { v: ReadyVariant; canUpload: boole
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Full video: the 2-3 shorts cut from it (tall 9:16), each with a preview and a download button. */
+function Shorts({ v, langName }: { v: ReadyVariant; langName: string }) {
+  return (
+    <div className="mt-4 rounded-md bg-subtle p-3">
+      <p className="mb-2 text-xs font-semibold text-fg3">
+        {v.clips!.length} {langName} shorts cut from this video (for Shorts, Reels and TikTok). Same voice and pictures, no extra AI cost.
+      </p>
+      <ul className="flex flex-wrap gap-3">
+        {v.clips!.map((c) => (
+          <li key={c.n} className="w-28">
+            <video controls preload="none" src={`/download/${v.id}/clip?n=${c.n}&inline=1`}
+              className="aspect-[9/16] w-full rounded-md bg-[#1f1f1f] object-cover" />
+            <p lang={v.language} className="mt-1 line-clamp-2 text-xs font-semibold" title={c.title}>{c.n}. {c.title}</p>
+            <p className="text-xs text-fg3">{Math.round(c.durationSec)} seconds</p>
+            <a href={`/download/${v.id}/clip?n=${c.n}`} className="btn btn-sm mt-1 w-full justify-center">
+              <IconDownload className="h-4 w-4" /> Short {c.n}
+            </a>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

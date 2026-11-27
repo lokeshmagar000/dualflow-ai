@@ -309,12 +309,16 @@ export interface ReadyVariant {
   thumbnailUrl: string | null; // direct address of the preview picture (fast), or null
   thumbnailSizes?: string[]; // extra sizes: "shorts" | "youtube" | "feed"
   subtitles: { id: string }[];
+  /** Full video: the shorts cut from it (download: /download/<id>/clip?n=<n>). */
+  clips?: { n: number; title: string; durationSec: number }[];
   /** Where this video was sent (Upload buttons or Auto upload). */
   publications?: { status: string; postUrl: string | null; error: string | null; scheduledAt: string | null; channel: { name: string; platform: string } }[];
 }
 export interface ReadyStory {
   id: string;
   status: string;
+  /** SHORT = vertical short; LONG = full 4-5 minute video (wide 16:9). */
+  format?: "SHORT" | "LONG";
   createdAt: string;
   topic: { title: string; source: string };
   /** Nepal News & Politics video: series name + sources to check (null for other videos). */

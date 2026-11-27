@@ -47,7 +47,17 @@ export const ResearchSchema = z.object({
           ),
       }),
     )
-    .describe("Ordered scenes, one spoken idea each. Shorts: 7-9 scenes. Long videos: 15-25 scenes."),
+    .describe("Ordered scenes, one spoken idea each. Shorts: 7-9 scenes. Full videos (4-5 minutes): 45-60 scenes."),
+  chapters: z
+    .array(
+      z.object({
+        title: z.string().describe("2-5 English words naming this part, e.g. 'What was signed'"),
+        firstScene: z.number().int().describe("Number of the first scene of this part (1, 2, 3...)"),
+        lastScene: z.number().int().describe("Number of the last scene of this part"),
+      }),
+    )
+    .default([])
+    .describe("FULL VIDEOS only (shorts: empty): 4-6 parts in order, each 35-60 seconds, together covering every scene after the hook"),
   broll: z
     .array(
       z.object({
@@ -146,6 +156,36 @@ ${
   "new delhi india gate", "nepal flag waving", "ballot box voting", "hydropower dam nepal". Never ask for a politician.`;
 }
 
+/**
+ * FULL VIDEO (4-5 minutes, wide 16:9 for YouTube): the same picture rules, a longer story shape,
+ * and CHAPTERS. Each chapter is one complete idea of 35-60 seconds, so it can also be cut out
+ * of the full video as a short later (no new AI writing needed).
+ */
+const LONG_PLAN_RULES = `How to build the visual plan for a FULL VIDEO (4-5 minutes, about 600-700 spoken English words):
+- 45-60 scenes. Each scene is ONE spoken idea: one or two short sentences, about 4-6 seconds of speech.
+- Scene 1 (purpose "hook"): ONE curious sentence under 12 words that the video answers. No greeting, no "in this video".
+- Scene 2 (purpose "point"): in one sentence, what the viewer will learn ("Here is what was agreed, and why it matters").
+- Then 4-6 CHAPTERS ("chapters" list). Each chapter is 6-11 scenes (35-60 seconds) and is ONE complete idea that would
+  make sense on its own as a short: its first scene opens the idea with a mini-hook, its last scene closes it.
+  Give each chapter a 2-5 word title.
+- Inside chapters use purposes "point" and "example"; the most surprising fact of the whole video is purpose "payoff".
+- One scene in the first half (purpose "open_loop") promises something that comes later ("And the biggest number is still to come.").
+- The last 1-2 scenes (purpose "call_to_action"): a one-line summary, then ONE neutral question for the comments
+  and an invitation to subscribe. They are not part of any chapter.
+- Every chapter has at least 3 facts with numbers, names, places or dates. Never repeat a fact.
+- broll: 12-16 extra pictures (a long video needs more variety).
+${PICTURE_RULES}`;
+
+/** FULL VIDEO about the news: what happened, the details, why it matters, what next. Neutral. */
+const LONG_NEWS_RULES = `NEWS FULL VIDEO SHAPE (overrides the hook rule above):
+- Scene 1 (purpose "hook"): a curious, neutral "why / what / how" question under 12 words. No hype words.
+- Suggested chapters (adapt them to the facts): WHAT HAPPENED (who, where, when) -> THE MAIN DETAILS (numbers, agreements,
+  projects; this may be 2 chapters) -> THE BACKGROUND (history and earlier numbers that explain it) ->
+  WHY IT MATTERS FOR NEPALI PEOPLE (jobs, travel, prices, daily life, only from the facts) -> WHAT HAPPENS NEXT (only what official sources or the news say).
+- Say who said or reported each claim ("according to India's foreign ministry").
+- Pictures (visualQuery): real places and things only: "kathmandu city", "nepal parliament building singha durbar",
+  "new delhi india gate", "nepal flag waving", "railway train nepal", "hydropower dam nepal". Never ask for a politician.`;
+
 type ResearchInput = {
   title: string;
   notes?: string | null;
@@ -183,14 +223,20 @@ function notesPrompt(input: ResearchInput) {
   const politics = p
     ? `\nThis is a "${p.seriesName}" video of a Nepal politics series. Use official sources first (Election Commission, parliament, the constitution, government press releases), then major news. Only write facts that a source states.`
     : "";
-  return `Research this video topic: "${input.title}".${input.notes ? `\nCreator notes: ${input.notes}` : ""}${news}${politics}
+  const long = input.format === "LONG"
+    ? "\nThis is for a FULL 4-5 minute video: collect 15-25 facts (numbers, names, dates, places, background and what happens next), each with its source."
+    : "";
+  return `Research this video topic: "${input.title}".${input.notes ? `\nCreator notes: ${input.notes}` : ""}${news}${politics}${long}
 Write research notes: key facts (each with its source URL), useful numbers, and anything specific to Nepal or Nepali viewers.`;
 }
 function planPrompt(input: ResearchInput, notes: string) {
-  return `Topic: "${input.title}". Video format: ${input.format === "SHORT" ? (videoStyle() === "v2" ? "vertical short, 30-45 seconds" : "vertical short, about 60 seconds") : "long video, 8-12 minutes"}.
-Using ONLY these research notes, produce the facts list and the visual plan.
+  const long = input.format === "LONG";
+  const shape = long ? LONG_PLAN_RULES : videoStyle() === "v2" ? V2_PLAN_RULES : CLASSIC_PLAN_RULES;
+  const news = input.politics ? `\n${long ? LONG_NEWS_RULES : NEWS_STORY_RULES(input.politics.seriesName)}` : "";
+  return `Topic: "${input.title}". Video format: ${input.format === "SHORT" ? (videoStyle() === "v2" ? "vertical short, 30-45 seconds" : "vertical short, about 60 seconds") : "FULL VIDEO, 4-5 minutes, wide 16:9 for YouTube"}.
+Using ONLY these research notes, produce the facts list${long ? " (12-20 facts for a full video)" : ""}, the visual plan${long ? " and the chapters" : ""}.
 
-${videoStyle() === "v2" ? V2_PLAN_RULES : CLASSIC_PLAN_RULES}${input.politics ? `\n${NEWS_STORY_RULES(input.politics.seriesName)}\n${NEUTRAL_RULES}\n- Every fact MUST have its sourceUrl. Drop any fact without one.\n- Pictures: no photos of politicians (stock sites do not have them); show places, buildings, flags, maps, documents, ballot boxes, people voting.\n` : ""}
+${shape}${input.politics ? `${news}\n${NEUTRAL_RULES}\n- Every fact MUST have its sourceUrl. Drop any fact without one.\n- Pictures: no photos of politicians (stock sites do not have them); show places, buildings, flags, maps, documents, ballot boxes, people voting.\n` : ""}
 <research_notes>
 ${notes}
 </research_notes>`;
@@ -250,7 +296,7 @@ async function researchWithClaude(input: ResearchInput): Promise<ResearchResult>
     ...fallbackOptions(),
     output_config: { effort: "medium" },
     system: systemFor(input),
-    tools: [webSearchTool()],
+    tools: [webSearchTool(input.format === "LONG" ? 5 : undefined)],
     messages,
   });
   costs.push(claudeCost(model, notesResponse.usage));
@@ -279,7 +325,7 @@ async function researchWithClaude(input: ResearchInput): Promise<ResearchResult>
       ...fallbackOptions(),
       output_config: { effort: "medium" },
       system: systemFor(input),
-      tools: [webSearchTool()],
+      tools: [webSearchTool(input.format === "LONG" ? 5 : undefined)],
       messages: [...messages, { role: "assistant", content: notesResponse.content }],
     });
     costs.push(claudeCost(model, notesResponse.usage));
@@ -292,19 +338,25 @@ async function researchWithClaude(input: ResearchInput): Promise<ResearchResult>
   if (!notes) throw new Error("Research found nothing. Try a clearer topic.");
 
   // Call 2: turn the notes into structured facts and a shared visual plan.
-  const planned = await ai.beta.messages.parse({
-    model,
-    max_tokens: 16000,
-    ...fallbackOptions(),
-    output_config: { effort: "medium", format: betaZodOutputFormat(ResearchSchema) },
-    system: systemFor(input),
-    messages: [
-      {
-        role: "user",
-        content: planPrompt(input, notes),
-      },
-    ],
-  });
+  // A full video's plan (45-60 scenes) needs more room. Above ~21,000 tokens the SDK wants either
+  // streaming or a timeout of our own, so we give one (the answer comes in one piece, as before).
+  const long = input.format === "LONG";
+  const planned = await ai.beta.messages.parse(
+    {
+      model,
+      max_tokens: long ? 48000 : 16000,
+      ...fallbackOptions(),
+      output_config: { effort: "medium", format: betaZodOutputFormat(ResearchSchema) },
+      system: systemFor(input),
+      messages: [
+        {
+          role: "user",
+          content: planPrompt(input, notes),
+        },
+      ],
+    },
+    long ? { timeout: 30 * 60_000 } : undefined,
+  );
   if (planned.stop_reason === "refusal") throw new Error("Planning request was declined by the model.");
   costs.push(claudeCost(model, planned.usage));
   if (!planned.parsed_output) throw new Error("Could not read the research plan from the model.");

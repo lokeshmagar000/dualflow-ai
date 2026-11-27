@@ -36,7 +36,7 @@ const research = {
     { purpose: "call_to_action" as const, idea: "Follow", visualQuery: "phone", backupQuery: "phone", mustShow: "a phone" },
   ],
   focus: "Mount Everest",
-  broll: [],
+  broll: [], chapters: [],
   thumbnailQuery: "mount everest",
 };
 

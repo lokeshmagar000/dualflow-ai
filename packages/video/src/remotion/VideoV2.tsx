@@ -29,11 +29,24 @@ const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const WHIP = 7; // frames of a whip transition
 const HOOK_HOLD = 2.6; // seconds the big hook text stays before it shrinks into the topic chip
 
+/**
+ * Where things go on screen. Shorts are tall (1080x1920); the FULL VIDEO is wide (1920x1080),
+ * so there everything sits higher, a bit smaller, and the captions have more room left and right.
+ */
+export function useLayout() {
+  const { width, height } = useVideoConfig();
+  const wide = width > height;
+  return wide
+    ? { wide, hookTop: 230, hookScale: 0.85, hookRise: 180, chipTop: 46, chipSize: 44, sourceTop: 126, capTop: "72%", capSide: 220, capScale: 0.8, cardTop: 190, cardScale: 0.74, followTop: 560, brandScale: 0.85 }
+    : { wide, hookTop: 330, hookScale: 1, hookRise: 220, chipTop: 150, chipSize: 50, sourceTop: 250, capTop: "60%", capSide: 60, capScale: 1, cardTop: 400, cardScale: 1, followTop: 1040, brandScale: 0.95 };
+}
+
 
 export function VideoV2(props: V2Props) {
   useFonts();
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
+  const layout = useLayout();
   const emphasis = useMemo(() => new Set(props.emphasis.map(plain)), [props.emphasis]);
 
   // Camera punch: a quick zoom-in each time a key word starts, easing back out.
@@ -48,7 +61,8 @@ export function VideoV2(props: V2Props) {
   const shake = frame < 8 ? Math.sin(frame * 2.3) * (8 - frame) * 1.6 : 0;
 
   // Last frames: a quick flash, so the loop back to frame 1 feels like a cut, not an end.
-  const endFlash = interpolate(frame, [durationInFrames - 6, durationInFrames - 1], [0, 0.85], clamp);
+  // (A full video does not loop: no flash.)
+  const endFlash = layout.wide ? 0 : interpolate(frame, [durationInFrames - 6, durationInFrames - 1], [0, 0.85], clamp);
 
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
@@ -77,7 +91,7 @@ export function VideoV2(props: V2Props) {
         }}
       />
 
-      <Brand name={props.brand} tag={props.brandTag} scale={0.95} opacity={0.88} />
+      <Brand name={props.brand} tag={props.brandTag} scale={layout.brandScale} opacity={0.88} />
       <Hook props={props} />
       <SourceRow props={props} />
       {props.cards.map((card, i) => (
@@ -88,6 +102,11 @@ export function VideoV2(props: V2Props) {
       {(props.news?.cards ?? []).map((card, i) => (
         <Sequence key={`n${i}`} from={ms(card.startMs)} durationInFrames={Math.max(1, ms(card.endMs - card.startMs))}>
           <NewsCardView card={card} language={props.language} frames={Math.max(1, ms(card.endMs - card.startMs))} />
+        </Sequence>
+      ))}
+      {(props.chapters ?? []).map((c, i) => (
+        <Sequence key={`c${i}`} from={ms(c.startMs)} durationInFrames={ms(3200)}>
+          <ChapterTitle chapter={c} language={props.language} />
         </Sequence>
       ))}
       <Captions props={props} emphasis={emphasis} />
@@ -139,18 +158,19 @@ function Hook({ props }: { props: V2Props }) {
   const slam = spring({ frame, fps, config: { damping: 11, mass: 0.6, stiffness: 180 } });
   // 0 = big hook, 1 = small topic chip.
   const shrink = interpolate(frame, [fps * HOOK_HOLD, fps * HOOK_HOLD + 9], [0, 1], { ...clamp, easing: Easing.inOut(Easing.cubic) });
-  const big = props.language === "en" ? 150 : 140;
+  const layout = useLayout();
+  const big = (props.language === "en" ? 150 : 140) * layout.hookScale;
 
   if (shrink < 1) {
     return (
       <div
         style={{
           position: "absolute",
-          top: 330,
+          top: layout.hookTop,
           left: 0,
           right: 0,
           textAlign: "center",
-          transform: `translateY(${-220 * shrink}px) scale(${(1.25 - 0.25 * slam) * (1 - 0.7 * shrink)})`,
+          transform: `translateY(${-layout.hookRise * shrink}px) scale(${(1.25 - 0.25 * slam) * (1 - 0.7 * shrink)})`,
           opacity: 1 - shrink,
         }}
       >
@@ -190,13 +210,13 @@ function Hook({ props }: { props: V2Props }) {
   // Topic chip, pinned top-centre for the rest of the video.
   const chipIn = spring({ frame: frame - Math.round(fps * HOOK_HOLD + 6), fps, config: { damping: 14 } });
   return (
-    <div style={{ position: "absolute", top: 150, left: 0, right: 0, display: "flex", justifyContent: "center", opacity: chipIn }}>
+    <div style={{ position: "absolute", top: layout.chipTop, left: 0, right: 0, display: "flex", justifyContent: "center", opacity: chipIn }}>
       <div
         style={{
           transform: `scale(${0.7 + 0.3 * chipIn}) translateY(${Math.sin(frame / 20) * 4}px) rotate(${Math.sin(frame / 31) * 0.8}deg)`,
           fontFamily: font,
           fontWeight: props.language === "en" ? 400 : 700,
-          fontSize: 50,
+          fontSize: layout.chipSize,
           lineHeight: 1.2,
           letterSpacing: props.language === "en" ? 1 : 0,
           textTransform: props.language === "en" ? "uppercase" : undefined,
@@ -222,6 +242,7 @@ function Hook({ props }: { props: V2Props }) {
 function SourceRow({ props }: { props: V2Props }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const layout = useLayout();
   const label = props.news?.label || props.series;
   if (!props.source && !label) return null;
   const appear = interpolate(frame, [fps * HOOK_HOLD + 10, fps * HOOK_HOLD + 22], [0, 1], clamp);
@@ -231,7 +252,7 @@ function SourceRow({ props }: { props: V2Props }) {
     <div
       style={{
         position: "absolute",
-        top: 250,
+        top: layout.sourceTop,
         left: 50,
         right: 50,
         display: "flex",
@@ -266,6 +287,7 @@ function SourceRow({ props }: { props: V2Props }) {
 function Captions({ props, emphasis }: { props: V2Props; emphasis: Set<string> }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const layout = useLayout();
   const pages = useMemo(() => buildPages(props.words), [props.words]);
   const nowMs = (frame / fps) * 1000;
   const page = pages.find((p, i) => {
@@ -275,14 +297,14 @@ function Captions({ props, emphasis }: { props: V2Props; emphasis: Set<string> }
   });
   if (!page) return null;
   const enter = spring({ frame: frame - ms(page.startMs - 80), fps, config: { damping: 12, mass: 0.45 } });
-  const size = props.language === "ne" ? 100 : 92;
+  const size = (props.language === "ne" ? 100 : 92) * layout.capScale;
   return (
     <div
       style={{
         position: "absolute",
-        left: 60,
-        right: 60,
-        top: "60%",
+        left: layout.capSide,
+        right: layout.capSide,
+        top: layout.capTop,
         textAlign: "center",
         transform: `translateY(${(1 - enter) * 40}px) scale(${0.8 + 0.2 * enter})`,
         opacity: Math.min(1, enter * 1.6),
@@ -361,11 +383,13 @@ function CardShell({ frames, children, small, language }: { frames: number; chil
   const out = interpolate(frame, [frames - 7, frames], [1, 0], clamp);
   const float = Math.sin(frame / 11) * 8; // idle: never stands still
   const font = HEADLINE_FONT[language];
+  const layout = useLayout();
   return (
-    <div style={{ position: "absolute", top: 400, left: 0, right: 0, display: "flex", justifyContent: "center", opacity: out }}>
+    <div style={{ position: "absolute", top: layout.cardTop, left: 0, right: 0, display: "flex", justifyContent: "center", opacity: out }}>
       <div
         style={{
-          transform: `translateY(${float}px) scale(${(0.4 + 0.6 * inn) * (1 - 0.15 * (1 - out))}) rotate(${(1 - inn) * -8 + Math.sin(frame / 17) * 0.8}deg)`,
+          transformOrigin: "50% 0",
+          transform: `translateY(${float}px) scale(${layout.cardScale * (0.4 + 0.6 * inn) * (1 - 0.15 * (1 - out))}) rotate(${(1 - inn) * -8 + Math.sin(frame / 17) * 0.8}deg)`,
           padding: "26px 56px 30px",
           borderRadius: 36,
           background: "rgba(10,16,34,0.8)",
@@ -584,8 +608,9 @@ function FollowPill({ text, language }: { text: string; language: "ne" | "en" })
   const out = interpolate(frame, [ms(2600) - 8, ms(2600)], [0, 1], clamp);
   const wiggle = (frame > 18 && frame < 34 ? Math.sin((frame - 18) * 0.9) * 4 : 0) + Math.sin(frame / 7) * 1.2;
   void durationInFrames;
+  const layout = useLayout();
   return (
-    <div style={{ position: "absolute", top: 1040, left: 0, right: 0, display: "flex", justifyContent: "center" }}>
+    <div style={{ position: "absolute", top: layout.followTop, left: 0, right: 0, display: "flex", justifyContent: "center" }}>
       <div
         style={{
           transform: `translateX(${(1 - inn) * -700 + out * 700}px) translateY(${Math.sin(frame / 9) * 5}px) scale(${1 + 0.03 * Math.sin(frame / 5)}) rotate(${wiggle}deg)`,
@@ -619,6 +644,54 @@ function FollowPill({ text, language }: { text: string; language: "ne" | "en" })
           +
         </span>
         {text}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * FULL VIDEO: the chapter title slides in from the left under the channel badge when a new
+ * part starts ("2 | What was signed"), stays about 3 seconds, then slides out.
+ */
+function ChapterTitle({ chapter, language }: { chapter: { n: number; title: string }; language: "ne" | "en" }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const layout = useLayout();
+  const inn = spring({ frame, fps, config: { damping: 14 } });
+  const out = interpolate(frame, [ms(3200) - 10, ms(3200)], [0, 1], clamp);
+  const font = HEADLINE_FONT[language];
+  const num = language === "ne" ? String(chapter.n).replace(/[0-9]/g, (d) => "०१२३४५६७८९"[Number(d)]!) : String(chapter.n);
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: layout.wide ? 196 : 330,
+        left: layout.wide ? 40 : 50,
+        display: "flex",
+        alignItems: "stretch",
+        transform: `translateX(${(1 - inn) * -900 - out * 900}px)`,
+        boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
+        borderRadius: 14,
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ background: LOGO.crimson, color: "white", fontFamily: numFont(language, num), fontWeight: 700, fontSize: 64, padding: "6px 26px 0", display: "flex", alignItems: "center" }}>{num}</div>
+      <div
+        style={{
+          background: "rgba(13,22,44,0.92)",
+          borderTop: `4px solid ${LOGO.marigold}`,
+          color: "white",
+          fontFamily: font,
+          fontWeight: language === "en" ? 400 : 700,
+          fontSize: 58,
+          lineHeight: 1.15,
+          letterSpacing: language === "en" ? 1.5 : 0,
+          textTransform: language === "en" ? "uppercase" : undefined,
+          padding: "10px 34px 6px",
+          maxWidth: layout.wide ? 1100 : 860,
+        }}
+      >
+        {chapter.title}
       </div>
     </div>
   );

@@ -33,6 +33,9 @@ function useEnter(frames: number) {
 
 export function NewsCardView({ card, language, frames }: { card: V2NewsCard; language: Lang; frames: number }) {
   const { enter, opacity } = useEnter(frames);
+  // Full video (wide 16:9): the card sits higher and a bit smaller, above the captions.
+  const { width, height } = useVideoConfig();
+  const wide = width > height;
   const body = (() => {
     switch (card.kind) {
       case "headline":
@@ -54,13 +57,14 @@ export function NewsCardView({ card, language, frames }: { card: V2NewsCard; lan
       <div
         style={{
           position: "absolute",
-          top: 420,
+          top: wide ? 190 : 420,
           left: 70,
           right: 70,
           display: "flex",
           justifyContent: "center",
           opacity,
-          transform: `translateY(${(1 - enter) * 120}px) scale(${0.92 + 0.08 * enter})`,
+          transformOrigin: "50% 0",
+          transform: `translateY(${(1 - enter) * 120}px) scale(${(wide ? 0.74 : 1) * (0.92 + 0.08 * enter)})`,
         }}
       >
         {body}

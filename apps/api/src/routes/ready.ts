@@ -4,8 +4,9 @@
  *   GET  /ready?show=waiting|uploaded|all&page=1   finished stories, newest first, 10 per page
  *   GET  /ready/zip?show=waiting|uploaded|all      "Download all": every video of that tab in one .zip
  *   GET  /ready/zip?story=<id>                     "Download this topic": only that topic's Nepali + English pair
- *   GET  /variants/:id/download/:kind              video, thumbnail or srt (?inline=1 to play/show it,
- *                                                  thumbnail: ?size=shorts|youtube|feed for another size)
+ *   GET  /variants/:id/download/:kind              video, thumbnail, srt or clip (?inline=1 to play/show it,
+ *                                                  thumbnail: ?size=shorts|youtube|feed for another size,
+ *                                                  clip: ?n=1|2|3 = a short cut from a full video)
  *   POST /variants/:id/uploaded                    { uploaded: true | false } = the "Mark as uploaded" button
  */
 import type { FastifyInstance } from "fastify";
@@ -15,7 +16,7 @@ import { contentTypeFor, downloadUrlFor, fileExists, fileSize, readFile, readStr
 import { POLITICS_CATEGORY, politicsSeries, sourceName, THUMBNAIL_SIZE_NAMES, thumbnailKeyFor, type ThumbnailSizeName } from "@dualflow/shared";
 import { getDefaultWorkspace } from "../workspace";
 
-const KINDS = ["video", "thumbnail", "srt"] as const;
+const KINDS = ["video", "thumbnail", "srt", "clip"] as const;
 type Kind = (typeof KINDS)[number];
 
 /** "Why Mount Everest grows!" -> "why-mount-everest-grows" (letters a-z and numbers only). */
@@ -32,9 +33,10 @@ export function slugify(text: string, max = 50): string {
 }
 
 /** e.g. "2026-11-20-en-why-mount-everest-grows.mp4". Nepali titles use the English title for the name. */
-export function downloadName(opts: { createdAt: Date; language: string; englishTitle: string; kind: Kind; size?: string }): string {
-  const ext = { video: "mp4", thumbnail: "jpg", srt: "srt" }[opts.kind];
-  const extra = opts.kind === "thumbnail" ? `-thumbnail${opts.size ? `-${opts.size}` : ""}` : opts.kind === "srt" ? "-subtitles" : "";
+export function downloadName(opts: { createdAt: Date; language: string; englishTitle: string; kind: Kind; size?: string; n?: number }): string {
+  const ext = { video: "mp4", thumbnail: "jpg", srt: "srt", clip: "mp4" }[opts.kind];
+  const extra =
+    opts.kind === "thumbnail" ? `-thumbnail${opts.size ? `-${opts.size}` : ""}` : opts.kind === "srt" ? "-subtitles" : opts.kind === "clip" ? `-short-${opts.n ?? 1}` : "";
   return `${opts.createdAt.toISOString().slice(0, 10)}-${opts.language}-${slugify(opts.englishTitle)}${extra}.${ext}`;
 }
 
@@ -60,6 +62,13 @@ function storyFilterFor(workspaceId: string, show: string): Prisma.StoryWhereInp
   };
 }
 
+/** FULL VIDEO: the shorts cut from it (Variant.clips), safely read. */
+export type Clip = { key: string; title: string; startSec: number; durationSec: number };
+export function clipsOf(value: unknown): Clip[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((c): c is Clip => Boolean(c) && typeof (c as Clip).key === "string" && typeof (c as Clip).durationSec === "number");
+}
+
 /** The text file put next to each video in the zip: title, description and hashtags, ready to paste. */
 export function uploadText(v: { title: string | null; description: string | null; hashtags: string[] }): string {
   const tags = v.hashtags.map((h) => `#${h.replace(/^#/, "")}`).join(" ");
@@ -81,6 +90,7 @@ export async function readyRoutes(app: FastifyInstance) {
         select: {
           id: true,
           status: true,
+          format: true,
           createdAt: true,
           topic: { select: { title: true, source: true, category: true, series: true, sources: true } },
           research: true, // only read for politics videos (their sources)
@@ -95,6 +105,7 @@ export async function readyRoutes(app: FastifyInstance) {
               durationSec: true,
               outputKey: true,
               manualUploadedAt: true,
+              clips: true,
               thumbnails: { select: { storageKey: true, sizes: true }, orderBy: { createdAt: "desc" }, take: 1 },
               subtitles: { select: { id: true }, take: 1 },
               // Where this video was sent with the Upload buttons (or by Auto upload).
@@ -120,8 +131,10 @@ export async function readyRoutes(app: FastifyInstance) {
         // Nepal News & Politics: the series and the sources to check before you approve it.
         politics: politicsInfo(topic, sources, research),
         variants: await Promise.all(
-          s.variants.map(async ({ thumbnails, ...v }) => ({
+          s.variants.map(async ({ thumbnails, clips, ...v }) => ({
             ...v,
+            // Full video: its shorts (title and length only; the download asks for the file).
+            clips: clipsOf(clips).map((c, i) => ({ n: i + 1, title: c.title, durationSec: c.durationSec })),
             thumbnails: thumbnails.map(() => ({ id: "latest" })),
             // Extra sizes (YouTube, Shorts, Facebook/Instagram post) for the download buttons.
             thumbnailSizes: thumbnails[0]?.sizes ?? [],
@@ -157,6 +170,7 @@ export async function readyRoutes(app: FastifyInstance) {
         description: true,
         hashtags: true,
         outputKey: true,
+        clips: true,
         thumbnails: { select: { storageKey: true, sizes: true }, orderBy: { createdAt: "desc" }, take: 1 },
         subtitles: { select: { storageKey: true }, orderBy: { createdAt: "desc" }, take: 1 },
         story: { select: { createdAt: true, topic: { select: { title: true } }, variants: { select: { language: true, title: true } } } },
@@ -197,6 +211,10 @@ export async function readyRoutes(app: FastifyInstance) {
           }
           const srt = v.subtitles[0]?.storageKey;
           if (srt) await addAndWait(zip, await readStream(srt).catch(() => null), `${folder}/${downloadName({ ...base, kind: "srt" })}`);
+          // Full video: its shorts go in a "Shorts" folder next to it.
+          for (const [i, c] of clipsOf(v.clips).entries()) {
+            await addAndWait(zip, await readStream(c.key).catch(() => null), `${folder}/Shorts/${downloadName({ ...base, kind: "clip", n: i + 1 })}`);
+          }
           zip.append(uploadText(v), { name: `${folder}/${videoName.replace(/\.mp4$/, "")}-text.txt` });
         }
         await zip.finalize();
@@ -214,7 +232,7 @@ export async function readyRoutes(app: FastifyInstance) {
     return { driver: storageDriver(), where: storageLabel(), ok: !problem, problem };
   });
 
-  app.get<{ Params: { id: string; kind: string }; Querystring: { inline?: string; size?: string } }>(
+  app.get<{ Params: { id: string; kind: string }; Querystring: { inline?: string; size?: string; n?: string } }>(
     "/variants/:id/download/:kind",
     async (req, reply) => {
       const kind = req.params.kind as Kind;
@@ -230,7 +248,10 @@ export async function readyRoutes(app: FastifyInstance) {
         },
       });
       if (!variant) return reply.code(404).send({ error: "Video not found" });
-      let key = { video: variant.outputKey, thumbnail: variant.thumbnails[0]?.storageKey, srt: variant.subtitles[0]?.storageKey }[kind];
+      // Full video: ?n=1|2|3 = which short.
+      const n = kind === "clip" ? Math.floor(Number(req.query.n) || 1) : undefined;
+      const clip = n ? clipsOf(variant.clips)[n - 1] : undefined;
+      let key = { video: variant.outputKey, thumbnail: variant.thumbnails[0]?.storageKey, srt: variant.subtitles[0]?.storageKey, clip: clip?.key }[kind];
       // Another thumbnail size: only one that was really made for this video.
       const size = kind === "thumbnail" ? (req.query.size as ThumbnailSizeName | undefined) : undefined;
       if (size) {
@@ -242,7 +263,7 @@ export async function readyRoutes(app: FastifyInstance) {
       if (!key) return reply.code(404).send({ error: "File not made yet, or already deleted" });
 
       const englishTitle = variant.story.variants.find((v) => v.language === "en")?.title || variant.story.topic.title;
-      const fileName = downloadName({ createdAt: variant.story.createdAt, language: variant.language, englishTitle, kind, size });
+      const fileName = downloadName({ createdAt: variant.story.createdAt, language: variant.language, englishTitle, kind, size, n });
       const inline = req.query.inline === "1";
 
       // Cloudflare R2: first ask R2 if the file is really there (a quick "HEAD" request), so a

@@ -21,7 +21,7 @@
 # They are never written in the code. See README "Free plan setup".
 name: Pipeline
 # The name shown in the run list (the Mac app shows it too).
-run-name: ${{ inputs.topic && format('Idea - {0}', inputs.topic) || inputs.redo_nepali && format('Remake Nepali - {0}', inputs.redo_nepali) || inputs.auto_now && 'Generate now (automatic topic)' || inputs.auto_slot && format('Night video {0} (backup timer)', inputs.auto_slot) || format('Pipeline ({0})', github.event_name) }}
+run-name: ${{ inputs.full_video && format('Full video - {0}', inputs.full_video) || inputs.topic && format('Idea - {0}', inputs.topic) || inputs.redo_nepali && format('Remake Nepali - {0}', inputs.redo_nepali) || inputs.auto_now && 'Generate now (automatic topic)' || inputs.auto_slot && format('Night video {0} (backup timer)', inputs.auto_slot) || format('Pipeline ({0})', github.event_name) }}
 on:
   # GitHub's clock is UTC. Nepal is UTC + 5:45, so:
   #   1:05 AM Nepal = 19:20 UTC (the evening before)
@@ -66,6 +66,18 @@ on:
         description: "Remake the Nepali video only (new Nepali script): a few words of the topic, or latest"
         type: string
         default: ""
+      full_video:
+        description: "FULL VIDEO (4-5 min, wide 16:9) + 2-3 shorts cut from it: the topic (notes may follow after ||)"
+        type: string
+        default: ""
+      full_sources:
+        description: "Full video: news links for the news look (url | paper | headline | date), separated by ;;"
+        type: string
+        default: ""
+      full_languages:
+        description: "Full video: languages (ne,en = Nepali + English; ne = Nepali only)"
+        type: string
+        default: "ne,en"
   # No "push" test runs any more: each one made a practice story that used up the free
   # Gemini requests meant for your night videos (and then blocked them). To test a branch,
   # use "Run workflow" on that branch with "Add a practice story" ticked.
@@ -81,7 +93,8 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    # A full 4-5 minute video (2 languages + 6 shorts) renders for 1-2 hours; normal runs stay short.
+    timeout-minutes: ${{ inputs.full_video && 300 || 55 }}
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       # AI for writing (topics, research, scripts, picture checks). The dashboard's Settings page
@@ -143,7 +156,9 @@ jobs:
       KEEP_DAYS_AFTER_UPLOAD: ${{ vars.KEEP_DAYS_AFTER_UPLOAD || '7' }}
       READY_KEEP_DAYS: ${{ vars.READY_KEEP_DAYS || '30' }}
       WORKER_CONCURRENCY: "2"
-      WORKER_MAX_MINUTES: "40"
+      WORKER_MAX_MINUTES: ${{ inputs.full_video && '270' || '40' }}
+      # A full video's render job runs long: never take it for a crashed job (see packages/queue).
+      QUEUE_LOCK_MINUTES: ${{ inputs.full_video && '280' || '20' }}
       # Uploads to social channels (see docs/social-setup.md). Off until PUBLISH_ENABLED=true.
       PUBLISH_ENABLED: ${{ vars.PUBLISH_ENABLED || 'false' }}
       PUBLISH_DRY_RUN: ${{ vars.PUBLISH_DRY_RUN || 'true' }}
@@ -207,9 +222,17 @@ jobs:
         run: pnpm --filter @dualflow/worker demo-story
         env:
           DEMO_TOPIC: ${{ inputs.topic }}
+      # Full video (4-5 minutes) + 2-3 shorts cut from it.
+      - name: Add the full video
+        if: inputs.full_video
+        run: pnpm --filter @dualflow/worker full-video
+        env:
+          FULL_TOPIC: ${{ inputs.full_video }}
+          FULL_SOURCES: ${{ inputs.full_sources }}
+          FULL_LANGUAGES: ${{ inputs.full_languages }}
       # Automatic videos: add today's next story (does nothing if today already has enough).
       - name: Pick the next topic automatically
-        if: "!inputs.remake_latest && !inputs.redo_nepali && github.event.schedule != '30 8 * * *'"
+        if: "!inputs.remake_latest && !inputs.redo_nepali && !inputs.full_video && github.event.schedule != '30 8 * * *'"
         run: pnpm --filter @dualflow/worker auto-ideas
         env:
           # "Generate now" button: make one even if Auto mode is off or today already has enough.

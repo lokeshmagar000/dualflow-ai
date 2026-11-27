@@ -1,6 +1,7 @@
 /**
- * /download/<variantId>/<video|thumbnail|srt>   (add ?inline=1 to play or show it in the page;
- *                                               thumbnails: ?size=shorts|youtube|feed for other sizes)
+ * /download/<variantId>/<video|thumbnail|srt|clip>   (add ?inline=1 to play or show it in the page;
+ *                                               thumbnails: ?size=shorts|youtube|feed for other sizes;
+ *                                               clip: ?n=1|2|3 = a short cut from a full video)
  *
  * The browser asks the dashboard; the dashboard asks the API with the secret key.
  *  - Files in Cloudflare R2: the API gives a short-lived download address and we
@@ -11,7 +12,7 @@
  */
 import { apiRaw, envPlace, hostName, oneServerMode, problemText, storageSetup } from "@/lib/api";
 
-const KINDS = new Set(["video", "thumbnail", "srt"]);
+const KINDS = new Set(["video", "thumbnail", "srt", "clip"]);
 
 export async function GET(req: Request, { params }: { params: Promise<{ variantId: string; kind: string }> }) {
   const { variantId, kind } = await params;
@@ -23,6 +24,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ variantI
   const forward = new URLSearchParams();
   if (inline) forward.set("inline", "1");
   if (size) forward.set("size", size);
+  // Full video: which of its shorts (1-9).
+  if (kind === "clip" && /^[1-9]$/.test(query.get("n") ?? "")) forward.set("n", query.get("n")!);
   const qs = forward.toString();
 
   let res: Response;

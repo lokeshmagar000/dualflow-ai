@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "check-keys": "tsx src/check-keys.ts",
     "demo-story": "tsx src/demo-story.ts",
+    "full-video": "tsx src/full-video.ts",
     "auto-ideas": "tsx src/auto-ideas.ts",
     "remake-video": "tsx src/remake-video.ts",
     "redo-nepali": "tsx src/redo-nepali.ts",

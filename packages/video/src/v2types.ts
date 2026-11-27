@@ -37,6 +37,9 @@ export type V2NewsCard = {
 /** News look: the red bar at the top ("NEWS EXPLAINED · 23 Nov 2026") and the graphics. */
 export type V2News = { label: string; date: string; cards: V2NewsCard[] };
 
+/** FULL VIDEO: a chapter title that slides in when that part of the video starts ("2 · What was signed"). */
+export type V2Chapter = { startMs: number; n: number; title: string };
+
 /** One sound effect: which file, when, how loud (0-1). */
 export type V2Sfx = { atMs: number; src: string; volume: number };
 
@@ -68,6 +71,13 @@ export type V2Props = {
   news?: V2News | null;
   /** A small "follow for part 2" pill in the middle of the video (not at the end). */
   follow: { atMs: number; text: string } | null;
+  /**
+   * FULL VIDEO (4-5 minutes): a wide 16:9 picture (1920x1080) for YouTube instead of a tall short.
+   * Remotion fills a missing prop from Root.tsx's example, so always send it (false = tall short).
+   */
+  wide?: boolean;
+  /** FULL VIDEO: chapter titles ([] = none). */
+  chapters?: V2Chapter[];
 };
 
 /** Lower case, no punctuation: used to match key words. */
