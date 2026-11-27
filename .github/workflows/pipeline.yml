@@ -67,7 +67,7 @@ on:
         type: string
         default: ""
       full_video:
-        description: "FULL VIDEO (4-5 min, wide 16:9) + 2-3 shorts cut from it: the topic (notes may follow after ||)"
+        description: "FULL VIDEO (4-5 min, wide 16:9) + 2-3 shorts cut from it: the topic (notes may follow after ||). Write resume to finish a full video that was stopped"
         type: string
         default: ""
       full_sources:
@@ -155,7 +155,8 @@ jobs:
       # How long finished videos stay in storage (cleanup step).
       KEEP_DAYS_AFTER_UPLOAD: ${{ vars.KEEP_DAYS_AFTER_UPLOAD || '7' }}
       READY_KEEP_DAYS: ${{ vars.READY_KEEP_DAYS || '30' }}
-      WORKER_CONCURRENCY: "2"
+      # A full video renders one language at a time (two big renders at once ran out of memory).
+      WORKER_CONCURRENCY: ${{ inputs.full_video && '1' || '2' }}
       WORKER_MAX_MINUTES: ${{ inputs.full_video && '270' || '40' }}
       # A full video's render job runs long: never take it for a crashed job (see packages/queue).
       QUEUE_LOCK_MINUTES: ${{ inputs.full_video && '280' || '20' }}

@@ -11,6 +11,7 @@
  *                   (news bar, headline/trip/flag cards, real photos of the leaders) and the
  *                   neutral news rules, like the Nepal News & Politics series.
  *   FULL_LANGUAGES  "ne,en" (default), or "ne" for Nepali only
+ *   FULL_TOPIC=resume  finish a full video whose run was stopped (no new story, no new AI writing)
  */
 import { prisma, Prisma } from "@dualflow/db";
 import { enqueue } from "@dualflow/queue";
@@ -35,7 +36,22 @@ export function parseLanguages(text: string | undefined): Language[] {
   return picked.length ? [...new Set(picked)] : [...LANGUAGES];
 }
 
+/**
+ * "resume": finish a full video whose run was stopped (machine shut down). Its steps are still
+ * marked RUNNING by the dead run; give them back to the queue so this run does them (no new AI writing).
+ */
+async function resume() {
+  const stories = await prisma.story.findMany({ where: { format: "LONG", status: "GENERATING" }, select: { id: true } });
+  const freed = await prisma.pipelineJob.updateMany({
+    where: { status: "RUNNING", storyId: { in: stories.map((s) => s.id) } },
+    data: { status: "QUEUED", lockedUntil: null },
+  });
+  console.log(`Resume: ${freed.count} stopped full-video step(s) will run again now.`);
+  await prisma.$disconnect();
+}
+
 async function main() {
+  if ((process.env.FULL_TOPIC ?? "").trim().toLowerCase() === "resume") return resume();
   // "topic || notes": the GitHub form has one box, so notes can follow the topic after "||".
   const [rawTitle = "", ...noteParts] = (process.env.FULL_TOPIC ?? "").split("||");
   const title = rawTitle.trim();
