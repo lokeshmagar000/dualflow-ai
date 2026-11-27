@@ -39,6 +39,12 @@ export const ResearchSchema = z.object({
         backupQuery: z
           .string()
           .describe("1-2 simpler English words for the same picture, used if nothing is found, e.g. 'yak', 'mountain climber'"),
+        altQuery: z
+          .string()
+          .default("")
+          .describe(
+            "2-4 English words for a SECOND, different view of the SAME subject (shown when the line is long), e.g. visualQuery 'hydropower dam nepal' -> altQuery 'river water turbine'; 'everest snowy peak' -> 'himalaya aerial view'",
+          ),
         mustShow: z
           .string()
           .default("")
@@ -94,7 +100,15 @@ const PICTURE_RULES = `- "idea" must say the actual fact (with its number), not 
   visualQuery that shows it: "nepal flag" (never just "flag"), "kathmandu temple" (never just "temple").
   When a line talks about the whole world or all countries, show "world map" or "globe earth",
   never one random country's flag or city.
-- "mustShow" says exactly what the picture must show; a picture check uses it to reject wrong pictures.
+- SUBJECT FIRST: every scene's picture shows the SUBJECT of its own sentence, so viewers see what they hear.
+  Hydropower -> "hydropower dam river"; heritage -> "kathmandu durbar square temple"; mountains -> "himalaya peaks";
+  water -> "river water"; sea -> "ocean waves"; trade -> "cargo trucks border"; rail -> "railway train tracks".
+  When the sentence is about a person or a meeting, show the place or thing it is about
+  ("new delhi parliament", "nepal india border gate", "government building flags") - never an unrelated scene.
+- "altQuery" is another view of the same subject (another angle or detail), never a different subject.
+- Make it beautiful: prefer lively, cinematic shots (aerial views, moving water, golden light, busy streets)
+  over plain or static ones, as long as they show the subject.
+- "mustShow" names the subject of the sentence exactly; a picture check uses it to reject wrong pictures.
 - VARIETY: the viewer must never watch the same thing for long. Also list "broll": 6-10 extra pictures
   around the subject (its people, places, daily life, culture, nature, a map), all clearly on the topic.
   Example for Nepal's flag: "nepali people holding flag", "kathmandu durbar square", "nepal map",

@@ -422,6 +422,8 @@ Be STRICT. Say a picture passes ONLY if a viewer would instantly see that exact 
   DIFFERENT country than the topic, even if the asked thing is in it (for example the moon over a
   Japanese castle in a video about Nepal). Sky, moon, sun, nature and maps with no foreign landmarks are fine.
 - Text, logos or sports balls that only print the thing fail.
+- FAIL a nice but GENERIC scene that does not show the asked thing (a random city, crowd, office or
+  landscape when the line is about a dam, a railway, a temple...). The viewer must SEE what they hear.
 - FAIL any "cut-out" picture: an object alone on a plain or single-colour background (white, black,
   green screen, blue screen, grey, any flat colour or simple gradient), 3D renders on a plain background,
   clip-art, icons, and slides of text. These look cheap in a video.

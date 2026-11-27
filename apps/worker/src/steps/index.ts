@@ -375,25 +375,43 @@ const render: Step = async (data) => {
       shared
         ? shared.find(key, (dir, used2) => findCheckedMedia(queries, mustShow, focus, format, dir, `m-${key}`, used2, Math.max(seconds, 4)), job.dir, name)
         : findCheckedMedia(queries, mustShow, focus, format, job.dir, name, used, seconds);
+    // EVERY picture shows what ITS line talks about (owner's rule: hydropower line -> hydropower,
+    // heritage line -> heritage, mountains -> mountains). A line split into pieces shows other views
+    // of the SAME subject (altQuery / backupQuery), not a random b-roll idea of the whole topic.
+    // Shorts may still use a b-roll idea as the very last choice; a full video repeats the line's
+    // own picture instead (a right picture twice beats a wrong one).
+    const extraCount = new Map<number, number>();
     for (const [i, shot] of shots.entries()) {
       const p = plan[shot.order - 1];
       const seconds = (shot.endMs - shot.startMs) / 1000;
-      if (shot.extra && broll.length) {
-        // Variety piece: the next b-roll idea (they take turns, so nothing repeats soon).
-        const bi = nextBroll++ % broll.length;
-        const b = broll[bi]!;
-        const queries = [...new Set([b.query, p?.backupQuery, p?.visualQuery].map((q) => q?.trim() ?? "").filter(Boolean))];
-        media.push(await find(`b${bi}`, queries, b.mustShow || b.query, `shot-${i + 1}`, seconds));
+      const clean = (list: (string | undefined)[]) => [...new Set(list.map((q) => q?.trim() ?? "").filter(Boolean))];
+      // Extra pieces show the whole line's subject; a line part shows what that part names.
+      const lineMustShow = shot.extra
+        ? p?.mustShow || p?.visualQuery || shot.mustShow || shot.visualQuery || story.topic.title
+        : shot.mustShow || (shot.part === 0 ? p?.mustShow : "") || shot.visualQuery || p?.visualQuery || story.topic.title;
+      if (shot.extra) {
+        const k = (extraCount.get(shot.order) ?? 0) + 1;
+        extraCount.set(shot.order, k);
+        // Take turns between the line's other views, so two pieces of one line differ.
+        const views = clean([p?.altQuery, p?.backupQuery, p?.visualQuery]);
+        const queries = views.length ? [...views.slice((k - 1) % views.length), ...views.slice(0, (k - 1) % views.length)] : [];
+        let found = queries.length ? await find(`p${shot.order}-x${k}`, queries, lineMustShow, `shot-${i + 1}`, seconds) : null;
+        if (!found && !long && broll.length) {
+          const bi = nextBroll++ % broll.length;
+          const b = broll[bi]!;
+          found = await find(`b${bi}`, clean([b.query]), b.mustShow || b.query, `shot-${i + 1}`, seconds);
+        }
+        media.push(found);
         continue;
       }
       // A part of a line shows the thing that part names ("yak", "jungle") first.
       // The second shot of a long line uses the simpler backup words first, for variety.
-      const planned = shot.part === 0 ? [p?.visualQuery, p?.backupQuery] : [p?.backupQuery, p?.visualQuery];
-      const queries = [...new Set([shot.visualQuery, ...planned, story.topic.title].map((q) => q?.trim() ?? "").filter(Boolean))];
-      const mustShow = shot.mustShow || (shot.part === 0 ? p?.mustShow : "") || shot.visualQuery || p?.visualQuery || story.topic.title;
-      let found = await find(`p${shot.order}-${shot.part}`, queries, mustShow, `shot-${i + 1}`, seconds);
-      if (!found && v2 && broll.length) {
-        // Nothing passed for this line: show a variety picture of the same topic instead of a plain colour.
+      const planned = shot.part === 0 ? [p?.visualQuery, p?.altQuery, p?.backupQuery] : [p?.backupQuery, p?.altQuery, p?.visualQuery];
+      // The video's title is a poor stock search; a full video never uses it.
+      const queries = clean([shot.visualQuery, ...planned, long ? undefined : story.topic.title]);
+      let found = await find(`p${shot.order}-${shot.part}`, queries, lineMustShow, `shot-${i + 1}`, seconds);
+      if (!found && !long && v2 && broll.length) {
+        // Short: nothing passed for this line, so show a variety picture of the same topic.
         const bi = nextBroll++ % broll.length;
         const b = broll[bi]!;
         found = await find(`b${bi}`, [b.query], b.mustShow || b.query, `shot-${i + 1}`, seconds);

@@ -28,11 +28,11 @@ export function mockResearch(input: { title: string; format: "SHORT" | "LONG" })
     ],
     // The same 5 scenes are used by BOTH languages, like the real pipeline.
     visualPlan: [
-      { purpose: "hook", idea: `Grab attention with a question about ${t}`, visualQuery: "curious person looking up", backupQuery: "curious person", mustShow: "a curious person" },
-      { purpose: "point", idea: `First main point about ${t}`, visualQuery: "nepal landscape", backupQuery: "nepal", mustShow: "a landscape in Nepal" },
-      { purpose: "point", idea: `Second main point about ${t}`, visualQuery: "city street kathmandu", backupQuery: "kathmandu", mustShow: "a street in Kathmandu" },
-      { purpose: "example", idea: `A simple real-life example`, visualQuery: "people talking", backupQuery: "people", mustShow: "people talking" },
-      { purpose: "call_to_action", idea: "Ask viewers to like and follow", visualQuery: "phone like button", backupQuery: "smartphone", mustShow: "a smartphone" },
+      { purpose: "hook", idea: `Grab attention with a question about ${t}`, visualQuery: "curious person looking up", backupQuery: "curious person", altQuery: "", mustShow: "a curious person" },
+      { purpose: "point", idea: `First main point about ${t}`, visualQuery: "nepal landscape", backupQuery: "nepal", altQuery: "", mustShow: "a landscape in Nepal" },
+      { purpose: "point", idea: `Second main point about ${t}`, visualQuery: "city street kathmandu", backupQuery: "kathmandu", altQuery: "", mustShow: "a street in Kathmandu" },
+      { purpose: "example", idea: `A simple real-life example`, visualQuery: "people talking", backupQuery: "people", altQuery: "", mustShow: "people talking" },
+      { purpose: "call_to_action", idea: "Ask viewers to like and follow", visualQuery: "phone like button", backupQuery: "smartphone", altQuery: "", mustShow: "a smartphone" },
     ],
     focus: t,
     broll: [],
@@ -49,6 +49,7 @@ function mockLongResearch(t: string): Research {
     idea: `Practice idea ${i} about ${t}`,
     visualQuery: places[i % places.length]!,
     backupQuery: places[(i + 2) % places.length]!.split(" ")[0]!,
+    altQuery: places[(i + 1) % places.length]!,
     mustShow: places[i % places.length]!,
   });
   const visualPlan = [scene("hook", 0), scene("point", 1)];
